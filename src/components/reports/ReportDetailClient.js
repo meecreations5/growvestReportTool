@@ -38,6 +38,7 @@ import ReportStatusBadge from "@/components/reports/ReportStatusBadge";
 import ReportVersionHistory from "@/components/reports/ReportVersionHistory";
 import ReportPublicationPanel from "@/components/reports/ReportPublicationPanel";
 import InvestorReportSectionNav from "@/components/investor/InvestorReportSectionNav";
+import { reportTemplateNavItems } from "@/lib/constants/reportTemplates";
 
 function MetaItem({ label, value, tone = "default" }) {
   const toneClass =
@@ -405,7 +406,7 @@ export default function ReportDetailClient({ reportId }) {
       ) : null}
 
       <ReportPublicationPanel report={report} acknowledgement={acknowledgement} />
-      <InvestorReportSectionNav />
+      <InvestorReportSectionNav items={reportTemplateNavItems(report)} />
 
       <div className="mx-auto w-full max-w-[1280px]">
         <MonthlyWealthReport report={report} history={history} viewer="staff" />

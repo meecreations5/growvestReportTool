@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { subscribeInvestors } from "@/services/assessmentService";
+import { getDataImport, linkDataImportToReport } from "@/services/dataImportService";
 import {
   getLatestInvestorReport,
   getMonthlyReport,
@@ -41,12 +42,19 @@ import {
   getReportMonthKey
 } from "@/lib/constants/report";
 import { monthlyReportSchema, validateCompletedReport } from "@/lib/validation/reportSchema";
+import { subscribeReportTemplates } from "@/services/reportTemplateService";
+import {
+  DEFAULT_REPORT_TEMPLATE_ID,
+  createReportTemplateSnapshot,
+  getSystemReportTemplate
+} from "@/lib/constants/reportTemplates";
 import { Field, inputClassName } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import { formatCurrency } from "@/lib/utils/format";
 import InvestorSelectionStep from "@/components/reports/create/InvestorSelectionStep";
 import ReportingPeriodStep from "@/components/reports/create/ReportingPeriodStep";
+import ReportTemplateSelectionStep from "@/components/reports/create/ReportTemplateSelectionStep";
 import {
   LockedFutureStep,
   MobileReportProgress,
@@ -60,11 +68,23 @@ import {
   ReportOutputGuide,
   ValueSourceLegend
 } from "@/components/reports/create/ReportWorkflowGuidance";
+import CommentaryLibraryPicker from "@/components/market-commentary/CommentaryLibraryPicker";
 
 function numberValue(value) {
   if (value === "" || value === null || value === undefined) return 0;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function withReportTemplateDefaults(report) {
+  if (report?.templateId && report?.templateSnapshot) return report;
+  const template = getSystemReportTemplate(report?.templateId || DEFAULT_REPORT_TEMPLATE_ID);
+  return {
+    ...report,
+    templateId: template?.id || DEFAULT_REPORT_TEMPLATE_ID,
+    templateVersion: Number(template?.version || 1),
+    templateSnapshot: createReportTemplateSnapshot(template)
+  };
 }
 
 function investorProfilePortfolioValue(investor) {
@@ -152,7 +172,8 @@ export default function ReportForm({ reportId = null }) {
   const searchParams = useSearchParams();
   const { profile } = useAuth();
   const [investors, setInvestors] = useState([]);
-  const [form, setForm] = useState(() => createReportFromInvestor(null));
+  const [reportTemplates, setReportTemplates] = useState([]);
+  const [form, setForm] = useState(() => withReportTemplateDefaults(createReportFromInvestor(null)));
   const [loading, setLoading] = useState(Boolean(reportId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -171,6 +192,8 @@ export default function ReportForm({ reportId = null }) {
   const formSignatureRef = useRef("");
   const formReadyRef = useRef(false);
   const corpusTouchedRef = useRef(Boolean(reportId));
+  const appliedImportRef = useRef("");
+  const [activeImportId, setActiveImportId] = useState(() => searchParams.get("importId") || "");
 
   const investorsForSelection = useMemo(() => investors.map((investor) => {
     const profileCorpus = investorProfilePortfolioValue(investor);
@@ -203,6 +226,34 @@ export default function ReportForm({ reportId = null }) {
 
   useEffect(() => {
     if (!profile?.id) return undefined;
+    return subscribeReportTemplates(
+      profile,
+      (items) => {
+        const activeTemplates = items.filter((item) => item.status === "active");
+        setReportTemplates(activeTemplates);
+        if (!reportId) {
+          setForm((current) => {
+            const selectedExists = activeTemplates.some((item) => item.id === current.templateId);
+            if (selectedExists) return current;
+            const fallback = activeTemplates.find((item) => item.isDefault) || activeTemplates[0] || getSystemReportTemplate(DEFAULT_REPORT_TEMPLATE_ID);
+            return fallback ? {
+              ...current,
+              templateId: fallback.id,
+              templateVersion: Number(fallback.version || 1),
+              templateSnapshot: createReportTemplateSnapshot(fallback)
+            } : current;
+          });
+        }
+      },
+      (nextError) => {
+        console.error("Unable to load report templates", nextError);
+        setReportTemplates([getSystemReportTemplate(DEFAULT_REPORT_TEMPLATE_ID)].filter(Boolean));
+      }
+    );
+  }, [profile, reportId]);
+
+  useEffect(() => {
+    if (!profile?.id) return undefined;
 
     return subscribeMonthlyReports(
       profile,
@@ -225,7 +276,7 @@ export default function ReportForm({ reportId = null }) {
         if (active) {
           formReadyRef.current = false;
           corpusTouchedRef.current = true;
-          setForm(report);
+          setForm(withReportTemplateDefaults(report));
           setSaveState("saved");
         }
       } catch (nextError) {
@@ -255,7 +306,7 @@ export default function ReportForm({ reportId = null }) {
             const period = nextReportPeriod(source);
             formReadyRef.current = false;
             corpusTouchedRef.current = true;
-            setForm({
+            setForm(withReportTemplateDefaults({
               ...source,
               id: undefined,
               reportCode: undefined,
@@ -271,7 +322,7 @@ export default function ReportForm({ reportId = null }) {
               sourceReportMonthKey: source.reportMonthKey,
               createdAt: undefined,
               completedAt: null
-            });
+            }));
             return;
           }
         } catch (nextError) {
@@ -290,6 +341,81 @@ export default function ReportForm({ reportId = null }) {
     () => investorsForSelection.find((item) => item.id === form.investorId) || null,
     [form.investorId, investorsForSelection]
   );
+
+  useEffect(() => {
+    const importId = searchParams.get("importId");
+    if (!importId || appliedImportRef.current === importId || loading || !investors.length) return undefined;
+
+    let active = true;
+    async function applyDataImport() {
+      try {
+        const importJob = await getDataImport(importId);
+        if (!importJob) throw new Error("The selected data import was not found.");
+        const investor = investors.find((item) => item.id === importJob.investorId);
+        if (!investor) throw new Error("The investor linked to this import is not available to your account.");
+
+        const imported = importJob.reportPayload || {};
+        const totalCorpus = Number(imported.summary?.totalCorpus || 0);
+        if (totalCorpus <= 0 || !imported.funds?.length) {
+          throw new Error("The import does not contain usable portfolio values.");
+        }
+
+        const month = Number(importJob.reportMonth || new Date().getMonth() + 1);
+        const year = Number(importJob.reportYear || new Date().getFullYear());
+        const monthEnd = new Date(year, month, 0);
+        const statementDate = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(monthEnd.getDate()).padStart(2, "0")}`;
+
+        formReadyRef.current = false;
+        corpusTouchedRef.current = true;
+        setForm((current) => {
+          const base = reportId
+            ? current
+            : withReportTemplateDefaults(createReportFromInvestor(investor, month, year));
+          const lifetimeTarget = Number(base.summary?.lifetimeTarget || 0);
+          return {
+            ...base,
+            reportMonth: month,
+            reportYear: year,
+            reportMonthKey: getReportMonthKey(year, month),
+            statementDate: base.statementDate || statementDate,
+            title: `Monthly Portfolio Report — ${getMonthLabel(month)} ${year}`,
+            summary: {
+              ...base.summary,
+              totalCorpus,
+              monthlySip: Number(imported.summary?.monthlySip || 0),
+              newMoneyAdded: Number(imported.summary?.newMoneyAdded || 0),
+              investmentGain: Number(imported.summary?.investmentGain || 0),
+              openingValue: Number(imported.summary?.openingValue || 0),
+              totalWithdrawals: Number(imported.summary?.totalWithdrawals || 0),
+              overallProgress: calculatePercentage(totalCorpus, lifetimeTarget)
+            },
+            holdings: imported.holdings || [],
+            allocation: imported.allocation || [],
+            funds: imported.funds || [],
+            sourceImportId: importId,
+            sourceImportFileName: importJob.fileName || "",
+            importedDataSummary: {
+              sourceRowCount: Number(imported.sourceRowCount || 0),
+              importedAt: new Date().toISOString(),
+              sourceLabel: importJob.sourceLabel || "Data Import Centre"
+            }
+          };
+        });
+
+        appliedImportRef.current = importId;
+        setActiveImportId(importId);
+        setActiveStep("portfolio-data");
+        setSuccess(`${imported.sourceRowCount || imported.funds.length} validated holdings from ${importJob.fileName || "the import file"} were applied. Review the calculated totals before saving.`);
+        router.replace(reportId ? `/reports/${reportId}/edit?step=portfolio-data` : "/reports/create?step=portfolio-data");
+      } catch (nextError) {
+        console.error(nextError);
+        if (active) setError(nextError.message || "Unable to apply the selected data import.");
+      }
+    }
+
+    applyDataImport();
+    return () => { active = false; };
+  }, [investors, loading, reportId, router, searchParams]);
   const isLocked = form.status === "locked";
 
   const investorComplete = Boolean(form.investorId);
@@ -304,8 +430,9 @@ export default function ReportForm({ reportId = null }) {
     form.goals?.some((goal) => goal.name?.trim() && Number(goal.targetAmount || 0) > 0)
     && form.allocation?.length
   );
+  const templateComplete = Boolean(form.templateId && form.templateSnapshot?.name);
   const completionIssues = useMemo(() => validateCompletedReport(form), [form]);
-  const approvalComplete = completionIssues.length === 0 && Boolean(String(form.disclaimer || "").trim());
+  const approvalComplete = completionIssues.length === 0 && Boolean(String(form.disclaimer || "").trim()) && templateComplete;
 
   const workflowSteps = useMemo(() => [
     { id: "investor", label: "Investor", helper: "Select client profile", complete: investorComplete, locked: false },
@@ -314,11 +441,11 @@ export default function ReportForm({ reportId = null }) {
     { id: "calculations", label: "Review Calculations", helper: "Reconcile report values", complete: portfolioDataComplete, locked: !portfolioDataComplete, lockReason: "Add portfolio data first." },
     { id: "commentary", label: "Commentary", helper: "Advisor insights", complete: commentaryComplete, locked: !portfolioDataComplete, lockReason: "Review portfolio data first." },
     { id: "goals", label: "Goals & Allocation", helper: "Bucket List progress", complete: goalsComplete, locked: !commentaryComplete, lockReason: "Add Advisor commentary first." },
-    { id: "template", label: "Template", helper: "Report presentation", complete: goalsComplete, locked: !goalsComplete, lockReason: "Complete goals and allocation first." },
+    { id: "template", label: "Template", helper: "Report presentation", complete: templateComplete, locked: !goalsComplete, lockReason: "Complete goals and allocation first." },
     { id: "approval", label: "Preview & Approval", helper: "Actions and compliance", complete: approvalComplete, locked: !goalsComplete, lockReason: "Complete report content first." },
     { id: "pdf", label: "Generate PDF", helper: "Secure investor document", complete: Boolean(form.pdfStoragePath), locked: form.status !== "completed", lockReason: "Complete the report before generating a PDF." },
     { id: "delivery", label: "Deliver Report", helper: "Portal and email delivery", complete: Boolean(form.investorVisible), locked: !form.pdfStoragePath, lockReason: "Generate the secure PDF before delivery." }
-  ], [approvalComplete, commentaryComplete, form.investorVisible, form.pdfStoragePath, form.status, goalsComplete, investorComplete, periodComplete, portfolioDataComplete]);
+  ], [approvalComplete, commentaryComplete, form.investorVisible, form.pdfStoragePath, form.status, goalsComplete, investorComplete, periodComplete, portfolioDataComplete, templateComplete]);
 
   const editorSteps = workflowSteps.slice(0, 8);
   const completedEditorSteps = editorSteps.filter((step) => step.complete).length;
@@ -448,11 +575,11 @@ export default function ReportForm({ reportId = null }) {
     setSuccess("");
 
     if (!investor) {
-      setForm(createReportFromInvestor(null, form.reportMonth, form.reportYear));
+      setForm(withReportTemplateDefaults(createReportFromInvestor(null, form.reportMonth, form.reportYear)));
       return;
     }
 
-    const fresh = createReportFromInvestor(investor, form.reportMonth, form.reportYear);
+    const fresh = withReportTemplateDefaults(createReportFromInvestor(investor, form.reportMonth, form.reportYear));
     const latestReport = latestReportByInvestorId[investorId];
     const previousCorpus = Number(latestReport?.summary?.totalCorpus || 0);
     const profileCorpus = Number(fresh.summary?.totalCorpus || 0);
@@ -506,6 +633,79 @@ export default function ReportForm({ reportId = null }) {
 
   function removeArrayRow(section, index) {
     setForm((current) => ({ ...current, [section]: (current[section] || []).filter((_, rowIndex) => rowIndex !== index) }));
+  }
+
+  function applyMarketCommentary({ commentary, target, replaceExisting }) {
+    const content = String(commentary?.content || "").trim();
+    if (!content) return;
+
+    const combine = (existing) => {
+      const current = String(existing || "").trim();
+      if (replaceExisting || !current) return content;
+      return `${current}\n\n${content}`;
+    };
+
+    setForm((current) => {
+      const source = {
+        commentaryId: commentary.id,
+        title: commentary.title,
+        category: commentary.category,
+        version: Number(commentary.version || 1),
+        target,
+        copiedAt: new Date().toISOString()
+      };
+      const commentarySources = [
+        ...(current.commentarySources || []).filter((item) => !(item.commentaryId === source.commentaryId && item.target === source.target)),
+        source
+      ];
+
+      if (target === "disclaimer") {
+        return { ...current, disclaimer: combine(current.disclaimer), commentarySources };
+      }
+
+      if (target === "advisorHighlight") {
+        return {
+          ...current,
+          advisorNote: { ...current.advisorNote, highlight: combine(current.advisorNote?.highlight) },
+          commentarySources
+        };
+      }
+
+      if (["progressHighlight", "priorityAttention", "portfolioOpportunity"].includes(target)) {
+        return {
+          ...current,
+          advisorInsights: {
+            ...current.advisorInsights,
+            [target]: {
+              ...current.advisorInsights?.[target],
+              title: replaceExisting || !current.advisorInsights?.[target]?.title ? commentary.title : current.advisorInsights[target].title,
+              description: combine(current.advisorInsights?.[target]?.description)
+            }
+          },
+          commentarySources
+        };
+      }
+
+      return {
+        ...current,
+        advisorNote: { ...current.advisorNote, content: combine(current.advisorNote?.content) },
+        advisorInsights: { ...current.advisorInsights, narrative: combine(current.advisorInsights?.narrative || current.advisorNote?.content) },
+        commentarySources
+      };
+    });
+
+    setSuccess(`${commentary.title} was copied into the report. Review and personalise the content before completion.`);
+  }
+
+  function selectReportTemplate(template) {
+    if (!template) return;
+    setForm((current) => ({
+      ...current,
+      templateId: template.id,
+      templateVersion: Number(template.version || 1),
+      templateSnapshot: createReportTemplateSnapshot(template)
+    }));
+    setSuccess(`${template.name} selected for the HTML report and secure PDF.`);
   }
 
   async function copyLatestReport() {
@@ -597,6 +797,14 @@ export default function ReportForm({ reportId = null }) {
         autosave
       });
       setWorkingReportId(saved.id);
+      if (activeImportId) {
+        try {
+          await linkDataImportToReport(activeImportId, saved.id, profile);
+          setActiveImportId("");
+        } catch (linkError) {
+          console.error("Monthly report saved, but the import history could not be linked.", linkError);
+        }
+      }
       if (!silent) {
         setSuccess(complete ? "Monthly report completed successfully." : "Monthly report draft saved.");
       }
@@ -676,6 +884,8 @@ export default function ReportForm({ reportId = null }) {
           ? commentaryComplete
           : activeStep === "goals"
             ? goalsComplete
+            : activeStep === "template"
+              ? templateComplete
             : activeStep === "approval"
               ? approvalComplete
               : true;
@@ -763,6 +973,15 @@ export default function ReportForm({ reportId = null }) {
             {activeStep === "portfolio-data" ? (
               <div className="grid gap-5">
                 <StepPageIntro number="3" stepId="portfolio-data" showValueLegend icon={WalletCards} title="Portfolio Data" description="Enter the headline corpus, asset-class composition and detailed fund-level values for the selected reporting month." />
+                {form.sourceImportId ? (
+                  <div className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-blue-900">Portfolio values imported from {form.sourceImportFileName || "Data Import Centre"}</p>
+                      <p className="mt-1 text-xs leading-5 text-blue-700">{form.importedDataSummary?.sourceRowCount || form.funds?.length || 0} validated holdings were mapped to the summary, asset allocation and fund-wise details. Review before saving.</p>
+                    </div>
+                    <span className="inline-flex w-fit rounded-full bg-white px-3 py-1.5 text-xs font-bold text-blue-700 ring-1 ring-blue-200">Imported data</span>
+                  </div>
+                ) : null}
             <Card id="report-summary" className="scroll-mt-28">
                     <SectionHeader number="2" title="Portfolio summary" description="These values populate the portfolio overview and headline KPI cards." />
                     <div className="grid gap-5 p-5 sm:grid-cols-2 xl:grid-cols-3">
@@ -813,9 +1032,11 @@ export default function ReportForm({ reportId = null }) {
                 <StepPageIntro number="4" stepId="calculations" showValueLegend icon={Calculator} title="Review Calculations" description="Check the report totals before adding the monthly narrative. Calculated values are shown separately from entered values." />
                 <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {form.sourceImportId ? <CalculationMetric label="Imported opening value" value={formatCurrency(form.summary?.openingValue)} tone="slate" /> : null}
                     <CalculationMetric label="Entered corpus" value={formatCurrency(form.summary?.totalCorpus)} tone="blue" />
                     <CalculationMetric label="Asset-class total" value={formatCurrency(holdingsTotal)} tone="slate" />
                     <CalculationMetric label="Fund-wise total" value={formatCurrency(fundsTotal)} tone="slate" />
+                    {form.sourceImportId ? <CalculationMetric label="Imported withdrawals" value={formatCurrency(form.summary?.totalWithdrawals)} tone="slate" /> : null}
                     <CalculationMetric label="Reconciliation difference" value={formatCurrency(corpusDifference)} tone={Math.abs(corpusDifference) < 1 ? "green" : "amber"} />
                   </div>
                   <div className={`mt-5 flex items-start gap-3 rounded-xl border p-4 ${Math.abs(corpusDifference) < 1 ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
@@ -833,7 +1054,7 @@ export default function ReportForm({ reportId = null }) {
               <div className="grid gap-5">
                 <StepPageIntro number="5" stepId="commentary" showValueLegend showInternal icon={FileCheck2} title="Commentary" description="Explain monthly performance, highlight progress and clearly separate priority attention from portfolio opportunities." />
             <Card id="report-insights" className="scroll-mt-28">
-                    <SectionHeader number="4" title="Advisor note" description="Write the personal monthly commentary that will appear as the Advisor's note." />
+                    <SectionHeader number="4" title="Advisor note" description="Write the personal monthly commentary that will appear as the Advisor's note." action={<CommentaryLibraryPicker reportMonth={form.reportMonth} reportYear={form.reportYear} onApply={applyMarketCommentary} />} />
                     <div className="grid gap-5 p-5 xl:grid-cols-[1fr_320px]">
                       <Field label="Advisor narrative"><textarea rows="8" className={inputClassName} value={form.advisorInsights?.narrative || form.advisorNote?.content || ""} onChange={(event) => setForm((current) => ({ ...current, advisorNote: { ...current.advisorNote, content: event.target.value }, advisorInsights: { ...current.advisorInsights, narrative: event.target.value } }))} placeholder="Summarise progress, concerns and what needs attention next month." /></Field>
                       <Field label="Highlighted observation" hint="Optional key amount or short phrase"><textarea rows="8" className={inputClassName} value={form.advisorNote?.highlight || ""} onChange={(event) => setForm((current) => ({ ...current, advisorNote: { ...current.advisorNote, highlight: event.target.value } }))} placeholder="Example: Emergency fund is short by ₹2.1 lakh." /></Field>
@@ -851,6 +1072,19 @@ export default function ReportForm({ reportId = null }) {
                         </div>
                       ))}
                     </div>
+                    {(form.commentarySources || []).length ? (
+                      <div className="border-t border-slate-200 bg-blue-50/50 p-5">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">Library sources used</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {(form.commentarySources || []).map((source) => (
+                            <span key={`${source.commentaryId}-${source.target}`} className="rounded-full border border-blue-200 bg-white px-3 py-1 text-[11px] font-semibold text-blue-700">
+                              {source.title} · v{source.version || 1}
+                            </span>
+                          ))}
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-slate-500">Copied content remains editable. Source references are stored with the draft for audit history.</p>
+                      </div>
+                    ) : null}
                     <div className="border-t border-slate-200 p-5"><Field label="Portfolio health observation" hint="Shown below the current versus target allocation bars"><textarea rows="4" className={inputClassName} value={form.portfolioHealth?.observation || ""} onChange={(event) => setForm((current) => ({ ...current, portfolioHealth: { ...current.portfolioHealth, observation: event.target.value } }))} placeholder="Describe allocation gaps, liquidity strengths or rebalancing needs." /></Field></div>
                     <div className="border-t border-slate-200 p-5">
                       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><p className="text-sm font-black text-slate-950">This Month at a Glance</p><p className="mt-1 text-xs text-slate-500">Optional custom highlights. When left blank, the report derives highlights automatically.</p></div><Button type="button" variant="secondary" onClick={() => setForm((current) => ({ ...current, monthlyHighlights: [...(current.monthlyHighlights || []), createEmptyHighlight(current.monthlyHighlights?.length || 0)].slice(0, 4) }))} disabled={(form.monthlyHighlights || []).length >= 4}><Plus size={16} /> Add highlight</Button></div>
@@ -881,23 +1115,25 @@ export default function ReportForm({ reportId = null }) {
 
             {activeStep === "template" ? (
               <div className="grid gap-5">
-                <StepPageIntro number="7" stepId="template" icon={LayoutTemplate} title="Select Template" description="Choose the presentation used for the HTML report and secure PDF. The current branded report remains selected in this release." />
-                <section className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-6 md:grid-cols-2">
-                  <div className="rounded-xl border-2 border-blue-500 bg-blue-50/60 p-4 text-left ring-4 ring-blue-50">
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="grid h-11 w-11 place-items-center rounded-lg bg-blue-700 text-white"><LayoutTemplate size={19} /></span>
-                      <span className="rounded-full bg-blue-700 px-2.5 py-1 text-xs font-semibold text-white">Selected</span>
+                <StepPageIntro number="7" stepId="template" icon={LayoutTemplate} title="Select Template" description="Choose the active template used for this report. A versioned snapshot is stored so future template edits cannot change this report." />
+                <ReportTemplateSelectionStep
+                  templates={reportTemplates}
+                  selectedTemplateId={form.templateId}
+                  onSelect={selectReportTemplate}
+                  disabled={isLocked}
+                />
+                {form.templateSnapshot ? (
+                  <section className="rounded-xl border border-blue-100 bg-blue-50 p-4 sm:p-5">
+                    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">Selected output</p>
+                        <h3 className="mt-1 font-heading text-lg font-bold text-blue-950">{form.templateSnapshot.name}</h3>
+                        <p className="mt-1 text-sm text-blue-800">Version {form.templateVersion || form.templateSnapshot.version || 1} · {form.templateSnapshot.estimatedPages || "6–9 pages"} · {form.templateSnapshot.sectionOrder.filter((key) => form.templateSnapshot.sectionVisibility?.[key] !== false).length} visible sections</p>
+                      </div>
+                      <a href={`/report-templates/${form.templateId}`} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-700"><Eye size={16} /> Preview template</a>
                     </div>
-                    <h3 className="mt-5 font-heading text-xl font-bold text-slate-950">Monthly Wealth Progress</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-500">GrowVest branded interactive report with overview, insights, goals, allocation, holdings, actions and review.</p>
-                    <div className="mt-4 flex items-center gap-2 text-xs font-semibold text-blue-700"><Eye size={15} /> HTML and A4 PDF ready</div>
-                  </div>
-                  <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5">
-                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Template library</p>
-                    <h3 className="mt-2 font-heading text-lg font-bold text-slate-900">Additional templates</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-500">Premium Blue, Executive Minimal and Detailed Portfolio templates will be introduced during the dedicated Template Library redesign.</p>
-                  </div>
-                </section>
+                  </section>
+                ) : null}
               </div>
             ) : null}
 

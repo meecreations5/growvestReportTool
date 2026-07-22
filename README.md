@@ -4,6 +4,19 @@ Standalone Next.js application for GrowVest lead management, investor onboarding
 
 ## Current implementation
 
+### Report Template Library
+
+- New `/report-templates` module for staff
+- Six built-in GrowVest template configurations
+- Responsive Desktop, Mobile and A4 preview modes
+- Template category, status, search and sorting filters
+- Draft duplication and custom-template creation for Admin users
+- Default-template control and archive/restore workflow for Super Admin
+- Template sections, appearance, usage and version-history views
+- New `reportTemplates` Firestore collection and role-aware security rules
+- Existing published reports remain unchanged; Create Report integration follows after Library approval
+
+
 
 ### UI/UX Phase 3 — Assessment and Investor Workspace
 
@@ -169,6 +182,8 @@ Main routes:
 /reports/[reportId]
 /reports/[reportId]/edit
 /report-print/[reportId]
+/report-templates
+/report-templates/[templateId]
 /meetings
 /meetings/create
 /meetings/[meetingId]
@@ -214,6 +229,7 @@ docs/PHASE_6_BRANDED_REPORT_AND_PDF.md
 docs/PHASE_6_CODE_MANIFEST.md
 docs/PHASE_7_INVESTOR_PORTAL_SECURE_PUBLISHING.md
 docs/PHASE_7_GAP_CLOSURE.md
+docs/UI_UX_REPORT_TEMPLATE_LIBRARY.md
 ```
 
 There are no hardcoded login credentials. Staff use Microsoft 365. The Super Admin may pre-authorise a staff email from the Users module; the matching `users/{uid}` profile is linked automatically on first sign-in.
@@ -237,3 +253,8 @@ Dynamic logo, email branding, watermark uploads, Advisor signatures and canonica
 ## UI/UX Phase 1
 
 The project now includes the GrowVest design foundation, League Spartan and Open Sauce One typography, responsive staff and Investor shells, a mobile-first Investor Login and a reusable PDF header/footer system. See `docs/UI_UX_PHASE_1.md`.
+
+
+## Market Commentary Library
+
+Routes: `/market-commentary`, `/market-commentary/create`, and `/market-commentary/[commentaryId]/edit`. The module provides monthly and reusable commentary categories, draft/approval/archive states, version history, role-based controls, autosave, mobile layouts, and approved-content integration with Create Report Step 5.

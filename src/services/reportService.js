@@ -21,6 +21,11 @@ import {
   getReportMonthKey
 } from "@/lib/constants/report";
 import { sanitizeForFirestore } from "@/services/assessmentService";
+import {
+  DEFAULT_REPORT_TEMPLATE_ID,
+  createReportTemplateSnapshot,
+  getSystemReportTemplate
+} from "@/lib/constants/reportTemplates";
 
 
 function reportTimeValue(item) {
@@ -109,6 +114,13 @@ function normaliseFunds(rows = []) {
     goalName: item.goalName || "",
     monthlySip: Number(item.monthlySip || 0),
     currentValue: Number(item.currentValue || 0),
+    openingValue: Number(item.openingValue || 0),
+    investment: Number(item.investment || 0),
+    withdrawal: Number(item.withdrawal || 0),
+    profitLoss: Number(item.profitLoss || 0),
+    returnPercentage: Number(item.returnPercentage || 0),
+    quantity: Number(item.quantity || 0),
+    transactionDate: item.transactionDate || "",
     type: item.type || "Fixed",
     notes: item.notes || ""
   }));
@@ -142,7 +154,9 @@ function normaliseReportPayload(payload, currentUser, status) {
     overallProgress: Number(payload.summary?.overallProgress || calculatePercentage(payload.summary?.totalCorpus, payload.summary?.lifetimeTarget)),
     monthlySip: Number(payload.summary?.monthlySip || 0),
     newMoneyAdded: Number(payload.summary?.newMoneyAdded || 0),
-    investmentGain: Number(payload.summary?.investmentGain || 0)
+    investmentGain: Number(payload.summary?.investmentGain || 0),
+    openingValue: Number(payload.summary?.openingValue || 0),
+    totalWithdrawals: Number(payload.summary?.totalWithdrawals || 0)
   };
 
   const reportMonth = Number(payload.reportMonth);
@@ -170,6 +184,13 @@ function normaliseReportPayload(payload, currentUser, status) {
     title: payload.title || `Monthly Portfolio Report — ${getMonthLabel(reportMonth)} ${reportYear}`,
     status,
     investorVisible: Boolean(payload.investorVisible && status === REPORT_STATUS.COMPLETED),
+    templateId: payload.templateId || DEFAULT_REPORT_TEMPLATE_ID,
+    templateVersion: Number(payload.templateVersion || payload.templateSnapshot?.version || getSystemReportTemplate(payload.templateId || DEFAULT_REPORT_TEMPLATE_ID)?.version || 1),
+    templateSnapshot: createReportTemplateSnapshot(
+      payload.templateSnapshot
+        ? { id: payload.templateId || payload.templateSnapshot.id, version: payload.templateVersion || payload.templateSnapshot.version, ...payload.templateSnapshot }
+        : getSystemReportTemplate(payload.templateId || DEFAULT_REPORT_TEMPLATE_ID)
+    ),
     summary,
     holdings: normaliseHoldings(payload.holdings, summary.totalCorpus),
     advisorNote: {
@@ -209,6 +230,9 @@ function normaliseReportPayload(payload, currentUser, status) {
     disclaimer: payload.disclaimer || "",
     sourceReportId: payload.sourceReportId || null,
     sourceReportMonthKey: payload.sourceReportMonthKey || null,
+    sourceImportId: payload.sourceImportId || null,
+    sourceImportFileName: payload.sourceImportFileName || "",
+    importedDataSummary: payload.importedDataSummary || null,
     updatedByUid: currentUser.id,
     updatedByName: currentUser.fullName,
     updatedAt: serverTimestamp()

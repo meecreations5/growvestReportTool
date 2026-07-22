@@ -25,6 +25,7 @@ import {
 import { getMonthLabel } from "@/lib/constants/report";
 import MonthlyWealthReport from "@/components/reports/MonthlyWealthReport";
 import InvestorReportSectionNav from "@/components/investor/InvestorReportSectionNav";
+import { reportTemplateNavItems } from "@/lib/constants/reportTemplates";
 
 export default function InvestorReportDetailClient({ reportId }) {
   const { profile } = useAuth();
@@ -255,7 +256,7 @@ export default function InvestorReportDetailClient({ reportId }) {
         </div>
       ) : null}
 
-      <InvestorReportSectionNav />
+      <InvestorReportSectionNav items={reportTemplateNavItems(report)} />
 
       <div className="mx-auto w-full max-w-[1280px]">
         <MonthlyWealthReport report={report} history={history} viewer="investor" />

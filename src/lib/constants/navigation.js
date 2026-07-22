@@ -5,10 +5,13 @@ import {
   ClipboardList,
   CalendarDays,
   FileBarChart,
+  FileSpreadsheet,
+  LayoutTemplate,
   RefreshCcw,
   UserCog,
   Settings,
-  BellRing
+  BellRing,
+  BookOpenText
 } from "lucide-react";
 import { ADMIN_ROLES, STAFF_ROLES } from "./roles";
 
@@ -37,6 +40,9 @@ export const NAV_GROUPS = [
     label: "Portfolio Management",
     items: [
       { label: "Monthly Reports", href: "/reports", icon: FileBarChart, roles: STAFF_ROLES },
+      { label: "Data Imports", href: "/data-imports", icon: FileSpreadsheet, roles: STAFF_ROLES },
+      { label: "Market Commentary", href: "/market-commentary", icon: BookOpenText, roles: STAFF_ROLES },
+      { label: "Report Templates", href: "/report-templates", icon: LayoutTemplate, roles: STAFF_ROLES },
       { label: "Client Servicing", href: "/servicing", icon: RefreshCcw, roles: STAFF_ROLES }
     ]
   },
@@ -56,5 +62,7 @@ export const QUICK_CREATE_ITEMS = [
   { label: "Schedule meeting", href: "/meetings/create", icon: CalendarDays, roles: STAFF_ROLES },
   { label: "Create MOM", href: "/mom/create", icon: ClipboardList, roles: STAFF_ROLES },
   { label: "Monthly report", href: "/reports/create", icon: FileBarChart, roles: STAFF_ROLES },
+  { label: "Import portfolio data", href: "/data-imports", icon: FileSpreadsheet, roles: STAFF_ROLES },
+  { label: "New market commentary", href: "/market-commentary/create", icon: BookOpenText, roles: STAFF_ROLES },
   { label: "Notification centre", href: "/dashboard", icon: BellRing, roles: STAFF_ROLES }
 ];

@@ -449,6 +449,69 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
 
+    match /dataImports/{importId} {
+      allow create: if isStaff()
+        && request.resource.data.createdByUid == request.auth.uid
+        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
+
+      allow read: if isAdmin()
+        || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+
+      allow update: if isAdmin() || (
+        isAdvisor()
+        && resource.data.advisorUid == request.auth.uid
+        && request.resource.data.advisorUid == resource.data.advisorUid
+        && request.resource.data.investorId == resource.data.investorId
+      );
+
+      allow delete: if isSuperAdmin();
+    }
+
+
+    match /marketCommentaries/{commentaryId} {
+      allow read: if isStaff();
+
+      allow create: if isStaff()
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.status == 'draft';
+
+      allow update: if isAdmin() || (
+        isAdvisor()
+        && resource.data.createdByUid == request.auth.uid
+        && request.resource.data.createdByUid == resource.data.createdByUid
+        && resource.data.status in ['draft', 'archived', 'approved']
+        && request.resource.data.status in ['draft', 'archived']
+      );
+
+      allow delete: if isSuperAdmin();
+    }
+
+    match /marketCommentaries/{commentaryId}/versions/{versionId} {
+      allow read: if isStaff();
+      allow create: if isAdmin() || (
+        isAdvisor()
+        && request.resource.data.savedByUid == request.auth.uid
+        && get(/databases/$(database)/documents/marketCommentaries/$(commentaryId)).data.createdByUid == request.auth.uid
+      );
+      allow update: if false;
+      allow delete: if isSuperAdmin();
+    }
+
+
+    match /reportTemplates/{templateId} {
+      allow read: if isAdmin()
+        || (isAdvisor() && resource.data.status == 'active');
+      allow create, update: if isAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
+
+    match /reportTemplates/{templateId}/versions/{versionId} {
+      allow read: if isStaff();
+      allow create, update: if isAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
     match /reportSettings/{documentId} {
       allow read: if activeUser();
       allow create, update, delete: if isAdmin();

@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { drawPdfDocumentChrome } from "@/lib/server/pdfDocumentShell";
+import { resolveReportTemplate } from "@/lib/constants/reportTemplates";
 
 const A4 = [595.28, 841.89];
 const MARGIN = 44;
@@ -261,7 +262,25 @@ function addActionsPage(doc, fonts, report) {
   page.drawText("NEXT PORTFOLIO REVIEW", { x: MARGIN + 16, y: 205, size: 8, font: fonts.bold, color: BLUE });
   page.drawText(safeText(report.nextReview?.date || "To be scheduled"), { x: MARGIN + 16, y: 180, size: 15, font: fonts.bold, color: INK });
   page.drawText(safeText(report.nextReview?.note || report.nextReview?.mode || "Your Advisor will be in touch."), { x: 250, y: 183, size: 9, font: fonts.regular, color: MUTED });
-  drawTextBlock(page, report.disclaimer || "", { x: MARGIN, y: 105, width: 507, font: fonts.regular, size: 7.5, lineHeight: 11, color: MUTED, maxLines: 5 });
+}
+
+function addDisclaimerPage(doc, fonts, report) {
+  const page = doc.addPage(A4);
+  addHeader(page, fonts, report, doc.getPageCount());
+  sectionTitle(page, fonts, "Report information and disclaimer", 750);
+  page.drawRectangle({ x: MARGIN, y: 580, width: 507, height: 125, color: LIGHT, borderColor: rgb(0.84, 0.87, 0.92), borderWidth: 0.8 });
+  page.drawText(`Report reference: ${safeText(report.reportCode || "-")}`, { x: MARGIN + 18, y: 675, size: 9, font: fonts.bold, color: INK });
+  page.drawText(`Report version: ${Number(report.version || 1)}`, { x: MARGIN + 18, y: 653, size: 9, font: fonts.regular, color: MUTED });
+  page.drawText(`Template: ${safeText(report.templateSnapshot?.name || "Premium Blue")} v${Number(report.templateVersion || report.templateSnapshot?.version || 1)}`, { x: MARGIN + 18, y: 631, size: 9, font: fonts.regular, color: MUTED });
+  page.drawText(`Statement date: ${safeText(report.statementDate || "-")}`, { x: MARGIN + 18, y: 609, size: 9, font: fonts.regular, color: MUTED });
+  drawTextBlock(page, report.disclaimer || "", { x: MARGIN, y: 535, width: 507, font: fonts.regular, size: 10, lineHeight: 15, color: MUTED, maxLines: 22 });
+}
+
+function addTransactionsPage(doc, fonts, report) {
+  const page = doc.addPage(A4);
+  addHeader(page, fonts, report, doc.getPageCount());
+  sectionTitle(page, fonts, "Transactions", 750);
+  page.drawText("No transaction-level data was recorded for this report.", { x: MARGIN, y: 680, size: 11, font: fonts.regular, color: MUTED });
 }
 
 export async function generateMonthlyReportPdf(report) {
@@ -283,13 +302,28 @@ export async function generateMonthlyReportPdf(report) {
   const italic = await doc.embedFont(StandardFonts.HelveticaOblique);
   const fonts = { regular, bold, italic };
 
-  addCover(doc, fonts, report);
-  addOverview(doc, fonts, report);
-  addAdvisorPage(doc, fonts, report);
-  addGoalsPages(doc, fonts, report);
-  addAllocationPage(doc, fonts, report);
-  addFundsPages(doc, fonts, report);
-  addActionsPage(doc, fonts, report);
+  const template = resolveReportTemplate(report);
+  const visible = (key) => template.sectionVisibility?.[key] !== false;
+  const rendered = new Set();
+  const renderers = {
+    cover: () => addCover(doc, fonts, report),
+    executiveSummary: () => addOverview(doc, fonts, report),
+    performance: () => { if (!rendered.has("executiveSummary")) addOverview(doc, fonts, report); },
+    performanceTrend: () => { if (!rendered.has("executiveSummary") && !rendered.has("performance")) addOverview(doc, fonts, report); },
+    goals: () => addGoalsPages(doc, fonts, report),
+    allocation: () => addAllocationPage(doc, fonts, report),
+    holdings: () => addFundsPages(doc, fonts, report),
+    transactions: () => addTransactionsPage(doc, fonts, report),
+    commentary: () => addAdvisorPage(doc, fonts, report),
+    actions: () => addActionsPage(doc, fonts, report),
+    disclaimer: () => addDisclaimerPage(doc, fonts, report)
+  };
+
+  template.sectionOrder.forEach((key) => {
+    if (!visible(key) || rendered.has(key) || !renderers[key]) return;
+    renderers[key]();
+    rendered.add(key);
+  });
 
   return doc.save();
 }

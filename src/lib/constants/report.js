@@ -1,3 +1,9 @@
+import {
+  DEFAULT_REPORT_TEMPLATE_ID,
+  createReportTemplateSnapshot,
+  getSystemReportTemplate
+} from "@/lib/constants/reportTemplates";
+
 export const REPORT_STATUS = {
   DRAFT: "draft",
   COMPLETED: "completed",
@@ -225,6 +231,9 @@ export function createReportFromInvestor(investor, month = new Date().getMonth()
     title: `Monthly Portfolio Report — ${getMonthLabel(month)} ${year}`,
     status: REPORT_STATUS.DRAFT,
     investorVisible: false,
+    templateId: DEFAULT_REPORT_TEMPLATE_ID,
+    templateVersion: Number(getSystemReportTemplate(DEFAULT_REPORT_TEMPLATE_ID)?.version || 1),
+    templateSnapshot: createReportTemplateSnapshot(getSystemReportTemplate(DEFAULT_REPORT_TEMPLATE_ID)),
     summary: {
       totalCorpus,
       lifetimeTarget,
@@ -241,6 +250,7 @@ export function createReportFromInvestor(investor, month = new Date().getMonth()
       priorityAttention: { title: "", description: "" },
       portfolioOpportunity: { title: "", description: "" }
     },
+    commentarySources: [],
     monthlyHighlights: [],
     portfolioHealth: {
       observation: "",

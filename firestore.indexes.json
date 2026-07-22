@@ -393,6 +393,20 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "dataImports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "advisorUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []
