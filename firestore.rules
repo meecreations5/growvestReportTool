@@ -1,0 +1,466 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function hasUserProfile() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function activeUser() {
+      return hasUserProfile() && userDoc().data.status == 'active';
+    }
+
+    function role() {
+      return userDoc().data.role;
+    }
+
+    function isSuperAdmin() {
+      return activeUser() && role() == 'super_admin';
+    }
+
+    function isAdmin() {
+      return activeUser() && (role() == 'super_admin' || role() == 'admin');
+    }
+
+    function isAdvisor() {
+      return activeUser() && role() == 'advisor';
+    }
+
+    function isStaff() {
+      return activeUser()
+        && role() in ['super_admin', 'admin', 'advisor'];
+    }
+
+    function isInvestor() {
+      return activeUser()
+        && role() == 'investor'
+        && userDoc().data.portalEnabled != false;
+    }
+
+
+    function invitationForCurrentEmail() {
+      return get(/databases/$(database)/documents/staffInvitations/$(request.auth.token.email));
+    }
+
+    function hasPendingStaffInvitation() {
+      return signedIn()
+        && request.auth.token.email != null
+        && exists(/databases/$(database)/documents/staffInvitations/$(request.auth.token.email))
+        && invitationForCurrentEmail().data.status == 'pending';
+    }
+
+    function investorAliasForCurrentEmail() {
+      return get(/databases/$(database)/documents/investorLoginAliases/$(request.auth.token.email));
+    }
+
+    function hasActiveInvestorAlias() {
+      return signedIn()
+        && request.auth.token.email != null
+        && exists(/databases/$(database)/documents/investorLoginAliases/$(request.auth.token.email))
+        && investorAliasForCurrentEmail().data.status == 'active'
+        && investorAliasForCurrentEmail().data.portalEnabled != false;
+    }
+
+    function ownsAdvisorRecord(data) {
+      return isAdvisor() && (
+        data.assignedAdvisorUid == request.auth.uid
+        || data.advisorUid == request.auth.uid
+        || data.createdByUid == request.auth.uid
+      );
+    }
+
+    function investorOwnsRecord(data) {
+      return isInvestor() && (
+        data.investorPortalUid == request.auth.uid
+        || data.portalUid == request.auth.uid
+        || (
+          userDoc().data.investorId != null
+          && data.investorId == userDoc().data.investorId
+        )
+      );
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+
+      allow create: if isSuperAdmin()
+        || (
+          signedIn()
+          && request.auth.uid == uid
+          && hasPendingStaffInvitation()
+          && request.resource.data.email == request.auth.token.email
+          && request.resource.data.role == invitationForCurrentEmail().data.role
+          && request.resource.data.status == 'active'
+          && request.resource.data.authMethod == 'microsoft'
+        )
+        || (
+          signedIn()
+          && request.auth.uid == uid
+          && hasActiveInvestorAlias()
+          && request.resource.data.email == request.auth.token.email
+          && request.resource.data.role == 'investor'
+          && request.resource.data.status == 'active'
+          && request.resource.data.portalEnabled == true
+          && request.resource.data.investorId == investorAliasForCurrentEmail().data.investorId
+          && request.resource.data.authMethod == 'google'
+        );
+
+      allow delete: if isSuperAdmin();
+
+      allow update: if isSuperAdmin()
+        || (
+          request.auth.uid == uid
+          && activeUser()
+          && role() in ['super_admin', 'admin', 'advisor']
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['fullName', 'photoURL', 'lastLoginAt', 'updatedAt'])
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.status == resource.data.status
+        )
+        || (
+          request.auth.uid == uid
+          && isInvestor()
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['fullName', 'photoURL', 'lastLoginAt', 'mustChangePassword', 'authMethods', 'authEmail', 'googleEmail', 'passwordChangedAt', 'updatedAt'])
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.investorId == resource.data.investorId
+        );
+    }
+
+    match /staffInvitations/{email} {
+      allow read: if isAdmin()
+        || (signedIn() && request.auth.token.email == email);
+
+      allow create, delete: if isSuperAdmin();
+
+      allow update: if isSuperAdmin()
+        || (
+          signedIn()
+          && request.auth.token.email == email
+          && resource.data.status == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'linkedUid', 'linkedAt', 'updatedAt'])
+          && request.resource.data.status == 'linked'
+          && request.resource.data.linkedUid == request.auth.uid
+        );
+    }
+
+    match /usernames/{username} {
+      allow read, write: if isAdmin();
+    }
+
+    match /investorLoginAliases/{email} {
+      allow read: if isAdmin()
+        || (signedIn() && request.auth.token.email != null && request.auth.token.email == email);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /counters/{counterId} {
+      allow read, write: if isStaff();
+    }
+
+    match /leads/{leadId} {
+      allow create: if isStaff()
+        && request.resource.data.createdByUid == request.auth.uid
+        && (isAdmin() || request.resource.data.assignedAdvisorUid == request.auth.uid);
+
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data);
+
+      allow update: if isAdmin() || (
+        ownsAdvisorRecord(resource.data)
+        && request.resource.data.assignedAdvisorUid == resource.data.assignedAdvisorUid
+        && request.resource.data.createdByUid == resource.data.createdByUid
+      );
+
+      allow delete: if isSuperAdmin();
+    }
+
+    match /leadFollowUps/{followUpId} {
+      allow create: if isStaff()
+        && request.resource.data.createdByUid == request.auth.uid
+        && (isAdmin() || request.resource.data.assignedAdvisorUid == request.auth.uid);
+
+      allow read, update: if isAdmin() || ownsAdvisorRecord(resource.data);
+      allow delete: if isSuperAdmin();
+    }
+
+    match /activityLogs/{activityId} {
+      allow create: if isStaff()
+        && request.resource.data.createdByUid == request.auth.uid
+        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
+
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data);
+      allow update, delete: if isSuperAdmin();
+    }
+
+
+    match /clientAssessments/{assessmentId} {
+      allow create: if isStaff()
+        && request.resource.data.createdByUid == request.auth.uid
+        && (isAdmin() || request.resource.data.assignedAdvisorUid == request.auth.uid);
+
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data);
+      allow update: if isAdmin() || (
+        ownsAdvisorRecord(resource.data)
+        && request.resource.data.assignedAdvisorUid == resource.data.assignedAdvisorUid
+        && request.resource.data.leadId == resource.data.leadId
+      );
+      allow delete: if isSuperAdmin();
+    }
+
+    match /assessmentVersions/{versionId} {
+      allow create: if isStaff()
+        && request.resource.data.savedByUid == request.auth.uid
+        && (isAdmin() || request.resource.data.assignedAdvisorUid == request.auth.uid);
+
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data);
+      allow update, delete: if isSuperAdmin();
+    }
+
+    match /investors/{investorId} {
+      allow create: if isStaff()
+        && request.resource.data.createdByUid == request.auth.uid;
+
+      allow read: if isAdmin()
+        || ownsAdvisorRecord(resource.data)
+        || (
+          isInvestor()
+          && (
+            request.auth.uid == resource.data.portalUid
+            || userDoc().data.investorId == investorId
+          )
+        );
+
+      allow update: if isAdmin() || (
+        ownsAdvisorRecord(resource.data)
+        && request.resource.data.assignedAdvisorUid == resource.data.assignedAdvisorUid
+        && request.resource.data.advisorUid == resource.data.advisorUid
+      );
+      allow delete: if isSuperAdmin();
+    }
+
+
+
+    match /meetings/{meetingId} {
+      allow create: if isStaff()
+        && request.resource.data.createdByUid == request.auth.uid
+        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
+
+      allow read: if isAdmin()
+        || ownsAdvisorRecord(resource.data)
+        || (
+          investorOwnsRecord(resource.data)
+          && resource.data.investorVisible == true
+        );
+
+      allow update: if isAdmin() || (
+        ownsAdvisorRecord(resource.data)
+        && request.resource.data.advisorUid == resource.data.advisorUid
+        && request.resource.data.createdByUid == resource.data.createdByUid
+      );
+
+      allow delete: if isSuperAdmin();
+    }
+
+    match /followUps/{followUpId} {
+      allow create: if isStaff()
+        && request.resource.data.createdByUid == request.auth.uid
+        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
+      allow read, update: if isAdmin() || ownsAdvisorRecord(resource.data);
+      allow delete: if isSuperAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow create: if isStaff()
+        && request.resource.data.createdByUid == request.auth.uid;
+      allow read: if activeUser()
+        && (
+          resource.data.recipientUid == request.auth.uid
+          || (isInvestor() && resource.data.investorId == userDoc().data.investorId)
+        );
+      allow update: if activeUser()
+        && (
+          resource.data.recipientUid == request.auth.uid
+          || (isInvestor() && resource.data.investorId == userDoc().data.investorId)
+        )
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'readAt']);
+      allow delete: if isSuperAdmin();
+    }
+
+    match /communicationLogs/{logId} {
+      allow read: if isAdmin()
+        || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    match /notificationPreferences/{preferenceId} {
+      allow read: if activeUser()
+        && (preferenceId == request.auth.uid || isAdmin());
+      allow create, update: if activeUser()
+        && (preferenceId == request.auth.uid || isAdmin());
+      allow delete: if isSuperAdmin();
+    }
+
+    match /meetingMinutes/{momId} {
+      allow create: if isStaff()
+        && request.resource.data.createdByUid == request.auth.uid;
+
+      allow read: if isAdmin()
+        || ownsAdvisorRecord(resource.data)
+        || (
+          investorOwnsRecord(resource.data)
+          && resource.data.investorVisible == true
+        );
+
+      allow update: if isAdmin() || ownsAdvisorRecord(resource.data);
+      allow delete: if isSuperAdmin();
+    }
+
+    match /monthlyReports/{reportId} {
+      allow create: if isStaff()
+        && request.resource.data.createdByUid == request.auth.uid;
+
+      allow read: if isAdmin()
+        || ownsAdvisorRecord(resource.data)
+        || (
+          investorOwnsRecord(resource.data)
+          && resource.data.investorVisible == true
+          && resource.data.status == 'completed'
+        );
+
+      allow update: if isAdmin() || ownsAdvisorRecord(resource.data);
+      allow delete: if isSuperAdmin();
+    }
+
+
+    match /reportVersions/{versionId} {
+      allow read: if isAdmin()
+        || ownsAdvisorRecord(resource.data)
+        || (
+          isInvestor()
+          && resource.data.investorVisible == true
+          && resource.data.status == 'completed'
+          && resource.data.investorId == userDoc().data.investorId
+          && get(/databases/$(database)/documents/monthlyReports/$(resource.data.reportId)).data.activePublishedVersionId == versionId
+        );
+      allow create, update, delete: if false;
+    }
+
+    match /reportAcknowledgements/{acknowledgementId} {
+      allow read: if isAdmin()
+        || (isInvestor() && resource.data.investorUid == request.auth.uid)
+        || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow update: if isAdmin()
+        || (isAdvisor()
+          && resource.data.advisorUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['discussionStatus', 'advisorResponse', 'respondedAt', 'respondedByUid', 'updatedAt']));
+      allow create, delete: if false;
+    }
+
+    match /reportDownloads/{downloadId} {
+      allow read: if isAdmin()
+        || (isAdvisor() && resource.data.advisorUid == request.auth.uid)
+        || (isInvestor() && resource.data.downloadedByUid == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+
+    match /investorDocuments/{documentId} {
+      allow create: if isStaff()
+        && request.resource.data.requestedByUid == request.auth.uid
+        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
+      allow read: if isAdmin()
+        || (isAdvisor() && resource.data.advisorUid == request.auth.uid)
+        || (isInvestor() && resource.data.investorId == userDoc().data.investorId && resource.data.investorVisible == true);
+      allow update: if isAdmin()
+        || (isAdvisor() && resource.data.advisorUid == request.auth.uid)
+        || (
+          isInvestor()
+          && resource.data.investorId == userDoc().data.investorId
+          && resource.data.investorVisible == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'storagePath', 'fileName', 'mimeType', 'sizeBytes', 'status',
+            'uploadedByUid', 'uploadedByRole', 'uploadedByName', 'uploadedAt',
+            'verificationNote', 'verifiedAt', 'verifiedByUid', 'updatedAt'
+          ])
+          && request.resource.data.status == 'uploaded'
+          && request.resource.data.uploadedByUid == request.auth.uid
+        );
+      allow delete: if isSuperAdmin();
+    }
+
+    match /clientServicingMaster/{documentId} {
+      allow create: if isStaff() && request.resource.data.createdByUid == request.auth.uid
+        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
+      allow read, update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow delete: if isSuperAdmin();
+    }
+
+    match /clientQueries/{documentId} {
+      allow create: if isStaff() && request.resource.data.createdByUid == request.auth.uid
+        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
+      allow read, update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow delete: if isSuperAdmin();
+    }
+
+    match /monthlyUpdateLogs/{documentId} {
+      allow create: if isStaff() && request.resource.data.createdByUid == request.auth.uid
+        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
+      allow read, update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow delete: if isSuperAdmin();
+    }
+
+    match /quarterlyReviewLogs/{documentId} {
+      allow create: if isStaff() && request.resource.data.createdByUid == request.auth.uid
+        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
+      allow read, update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow delete: if isSuperAdmin();
+    }
+
+    match /renewalTrackers/{documentId} {
+      allow create: if isStaff() && request.resource.data.createdByUid == request.auth.uid
+        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
+      allow read, update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow delete: if isSuperAdmin();
+    }
+
+    match /deadlineMissLogs/{documentId} {
+      allow create: if isStaff() && request.resource.data.createdByUid == request.auth.uid
+        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
+      allow read, update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow delete: if isSuperAdmin();
+    }
+
+    match /servicingChecklists/{documentId} {
+      allow create: if isStaff() && request.resource.data.createdByUid == request.auth.uid
+        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
+      allow read, update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow delete: if isSuperAdmin();
+    }
+
+    match /reportSettings/{documentId} {
+      allow read: if activeUser();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /publicSettings/{documentId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /investorPortalAccounts/{documentId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

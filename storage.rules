@@ -1,0 +1,56 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function profile() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+
+    function activeUser() {
+      return signedIn() && profile().data.status == 'active';
+    }
+
+    function isStaff() {
+      return activeUser() && profile().data.role in ['super_admin', 'admin', 'advisor'];
+    }
+
+    function isInvestorFor(investorId) {
+      return activeUser()
+        && profile().data.role == 'investor'
+        && profile().data.portalEnabled != false
+        && profile().data.investorId == investorId;
+    }
+
+    match /branding/{assetType}/{fileName} {
+      allow read: if true;
+      allow write: if isStaff()
+        && profile().data.role in ['super_admin', 'admin']
+        && request.resource != null
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType in ['image/png', 'image/jpeg'];
+      allow delete: if isStaff() && profile().data.role in ['super_admin', 'admin'];
+    }
+
+    match /investor-documents/{investorId}/{documentId}/{fileName} {
+      allow read: if isStaff() || isInvestorFor(investorId);
+      allow write: if (isStaff() || isInvestorFor(investorId))
+        && request.resource != null
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType in ['application/pdf', 'image/jpeg', 'image/png'];
+      allow delete: if isStaff() || isInvestorFor(investorId);
+    }
+
+    // Monthly report PDFs are uploaded by Firebase Admin and downloaded only
+    // through the authenticated server API. No direct client access is allowed.
+    match /monthly-reports/{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
