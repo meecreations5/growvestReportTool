@@ -1,4 +1,4 @@
-const CACHE_NAME = "growvest-investor-v0.25.3";
+const CACHE_NAME = "growvest-investor-v0.26.0";
 const APP_SHELL = [
   "/offline",
   "/investor-login",

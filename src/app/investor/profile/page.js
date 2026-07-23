@@ -9,6 +9,7 @@ import { db } from "@/lib/firebase/client";
 import { formatDate } from "@/lib/utils/format";
 import InvestorPageHeader from "@/components/investor/InvestorPageHeader";
 import InvestorGoalCard from "@/components/investor/InvestorGoalCard";
+import ProfilePhotoUploader from "@/components/profile/ProfilePhotoUploader";
 
 function initials(name) {
   return String(name || "Investor").split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "I";
@@ -69,7 +70,7 @@ export default function InvestorProfilePage() {
         <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full border border-cyan-400/10" />
         <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
-            <span className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-[var(--gv-blue)] font-heading text-xl font-bold text-white">{initials(fullName)}</span>
+            {profile?.photoURL ? <img src={profile.photoURL} alt={fullName} className="h-16 w-16 shrink-0 rounded-full border-2 border-white/20 object-cover" /> : <span className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-[var(--gv-blue)] font-heading text-xl font-bold text-white">{initials(fullName)}</span>}
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-cyan-300">Active Investor</p>
               <h1 className="mt-1 font-heading text-3xl font-bold text-white">{fullName}</h1>
@@ -81,6 +82,10 @@ export default function InvestorProfilePage() {
             <span className="rounded-full bg-emerald-400/15 px-3 py-1.5 text-xs font-bold text-emerald-300">Portal active</span>
           </div>
         </div>
+      </section>
+
+      <section className="rounded-[var(--gv-radius-lg)] border border-[var(--gv-border)] bg-white p-5 shadow-[var(--gv-shadow-card)] sm:p-6">
+        <ProfilePhotoUploader />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">

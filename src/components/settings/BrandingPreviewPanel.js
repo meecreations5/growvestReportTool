@@ -116,12 +116,14 @@ function InvestorLoginPreview({ branding }) {
     <div className="mx-auto max-w-[330px] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
       <div className="bg-[var(--preview-dark)] px-6 py-7 text-white">
         <Logo branding={branding} inverse />
-        <p className="mt-4 text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--preview-secondary)]">Investor Portal</p>
-        <h3 className="mt-2 font-heading text-2xl font-bold !text-white">Review progress with clarity.</h3>
+        <p className="mt-4 text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--preview-secondary)]">Secure investor access</p>
+        <h3 className="mt-2 font-heading text-2xl font-bold !text-white">Your wealth, always within reach.</h3>
+        <p className="mt-2 text-[9px] leading-4 text-white/65">Reports, goals and Advisor updates in one secure workspace.</p>
       </div>
       <div className="p-6">
-        <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[var(--preview-primary)]">Secure client access</p>
-        <h3 className="mt-2 font-heading text-2xl font-bold text-[var(--preview-dark)]">Welcome back</h3>
+        <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[var(--preview-primary)]">Welcome back</p>
+        <h3 className="mt-2 font-heading text-2xl font-bold text-[var(--preview-dark)]">Access your GrowVest portfolio</h3>
+        <div className="mt-4 grid grid-cols-2 rounded-xl bg-slate-100 p-1 text-center text-[9px] font-bold"><span className="rounded-lg bg-white px-2 py-2 text-[var(--preview-primary)] shadow-sm">Mobile OTP</span><span className="px-2 py-2 text-slate-500">Password</span></div>
         <div className="mt-5 rounded-xl border border-slate-200 px-3 py-3 text-[10px] text-slate-400">Registered mobile number</div>
         <button type="button" className="mt-3 min-h-11 w-full rounded-xl bg-[var(--preview-primary)] text-[10px] font-bold text-white">Send secure OTP</button>
         <p className="mt-4 text-center text-[9px] text-[var(--preview-muted)]">Secure and confidential</p>
@@ -236,7 +238,7 @@ export default function BrandingPreviewPanel({ branding, activePreview, onPrevie
   }[activePreview] || <ApplicationPreview branding={branding} />;
 
   return (
-    <aside className={`${sticky ? "xl:sticky xl:top-24 xl:self-start" : ""}`} style={previewStyle}>
+    <aside className={`theme-static-preview ${sticky ? "xl:sticky xl:top-24 xl:self-start" : ""}`} style={previewStyle}>
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex items-center justify-between gap-3">
           <div>

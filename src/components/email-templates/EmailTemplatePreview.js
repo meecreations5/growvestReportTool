@@ -57,7 +57,7 @@ export default function EmailTemplatePreview({ template: value, mode = "desktop"
     : "";
 
   return (
-    <div className="mx-auto w-full overflow-hidden shadow-lg" style={{ maxWidth: width, background: design.contentBackground, borderRadius: design.borderRadius, border: `1px solid ${design.footer?.borderColor || "#E4E9F2"}` }}>
+    <div className="email-output-preview mx-auto w-full overflow-hidden shadow-lg" style={{ maxWidth: width, background: design.contentBackground, borderRadius: design.borderRadius, border: `1px solid ${design.footer?.borderColor || "#E4E9F2"}` }}>
       <div style={{ background: header.backgroundColor, color: header.textColor, padding: header.padding, textAlign: header.alignment }}>
         {logo ? <img src={logo} alt={branding.companyName || "GrowVest"} style={{ display: "inline-block", maxWidth: header.logoMaxWidth, maxHeight: header.logoMaxHeight, objectFit: "contain" }} /> : <strong style={{ fontSize: 22 }}>{branding.companyName || "GrowVest"}</strong>}
         {header.showTagline ? <div style={{ marginTop: 8, fontSize: 12, opacity: 0.86 }}>{branding.brandPositioning || branding.tagline}</div> : null}

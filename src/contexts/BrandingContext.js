@@ -34,14 +34,18 @@ export function BrandingProvider({ children }) {
   useEffect(() => {
     if (typeof document === "undefined") return;
     const root = document.documentElement;
-    root.style.setProperty("--gv-blue", branding.primaryColor || "#1F4ED8");
-    root.style.setProperty("--gv-blue-strong", branding.primaryColor || "#1F4ED8");
-    root.style.setProperty("--gv-cyan", branding.secondaryColor || "#20B8CD");
-    root.style.setProperty("--gv-ink", branding.darkColor || "#0B0B0F");
-    root.style.setProperty("--gv-danger", branding.dangerColor || "#E53935");
-    root.style.setProperty("--gv-warning", branding.warningColor || "#F5B301");
-    root.style.setProperty("--gv-surface", branding.surfaceColor || "#F4F6F9");
-    root.style.setProperty("--gv-muted", branding.mutedColor || "#6B7280");
+    // Brand colours stay configurable, while semantic surface/text tokens remain
+    // controlled by the active application theme. Keeping dark/surface/muted as
+    // separate brand variables prevents published light-mode branding from
+    // overriding dark-mode contrast through inline CSS variables.
+    root.style.setProperty("--gv-brand-primary", branding.primaryColor || "#1F4ED8");
+    root.style.setProperty("--gv-brand-secondary", branding.secondaryColor || "#20B8CD");
+    root.style.setProperty("--gv-brand-dark", branding.darkColor || "#0B0B0F");
+    root.style.setProperty("--gv-brand-surface", branding.surfaceColor || "#F4F6F9");
+    root.style.setProperty("--gv-brand-muted", branding.mutedColor || "#6B7280");
+
+    root.style.setProperty("--gv-brand-danger", branding.dangerColor || "#E53935");
+    root.style.setProperty("--gv-brand-warning", branding.warningColor || "#F5B301");
     document.title = `${branding.companyName || "GrowVest"} Investor & Reporting Tool`;
 
     let themeMeta = document.querySelector('meta[name="theme-color"][data-dynamic-branding="true"]');

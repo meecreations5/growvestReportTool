@@ -29,14 +29,12 @@ import { useBranding } from "@/contexts/BrandingContext";
 
 const TABS = {
   MOBILE: "mobile",
-  USERNAME: "username",
-  GOOGLE: "google"
+  USERNAME: "username"
 };
 
 const METHODS = [
   { key: TABS.MOBILE, label: "Mobile OTP", icon: Smartphone },
-  { key: TABS.USERNAME, label: "Password", icon: KeyRound },
-  { key: TABS.GOOGLE, label: "Google", icon: GoogleMark }
+  { key: TABS.USERNAME, label: "Password", icon: KeyRound }
 ];
 
 function GoogleMark({ size = 19 }) {
@@ -258,24 +256,31 @@ export default function InvestorLoginPage() {
   return (
     <main className="min-h-[100dvh] bg-[var(--gv-ink)] lg:grid lg:grid-cols-[minmax(420px,0.88fr)_minmax(620px,1.12fr)]">
       <section className="min-h-[100dvh] bg-white lg:flex lg:flex-col lg:justify-center lg:bg-[var(--gv-surface)] lg:px-8 lg:py-10">
-        <div className="relative overflow-hidden bg-[linear-gradient(145deg,#0b0b0f_0%,#13224d_56%,var(--gv-blue)_100%)] px-5 pb-20 pt-[max(1.25rem,env(safe-area-inset-top))] text-white sm:px-8 lg:hidden">
+        <div className="relative overflow-hidden bg-[linear-gradient(145deg,#0b0b0f_0%,#13224d_56%,var(--gv-blue)_100%)] px-5 pb-14 pt-[max(1.25rem,env(safe-area-inset-top))] text-white sm:px-8 lg:hidden">
           <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full border border-white/10" />
           <div className="absolute -right-4 top-10 h-48 w-48 rounded-full border border-cyan-300/20" />
           <div className="relative flex items-center justify-between gap-3">
-            <div className="rounded-2xl bg-white px-3.5 py-2.5 shadow-xl"><BrandLogo variant="wide" className="max-w-[165px]" /></div>
+            <BrandLogo
+              variant="wide"
+              inverse
+              className="max-w-[150px] sm:max-w-[175px]"
+              imageClassName="max-h-10 drop-shadow-[0_2px_10px_rgba(0,0,0,.22)]"
+            />
             <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-cyan-100">Investor App</span>
           </div>
-          <div className="relative mt-9 max-w-md">
-            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-200">Secure wealth access</p>
-            <h1 className="mt-3 font-heading text-[2.55rem] font-bold leading-[0.98] tracking-[-0.045em] text-white sm:text-5xl">Your wealth journey, always within reach.</h1>
-            <p className="mt-4 max-w-sm text-sm leading-6 text-blue-100">Open reports, goals, meetings, documents and investor updates from one private mobile workspace.</p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              {["Bank-grade sign-in", "Live app alerts", "Advisor guided"].map((item) => <span key={item} className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-bold text-white"><CheckCircle2 size={13} className="text-cyan-200" /> {item}</span>)}
-            </div>
+          <div className="relative mt-7 max-w-md">
+            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-200">Secure investor access</p>
+            <h1 className="mt-2.5 font-heading text-[2.3rem] font-bold leading-[1] tracking-[-0.042em] text-white sm:text-[2.75rem]">Your wealth, always within reach.</h1>
+            <p className="mt-3 max-w-sm text-sm leading-6 text-blue-100">Access reports, goals, documents and Advisor updates securely.</p>
+            <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold text-white/80">
+              <span>Protected access</span><span aria-hidden="true" className="text-cyan-300">•</span>
+              <span>Live updates</span><span aria-hidden="true" className="text-cyan-300">•</span>
+              <span>Advisor connected</span>
+            </p>
           </div>
         </div>
 
-        <div className="relative z-10 -mt-10 rounded-t-[32px] bg-white px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6 shadow-[0_-20px_60px_rgba(11,11,15,.16)] sm:mx-auto sm:-mt-12 sm:w-[calc(100%-3rem)] sm:max-w-[500px] sm:rounded-[30px] sm:px-8 sm:pb-8 lg:mt-0 lg:w-full lg:max-w-[460px] lg:rounded-[28px] lg:border lg:border-slate-200 lg:p-9 lg:shadow-[var(--gv-shadow-card)]">
+        <div className="relative z-10 -mt-7 rounded-t-[30px] bg-white px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6 shadow-[0_-18px_54px_rgba(11,11,15,.15)] sm:mx-auto sm:-mt-9 sm:w-[calc(100%-3rem)] sm:max-w-[500px] sm:rounded-[30px] sm:px-8 sm:pb-8 lg:mt-0 lg:w-full lg:max-w-[460px] lg:rounded-[28px] lg:border lg:border-slate-200 lg:p-9 lg:shadow-[var(--gv-shadow-card)]">
           <div className="hidden items-center justify-between gap-4 lg:flex">
             <BrandLogo variant="wide" className="max-w-[210px]" />
             <div className="border-l border-slate-200 pl-4 text-right">
@@ -286,11 +291,11 @@ export default function InvestorLoginPage() {
 
           <div className="lg:mt-9">
             <p className="gv-eyebrow">Welcome back</p>
-            <h2 className="mt-1 font-heading text-[2rem] font-bold leading-[1.03] text-slate-950 sm:text-[2.3rem] lg:text-[2.45rem]">Sign in to your investor app.</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-500">Use your registered mobile number for the fastest secure access.</p>
+            <h2 className="mt-1 font-heading text-[2rem] font-bold leading-[1.03] text-slate-950 sm:text-[2.3rem] lg:text-[2.45rem]">Access your GrowVest portfolio.</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-500">Use your registered mobile number to securely view reports, goals and updates.</p>
           </div>
 
-          <div className="mt-6 grid grid-cols-3 gap-1 rounded-2xl bg-slate-100 p-1.5" role="tablist" aria-label="Investor login methods">
+          <div className="mt-6 grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1.5" role="tablist" aria-label="Investor login methods">
             {METHODS.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
@@ -364,18 +369,20 @@ export default function InvestorLoginPage() {
             </form>
           ) : null}
 
-          {activeTab === TABS.GOOGLE ? (
-            <div className="mt-6 grid gap-4">
-              <button type="button" onClick={handleGoogleLogin} disabled={submitting} className="inline-flex min-h-14 items-center justify-center gap-3 rounded-2xl border border-[var(--gv-border)] bg-white px-4 text-sm font-bold text-slate-800 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60">
-                <GoogleMark /> {submitting ? "Connecting to Google…" : "Continue with Google"}
-              </button>
-              <p className="text-center text-xs leading-5 text-slate-500">Use the Google account already connected from Login &amp; Security.</p>
+          <div className="mt-6">
+            <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+              <span className="h-px flex-1 bg-slate-200" />
+              <span>or continue with</span>
+              <span className="h-px flex-1 bg-slate-200" />
             </div>
-          ) : null}
+            <button type="button" onClick={handleGoogleLogin} disabled={submitting} className="mt-4 inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl border border-[var(--gv-border)] bg-white px-4 text-sm font-bold text-slate-800 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60">
+              <GoogleMark /> {submitting ? "Connecting to Google…" : "Continue with Google"}
+            </button>
+          </div>
 
-          <div className="mt-6 flex items-start gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3.5 text-xs leading-5 text-emerald-900">
-            <ShieldCheck className="mt-0.5 shrink-0 text-[var(--gv-success)]" size={18} />
-            <p>Your financial information is protected and available only through your authorised GrowVest account.</p>
+          <div className="mt-5 flex items-center justify-center gap-2 text-center text-xs leading-5 text-slate-500">
+            <ShieldCheck className="shrink-0 text-[var(--gv-success)]" size={17} />
+            <p>Your account is protected through secure authentication.</p>
           </div>
 
           <div className="mt-6 border-t border-slate-200 pt-5 text-center">

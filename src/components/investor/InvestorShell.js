@@ -20,6 +20,8 @@ import NotificationBell from "@/components/notifications/NotificationBell";
 import InvestorNotificationToasts from "@/components/notifications/InvestorNotificationToasts";
 import BrandLogo from "@/components/branding/BrandLogo";
 import { PwaConnectionBanner, PwaInstallCard, PwaUpdateBanner } from "@/components/pwa/PwaStatus";
+import ThemeToggle from "@/components/layout/ThemeToggle";
+import { useTheme } from "@/contexts/ThemeContext";
 
 const MOBILE_ITEMS = INVESTOR_NAV_ITEMS.filter((item) => item.mobile);
 const MORE_ITEMS = INVESTOR_NAV_ITEMS.filter((item) => !item.mobile);
@@ -33,12 +35,21 @@ function initials(name) {
     .join("") || "I";
 }
 
+
+function ProfileAvatar({ profile, className = "h-8 w-8", rounded = "rounded-full" }) {
+  return profile?.photoURL
+    ? <img src={profile.photoURL} alt={profile.fullName || "Investor"} className={`${className} ${rounded} object-cover`} />
+    : <span className={`grid ${className} ${rounded} place-items-center bg-[var(--gv-blue)] text-xs font-bold text-white`}>{initials(profile?.fullName)}</span>;
+}
+
 export default function InvestorShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
   const { profile, logout } = useAuth();
   const { canInstall, installApp, isInstalled } = usePwa();
   const notifications = useInvestorNotifications();
+  const { resolvedTheme } = useTheme();
+  const darkMode = resolvedTheme === "dark";
   const [moreOpen, setMoreOpen] = useState(false);
   const firstName = profile?.fullName?.split(" ")[0] || "Investor";
 
@@ -60,7 +71,7 @@ export default function InvestorShell({ children }) {
             <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-2xl bg-[var(--gv-blue)] p-1.5 shadow-sm sm:hidden">
               <BrandLogo variant="icon" className="!h-full !w-full" imageClassName="!h-full !w-full rounded-xl bg-white object-contain p-1" />
             </span>
-            <BrandLogo variant="wide" className="hidden max-w-[172px] sm:flex" />
+            <BrandLogo variant="wide" inverse={darkMode} className="hidden max-w-[172px] sm:flex" />
             <div className="min-w-0 sm:border-l sm:border-slate-200 sm:pl-4">
               <p className="truncate font-heading text-[15px] font-bold leading-tight text-[var(--gv-ink)] sm:text-base">Hello, {firstName}</p>
               <p className="mt-0.5 truncate text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-400 sm:normal-case sm:tracking-normal">GrowVest Investor App</p>
@@ -69,11 +80,12 @@ export default function InvestorShell({ children }) {
 
           <div className="flex items-center gap-2">
             {canInstall ? <div className="hidden md:block"><PwaInstallCard compact /></div> : null}
+            <ThemeToggle compact />
             <NotificationBell />
 
             <details className="relative hidden sm:block">
               <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-2xl border border-slate-200 bg-white px-2.5 py-1.5 text-left transition hover:bg-slate-50">
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--gv-blue)] text-xs font-bold text-white">{initials(profile?.fullName)}</span>
+                <ProfileAvatar profile={profile} />
                 <span className="hidden max-w-[150px] lg:block">
                   <strong className="block truncate text-xs text-slate-800">{profile?.fullName || "Investor"}</strong>
                   <span className="block truncate text-[10px] text-slate-400">{profile?.clientCode || "Secure portal"}</span>
@@ -88,8 +100,8 @@ export default function InvestorShell({ children }) {
               </div>
             </details>
 
-            <button type="button" onClick={() => setMoreOpen(true)} className="grid h-11 w-11 place-items-center rounded-2xl bg-slate-950 text-xs font-bold text-white shadow-sm sm:hidden" aria-label="Open profile and more options">
-              {initials(profile?.fullName)}
+            <button type="button" onClick={() => setMoreOpen(true)} className="grid h-11 w-11 place-items-center overflow-hidden rounded-2xl bg-slate-950 text-xs font-bold text-white shadow-sm sm:hidden" aria-label="Open profile and more options">
+              <ProfileAvatar profile={profile} className="h-11 w-11" rounded="rounded-2xl" />
             </button>
           </div>
         </div>
@@ -152,7 +164,7 @@ export default function InvestorShell({ children }) {
           <section className="gv-safe-bottom absolute inset-x-0 bottom-0 max-h-[88dvh] overflow-y-auto rounded-t-[30px] bg-white px-4 pb-4 pt-3 shadow-2xl">
             <div className="mx-auto h-1.5 w-11 rounded-full bg-slate-200" />
             <div className="mt-4 flex items-center gap-3 rounded-2xl bg-slate-950 p-4 text-white">
-              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[var(--gv-blue)] font-heading text-sm font-bold">{initials(profile?.fullName)}</span>
+              <ProfileAvatar profile={profile} className="h-12 w-12" rounded="rounded-2xl" />
               <div className="min-w-0 flex-1"><p className="truncate font-heading text-lg font-bold text-white">{profile?.fullName || "Investor"}</p><p className="truncate text-xs text-slate-400">{profile?.clientCode || "Secure GrowVest profile"}</p></div>
               <button type="button" onClick={() => setMoreOpen(false)} className="grid h-10 w-10 place-items-center rounded-full bg-white/10" aria-label="Close menu"><X size={19} /></button>
             </div>

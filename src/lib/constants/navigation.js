@@ -13,7 +13,8 @@ import {
   BellRing,
   BookOpenText,
   MailCheck,
-  PenTool
+  PenTool,
+  UserRound
 } from "lucide-react";
 import { ADMIN_ROLES, STAFF_ROLES } from "./roles";
 
@@ -52,6 +53,7 @@ export const NAV_GROUPS = [
   {
     label: "Account & Administration",
     items: [
+      { label: "My Profile", href: "/profile", icon: UserRound, roles: STAFF_ROLES, permission: "dashboard" },
       { label: "My Signature", href: "/my-signature", icon: PenTool, roles: STAFF_ROLES, permission: "signatures" },
       { label: "Users & Roles", href: "/users", icon: UserCog, roles: ADMIN_ROLES, permission: "users" },
       { label: "Settings", href: "/settings", icon: Settings, roles: ADMIN_ROLES, permission: "branding" }

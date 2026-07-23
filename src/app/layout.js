@@ -10,6 +10,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { BrandingProvider } from "@/contexts/BrandingContext";
 import { PermissionProvider } from "@/contexts/PermissionContext";
 import { PwaProvider } from "@/contexts/PwaContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import { getServerBranding } from "@/lib/server/settingsServer";
 
 export async function generateMetadata() {
@@ -50,15 +51,20 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var p=localStorage.getItem("growvest-theme")||"system";var d=p==="dark"||(p==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.classList.toggle("dark",d);document.documentElement.dataset.theme=d?"dark":"light";document.documentElement.style.colorScheme=d?"dark":"light"}catch(e){}})();` }} />
+      </head>
       <body>
-        <PwaProvider>
-          <BrandingProvider>
+        <ThemeProvider>
+          <PwaProvider>
+            <BrandingProvider>
             <AuthProvider>
               <PermissionProvider>{children}</PermissionProvider>
             </AuthProvider>
-          </BrandingProvider>
-        </PwaProvider>
+            </BrandingProvider>
+          </PwaProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

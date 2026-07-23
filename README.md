@@ -4,6 +4,20 @@ Standalone Next.js application for GrowVest lead management, investor onboarding
 
 ## Current implementation
 
+## Version 0.25.4 — Investor Mobile Sign-In UI Refinement
+
+- Removed the white card/background behind the GrowVest logo on the mobile Investor sign-in hero
+- Mobile hero now uses the published white/inverse transparent logo directly on the navy-to-blue background
+- Reduced hero height so the sign-in form appears earlier in the first mobile viewport
+- Reworked the mobile heading and supporting copy around secure portfolio access
+- Simplified the primary method selector to Mobile OTP and Password
+- Moved Google sign-in into a clear alternate sign-in action below the primary form
+- Replaced the large security notice with a compact reassurance line
+- Updated the Branding Investor Login preview to match the live mobile experience
+- PWA cache version bumped so the updated login page replaces the previously cached shell
+
+See `docs/INVESTOR_MOBILE_SIGNIN_UI_REFINEMENT.md` for deployment and UAT guidance.
+
 ## Version 0.25.3 — Report Template Persistence & Investor OTP Diagnostics
 
 - Existing reports now save a newly selected report template immediately instead of relying only on delayed autosave
@@ -347,3 +361,11 @@ Completes the Monthly Report PDF consistency pass. HTML report, browser A4 previ
 ## Version 0.22.2
 
 Adds a dedicated **Signature branding** section under Branding Settings with company-wide signature defaults for positioning, website, office address and footer taglines. LinkedIn, Instagram, Facebook, YouTube and X/Twitter profiles can now be configured centrally and appear as email-safe links in desktop/mobile email signatures and as full URLs in WhatsApp signature text. Staff signatures include a Social Media visibility control and an **Apply branding defaults** action.
+
+## Version 0.26.1 — Dark Mode Consistency
+
+- Separated published brand colours from application semantic theme tokens.
+- Corrected dark page backgrounds, headings, card text, form fields and status colours.
+- Added white/inverse navigation logos in dark mode.
+- Preserved branding, email, HTML report and PDF previews independently from app theme.
+- No Firebase migration is required.
