@@ -6,6 +6,26 @@ function cleanFilePart(value = "") {
   return String(value).replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "report";
 }
 
+function monthName(month) {
+  return ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][Number(month) - 1] || "Month";
+}
+
+function brandedPdfFileName(report, branding, effectiveVersion, reportId) {
+  const pattern = String(branding.pdfFilenamePattern || "{InvestorName}_{Month}_{Year}_GrowVest_Report.pdf");
+  const values = {
+    InvestorName: report.investorName || "Investor",
+    Month: monthName(report.reportMonth),
+    Year: report.reportYear || "",
+    ClientCode: report.clientCode || "Client",
+    ReportCode: report.reportCode || reportId || "Report",
+    Version: effectiveVersion
+  };
+  let name = pattern.replace(/\{(InvestorName|Month|Year|ClientCode|ReportCode|Version)\}/g, (_, key) => values[key]);
+  if (!/\.pdf$/i.test(name)) name += ".pdf";
+  const withoutExtension = name.replace(/\.pdf$/i, "");
+  return `${cleanFilePart(withoutExtension)}.pdf`;
+}
+
 export function assertReportAccess(actor, report) {
   const staff = ["super_admin", "admin", "advisor"].includes(actor.role);
   if (staff && canStaffAccessRecord(actor, report)) return "staff";
@@ -32,7 +52,7 @@ export async function createAndUploadReportPdf(report, { reportId, publishedVers
   const branding = await getServerBranding();
   const pdfBytes = await generateMonthlyReportPdf({ ...report, branding });
   const effectiveVersion = Number(publishedVersion || report.publishedVersion || report.version || 1);
-  const fileName = `${cleanFilePart(report.reportCode || reportId)}-v${effectiveVersion}.pdf`;
+  const fileName = brandedPdfFileName(report, branding, effectiveVersion, reportId);
   const storagePath = `monthly-reports/${cleanFilePart(report.investorId || "investor")}/${cleanFilePart(reportId)}/${fileName}`;
   const file = adminBucket.file(storagePath);
   await file.save(Buffer.from(pdfBytes), {

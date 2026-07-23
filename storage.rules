@@ -30,8 +30,31 @@ service firebase.storage {
         && profile().data.role in ['super_admin', 'admin']
         && request.resource != null
         && request.resource.size <= 5 * 1024 * 1024
-        && request.resource.contentType in ['image/png', 'image/jpeg'];
+        && request.resource.contentType in ['image/png', 'image/jpeg', 'image/webp'];
       allow delete: if isStaff() && profile().data.role in ['super_admin', 'admin'];
+    }
+
+
+    match /branding-fonts/{assetType}/{fileName} {
+      allow read: if true;
+      allow write: if isStaff()
+        && profile().data.role in ['super_admin', 'admin']
+        && request.resource != null
+        && request.resource.size <= 2 * 1024 * 1024
+        && request.resource.contentType in ['font/woff2', 'font/woff', 'application/font-woff'];
+      allow delete: if isStaff() && profile().data.role in ['super_admin', 'admin'];
+    }
+
+
+    match /staff-signatures/{uid}/{assetType}/{fileName} {
+      allow read: if true;
+      allow write: if isStaff()
+        && (request.auth.uid == uid || profile().data.role in ['super_admin', 'admin'])
+        && request.resource != null
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType in ['image/png', 'image/jpeg', 'image/webp'];
+      allow delete: if isStaff()
+        && (request.auth.uid == uid || profile().data.role in ['super_admin', 'admin']);
     }
 
     match /investor-documents/{investorId}/{documentId}/{fileName} {

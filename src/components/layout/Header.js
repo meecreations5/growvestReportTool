@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { NAV_ITEMS, QUICK_CREATE_ITEMS } from "@/lib/constants/navigation";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import BrandLogo from "@/components/branding/BrandLogo";
+import { usePermissions } from "@/contexts/PermissionContext";
 
 function currentLabel(pathname) {
   const item = NAV_ITEMS.find((entry) => pathname === entry.href || pathname.startsWith(`${entry.href}/`));
@@ -18,8 +19,9 @@ export default function Header({ onMenu }) {
   const pathname = usePathname();
   const router = useRouter();
   const { profile, logout } = useAuth();
+  const { canManage } = usePermissions();
   const [quickOpen, setQuickOpen] = useState(false);
-  const quickItems = QUICK_CREATE_ITEMS.filter((item) => item.roles.includes(profile?.role));
+  const quickItems = QUICK_CREATE_ITEMS.filter((item) => item.roles.includes(profile?.role) && canManage(item.permission));
 
   async function handleLogout() {
     await logout();

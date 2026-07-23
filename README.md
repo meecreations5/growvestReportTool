@@ -215,6 +215,14 @@ firebase deploy --only firestore:indexes
 firebase deploy --only storage
 ```
 
+## Version 0.22.1
+
+Adds a separate **Email signature icon logo** asset in Branding -> Logo & assets. The dedicated icon is used in the top-right of desktop and mobile staff signatures, with backward-compatible fallbacks to the PDF footer symbol or app icon.
+
+## Version 0.22.0
+
+Adds dedicated signature branding assets, responsive mobile and WhatsApp signature previews, optional licensed Emitha webfont support, and administrator-configurable role and user permission overrides. See `docs/SIGNATURE_AND_PERMISSION_ENHANCEMENTS.md`.
+
 ## Documentation
 
 ```text
@@ -258,3 +266,12 @@ The project now includes the GrowVest design foundation, League Spartan and Open
 ## Market Commentary Library
 
 Routes: `/market-commentary`, `/market-commentary/create`, and `/market-commentary/[commentaryId]/edit`. The module provides monthly and reusable commentary categories, draft/approval/archive states, version history, role-based controls, autosave, mobile layouts, and approved-content integration with Create Report Step 5.
+
+## Email & Delivery Centre
+
+The report delivery workspace is available at `/email-delivery`. It supports report email composition, PDF attachments, test emails, scheduled delivery, retry history and Brevo delivery-event tracking. See `docs/EMAIL_DELIVERY_CENTRE.md` for webhook, cron and environment configuration.
+
+
+## Version 0.22.2
+
+Adds a dedicated **Signature branding** section under Branding Settings with company-wide signature defaults for positioning, website, office address and footer taglines. LinkedIn, Instagram, Facebook, YouTube and X/Twitter profiles can now be configured centrally and appear as email-safe links in desktop/mobile email signatures and as full URLs in WhatsApp signature text. Staff signatures include a Social Media visibility control and an **Apply branding defaults** action.

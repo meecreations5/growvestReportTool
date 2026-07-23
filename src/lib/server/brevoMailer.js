@@ -91,7 +91,10 @@ export async function sendTransactionalEmail({
   html,
   text,
   advisor,
-  attachments = []
+  attachments = [],
+  cc = [],
+  bcc = [],
+  headers = {}
 }) {
   const recipients = (Array.isArray(to) ? to : [to]).filter(
     (item) => item?.address || item?.email || typeof item === "string"
@@ -110,10 +113,13 @@ export async function sendTransactionalEmail({
         ? item
         : { name: item.name || "", address: item.address || item.email }
     )),
+    cc: (Array.isArray(cc) ? cc : [cc]).filter(Boolean),
+    bcc: (Array.isArray(bcc) ? bcc : [bcc]).filter(Boolean),
     subject,
     html,
     text,
-    attachments
+    attachments,
+    headers
   });
 
   return {

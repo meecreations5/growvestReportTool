@@ -117,11 +117,28 @@ service cloud.firestore {
 
       allow update: if isSuperAdmin()
         || (
+          isAdmin()
+          && resource.data.role in ['super_admin', 'admin', 'advisor']
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['emailSignatureDraft', 'emailSignatureMeta', 'updatedAt', 'updatedByUid', 'updatedByName'])
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.status == resource.data.status
+        )
+        || (
+          isAdmin()
+          && request.auth.uid != uid
+          && (role() == 'super_admin' || resource.data.role != 'super_admin')
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['permissionOverrides', 'updatedAt', 'updatedByUid', 'updatedByName'])
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.status == resource.data.status
+        )
+        || (
           request.auth.uid == uid
           && activeUser()
           && role() in ['super_admin', 'admin', 'advisor']
           && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['fullName', 'photoURL', 'lastLoginAt', 'updatedAt'])
+            .hasOnly(['fullName', 'photoURL', 'lastLoginAt', 'emailSignatureDraft', 'emailSignatureMeta', 'updatedAt', 'updatedByUid', 'updatedByName'])
           && request.resource.data.role == resource.data.role
           && request.resource.data.status == resource.data.status
         )
@@ -134,6 +151,12 @@ service cloud.firestore {
           && request.resource.data.status == resource.data.status
           && request.resource.data.investorId == resource.data.investorId
         );
+
+      match /signatureVersions/{versionId} {
+        allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+        allow create: if isSuperAdmin();
+        allow update, delete: if false;
+      }
     }
 
     match /staffInvitations/{email} {
@@ -468,6 +491,18 @@ service cloud.firestore {
     }
 
 
+    match /emailDeliveries/{deliveryId} {
+      allow read: if isAdmin()
+        || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    match /emailDeliveryEvents/{eventId} {
+      allow read: if isAdmin()
+        || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
     match /marketCommentaries/{commentaryId} {
       allow read: if isStaff();
 
@@ -510,6 +545,11 @@ service cloud.firestore {
       allow read: if isStaff();
       allow create, update: if isAdmin();
       allow delete: if isSuperAdmin();
+    }
+
+    match /brandingVersions/{versionId} {
+      allow read, create: if isAdmin();
+      allow update, delete: if isSuperAdmin();
     }
 
     match /reportSettings/{documentId} {

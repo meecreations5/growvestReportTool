@@ -7,10 +7,12 @@ import { NAV_GROUPS } from "@/lib/constants/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import BrandLogo from "@/components/branding/BrandLogo";
 import { ROLE_LABELS } from "@/lib/constants/roles";
+import { usePermissions } from "@/contexts/PermissionContext";
 
 export default function Sidebar({ open, onClose }) {
   const pathname = usePathname();
   const { profile } = useAuth();
+  const { canAccess } = usePermissions();
 
   return (
     <>
@@ -26,7 +28,7 @@ export default function Sidebar({ open, onClose }) {
         <nav aria-label="Primary navigation" className="gv-scrollbar flex-1 overflow-y-auto px-3 py-5">
           <div className="grid gap-5">
             {NAV_GROUPS.map((group) => {
-              const items = group.items.filter((item) => item.roles.includes(profile?.role));
+              const items = group.items.filter((item) => item.roles.includes(profile?.role) && canAccess(item.permission));
               if (!items.length) return null;
               return (
                 <section key={group.label} aria-labelledby={`nav-${group.label.replace(/\s+/g, "-").toLowerCase()}`}>

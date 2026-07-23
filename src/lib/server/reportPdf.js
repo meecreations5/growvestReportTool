@@ -286,10 +286,10 @@ function addTransactionsPage(doc, fonts, report) {
 export async function generateMonthlyReportPdf(report) {
   const doc = await PDFDocument.create();
   const branding = report.branding || {};
-  const logoUrl = branding.primaryLogoUrl || branding.emailLogoUrl || branding.iconLogoUrl || "";
+  const logoUrl = branding.pdfLogoUrl || branding.primaryLogoUrl || branding.emailLogoUrl || branding.iconLogoUrl || "";
   const [logo, icon, watermark] = await Promise.all([
     embedRemoteImage(doc, logoUrl),
-    embedRemoteImage(doc, branding.iconLogoUrl || ""),
+    embedRemoteImage(doc, branding.footerLogoUrl || branding.iconLogoUrl || ""),
     embedRemoteImage(doc, branding.watermarkUrl || "")
   ]);
   report.__brandingAssets = { logo, icon, watermark };

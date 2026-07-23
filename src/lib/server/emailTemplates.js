@@ -1,5 +1,6 @@
 import { meetingProviderLabel, meetingTypeLabel } from "@/lib/constants/meeting";
 import { SERVER_BRANDING_DEFAULTS } from "@/lib/server/settingsServer";
+import { renderEmailSignatureHtml } from "@/lib/utils/emailSignature";
 
 function escapeHtml(value = "") {
   return String(value).replace(/[&<>"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[character]);
@@ -17,14 +18,40 @@ function htmlOrText(value = "") {
   return /<\/?[a-z][\s\S]*>/i.test(text) ? text : escapeHtml(text).replace(/\n/g, "<br>");
 }
 
-function advisorSignature(advisor = {}, branding = {}) {
-  const signature = advisor.signatureEnabled === false
-    ? ""
-    : advisor.emailSignatureHtml || branding.defaultEmailSignatureHtml || "";
-  if (signature) return `<div style="margin-top:28px;line-height:1.7">${htmlOrText(signature)}</div>`;
+function companyDefaultSignature(branding = {}) {
+  if (branding.defaultEmailSignatureHtml) {
+    return `<div style="margin-top:28px;line-height:1.7">${htmlOrText(branding.defaultEmailSignatureHtml)}</div>`;
+  }
+  return renderEmailSignatureHtml({
+    signature: {
+      enabled: true,
+      mode: "responsive_html",
+      fullName: branding.companyName || "GrowVest",
+      designation: branding.brandPositioning || "Your Conscious Wealth Partner",
+      email: branding.supportEmail || "",
+      mobile: branding.supportMobile || "",
+      website: branding.website || "",
+      officeAddress: branding.address || "",
+      visibility: { designation: true, brandPositioning: false, email: true, mobile: true, website: true, address: true, watermark: true, footer: true, companyLogo: true }
+    },
+    user: {},
+    branding
+  });
+}
 
-  const companyName = branding.companyName || "GrowVest";
-  return `<p style="margin-top:28px;line-height:1.7">Regards,<br><strong>${escapeHtml(advisor.fullName || advisor.name || "GrowVest Advisor")}</strong>${advisor.designation ? `<br>${escapeHtml(advisor.designation)}` : ""}<br>${escapeHtml(companyName)}</p>`;
+function advisorSignature(advisor = {}, branding = {}) {
+  const publishedSignature = advisor.emailSignature || null;
+  if (publishedSignature) {
+    if (publishedSignature.enabled === false) return companyDefaultSignature(branding);
+    const rendered = renderEmailSignatureHtml({ signature: publishedSignature, user: advisor, branding });
+    if (rendered) return rendered;
+  }
+
+  if (advisor.signatureEnabled === false) return companyDefaultSignature(branding);
+  const legacySignature = advisor.emailSignatureHtml || "";
+  if (legacySignature) return `<div style="margin-top:28px;line-height:1.7">${htmlOrText(legacySignature)}</div>`;
+
+  return companyDefaultSignature(branding);
 }
 
 function frame(content, { branding: rawBranding = {}, advisor = {} } = {}) {
@@ -106,11 +133,15 @@ export function reportEmailContent(report, viewUrl, options = {}) {
   const branding = { ...SERVER_BRANDING_DEFAULTS, ...(options.branding || {}) };
   const advisor = options.advisor || { fullName: report.advisorName, designation: report.advisorDesignation };
   const period = `${report.reportMonth ? new Intl.DateTimeFormat("en-IN", { month: "long" }).format(new Date(Number(report.reportYear), Number(report.reportMonth) - 1, 1)) : "Monthly"} ${report.reportYear || ""}`.trim();
-  const subject = `Your ${branding.companyName} Monthly Wealth Report — ${period}`;
+  const subject = String(options.subjectOverride || `Your ${branding.companyName} Monthly Wealth Report — ${period}`).trim();
+  const customMessage = String(options.messageOverride || "").trim();
+  const messageHtml = customMessage
+    ? `<p style="line-height:1.75">${escapeHtml(customMessage).replace(/\n/g, "<br>")}</p>`
+    : `<p style="line-height:1.7">Your ${escapeHtml(branding.companyName)} report for <strong>${escapeHtml(period)}</strong> has been published to your secure Investor Portal.</p>`;
   const content = `
     <p style="margin-top:0">Hello ${escapeHtml(report.investorName || "Investor")},</p>
     <h2 style="font-size:22px;margin:10px 0">Your Monthly Wealth Progress Report is ready</h2>
-    <p style="line-height:1.7">Your ${escapeHtml(branding.companyName)} report for <strong>${escapeHtml(period)}</strong> has been published to your secure Investor Portal.</p>
+    ${messageHtml}
     <table cellpadding="0" cellspacing="0" style="width:100%;margin-top:18px;border-collapse:collapse">
       <tr><td style="padding:9px 0;color:#667085;width:160px">Report reference</td><td style="padding:9px 0;font-weight:700">${escapeHtml(report.reportCode || "—")}</td></tr>
       <tr><td style="padding:9px 0;color:#667085">Statement date</td><td style="padding:9px 0;font-weight:700">${escapeHtml(formatDate(report.statementDate))}</td></tr>
@@ -121,6 +152,6 @@ export function reportEmailContent(report, viewUrl, options = {}) {
   return {
     subject,
     html: frame(content, { branding, advisor }),
-    text: `${subject}\n\nYour report is available in the ${branding.companyName} Investor Portal.\n${viewUrl || ""}`
+    text: `${subject}\n\n${customMessage || `Your report is available in the ${branding.companyName} Investor Portal.`}\n${viewUrl || ""}`
   };
 }

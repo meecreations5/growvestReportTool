@@ -45,7 +45,8 @@ function drawWatermark(page, report) {
   const ratio = Math.min(330 / natural.width, 280 / natural.height, 1);
   const width = natural.width * ratio;
   const height = natural.height * ratio;
-  page.drawImage(image, { x: (A4_WIDTH - width) / 2, y: (A4_HEIGHT - height) / 2 - 20, width, height, opacity: 0.045 });
+  const opacity = Math.min(0.15, Math.max(0, Number(report.branding?.watermarkOpacity || 4) / 100));
+  page.drawImage(image, { x: (A4_WIDTH - width) / 2, y: (A4_HEIGHT - height) / 2 - 20, width, height, opacity });
 }
 
 export function drawPdfDocumentChrome(page, fonts, report, pageNo, options = {}) {
@@ -70,10 +71,19 @@ export function drawPdfDocumentChrome(page, fonts, report, pageNo, options = {})
   if (icon) drawImageFit(page, icon, { x: MARGIN, y: 8, maxWidth: 22, maxHeight: 20 });
   const footerX = icon ? MARGIN + 29 : MARGIN;
   page.drawText(safeText(branding.legalName || "GrowVest Advisors Private Limited").toUpperCase(), { x: footerX, y: 22, size: 6.4, font: bold, color: INK });
-  page.drawText(safeText(branding.documentFooterTagline || "Grow and Invest with Us"), { x: footerX, y: 12, size: 6, font: italic || regular, color: MUTED });
+  if (branding.showFooterTagline !== false) {
+    page.drawText(safeText(branding.documentFooterTagline || "Grow and Invest with Us"), { x: footerX, y: 12, size: 6, font: italic || regular, color: MUTED });
+  }
 
-  const contact = [branding.supportMobile, branding.supportEmail, branding.website].filter(Boolean).join(" - ");
-  const pageText = `${safeText(contact)} | Confidential | ${safeText(report.clientCode || "Client document")} | ${monthLabel(report.reportMonth)} ${report.reportYear || ""} | Page ${String(pageNo).padStart(2, "0")}`;
+  const contact = branding.showContactInFooter === false ? "" : [branding.supportMobile, branding.supportEmail, branding.website].filter(Boolean).join(" - ");
+  const footerParts = [
+    contact,
+    branding.showConfidentialLabel === false ? "" : (branding.confidentialLabel || "Confidential"),
+    safeText(report.clientCode || "Client document"),
+    `${monthLabel(report.reportMonth)} ${report.reportYear || ""}`,
+    branding.showPageNumbers === false ? "" : `Page ${String(pageNo).padStart(2, "0")}`
+  ].filter(Boolean);
+  const pageText = footerParts.join(" | ");
   const width = regular.widthOfTextAtSize(pageText, 5.8);
   page.drawText(pageText, { x: Math.max(footerX + 170, 551 - width), y: 16, size: 5.8, font: regular, color: MUTED });
 }

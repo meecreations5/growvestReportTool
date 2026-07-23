@@ -8,6 +8,7 @@ import "@fontsource/open-sauce-one/700.css";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { BrandingProvider } from "@/contexts/BrandingContext";
+import { PermissionProvider } from "@/contexts/PermissionContext";
 
 export const metadata = {
   title: "GrowVest Investor & Reporting Tool",
@@ -19,7 +20,7 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body>
         <BrandingProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider><PermissionProvider>{children}</PermissionProvider></AuthProvider>
         </BrandingProvider>
       </body>
     </html>

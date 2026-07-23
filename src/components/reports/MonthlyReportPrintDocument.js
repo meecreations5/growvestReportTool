@@ -68,7 +68,7 @@ export default function MonthlyReportPrintDocument({ report, history = [] }) {
   const renderers = {
     cover() {
       addPage("cover", undefined, (
-        <div className={`report-cover report-cover-${appearance.coverStyle || "premium-dark"}`}>
+        <div className={`report-cover report-cover-${appearance.coverStyle || "premium-dark"}`} style={branding.coverBackgroundUrl ? { backgroundImage: `linear-gradient(rgba(255,255,255,.94), rgba(255,255,255,.94)), url(${branding.coverBackgroundUrl})`, backgroundSize: "cover", backgroundPosition: "center", borderRadius: "18px", padding: "22px" } : undefined}>
           <p className="report-cover-kicker">MONTHLY WEALTH PROGRESS REPORT</p>
           <h1>{getMonthLabel(report.reportMonth)}<br />{report.reportYear}</h1>
           <p className="report-cover-subtitle">{branding.tagline || "Your Conscious Wealth Partner"}</p>

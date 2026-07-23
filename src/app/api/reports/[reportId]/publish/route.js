@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDb, canStaffAccessRecord, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
 import { createAndUploadReportPdf, publishedSnapshotData } from "@/lib/server/reportServer";
-import { sendTransactionalEmail } from "@/lib/server/brevoMailer";
-import { reportEmailContent } from "@/lib/server/emailTemplates";
-import { getAdvisorEmailProfile, getServerBranding, getServerCommunicationSettings } from "@/lib/server/settingsServer";
+import { sendReportDelivery } from "@/lib/server/reportDelivery";
 
 
 export const runtime = "nodejs";
@@ -103,66 +101,25 @@ export async function POST(request, { params }) {
     let emailError = null;
     if (sendEmail && report.investorEmail) {
       try {
-        const origin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
-        const viewUrl = `${String(origin).replace(/\/$/, "")}/investor/reports/${reportId}`;
-        const branding = await getServerBranding();
-        const communicationSettings = await getServerCommunicationSettings();
-        const advisorProfile = await getAdvisorEmailProfile(report.advisorUid, { fullName: report.advisorName || actor.fullName, email: report.advisorEmail || actor.email, designation: report.advisorDesignation || "" });
-        advisorProfile.companyName = branding.companyName;
-        advisorProfile.defaultSenderName = communicationSettings.senderName;
-        advisorProfile.defaultSenderEmail = communicationSettings.senderEmail;
-        advisorProfile.replyToEmail = communicationSettings.replyToEmail;
-        const content = reportEmailContent({ ...report, publishedVersion: nextPublishedVersion }, viewUrl, { branding, advisor: advisorProfile });
-        const emailResult = await sendTransactionalEmail({
-          to: [{ name: report.investorName || "Investor", address: report.investorEmail }],
-          subject: content.subject,
-          html: content.html,
-          text: content.text,
-          advisor: advisorProfile
-        });
-        emailStatus = emailResult.skipped ? "skipped" : "sent";
-        await adminDb.collection("communicationLogs").add({
-          eventType: nextPublishedVersion > 1 ? "monthly_report_updated" : "monthly_report_published",
-          channel: "email",
-          provider: "brevo_smtp",
-          recipientType: "investor",
-          recipientName: report.investorName || "",
-          recipientEmail: report.investorEmail,
-          reportId,
-          reportVersionId: versionId,
-          investorId: report.investorId || null,
-          advisorUid: report.advisorUid || actor.uid,
-          status: emailStatus,
-          providerMessageId: emailResult.messageId || null,
-          sentByUid: actor.uid,
-          sentAt: emailResult.skipped ? null : new Date(),
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
+        const deliveryReport = {
+          ...report,
+          id: reportId,
+          investorVisible: true,
+          publicationStatus: "published",
+          activePublishedVersionId: versionId,
+          publishedVersion: nextPublishedVersion,
+          ...pdf
+        };
+        const delivery = await sendReportDelivery({ report: deliveryReport, actor, payload: {}, testMode: false });
+        emailStatus = delivery.status;
       } catch (error) {
         emailStatus = "failed";
         emailError = error.message;
-        await adminDb.collection("communicationLogs").add({
-          eventType: nextPublishedVersion > 1 ? "monthly_report_updated" : "monthly_report_published",
-          channel: "email",
-          provider: "brevo_smtp",
-          recipientType: "investor",
-          recipientName: report.investorName || "",
-          recipientEmail: report.investorEmail,
-          reportId,
-          reportVersionId: versionId,
-          investorId: report.investorId || null,
-          advisorUid: report.advisorUid || actor.uid,
-          status: "failed",
-          failureReason: error.message,
-          sentByUid: actor.uid,
-          sentAt: null,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
       }
     }
-    await reportRef.set({ lastEmailStatus: emailStatus, lastEmailError: emailError, lastEmailAttemptAt: sendEmail ? new Date() : null }, { merge: true });
+    if (!sendEmail) {
+      await reportRef.set({ lastEmailStatus: "not_requested", lastEmailError: null, lastEmailAttemptAt: null }, { merge: true });
+    }
 
     return NextResponse.json({ success: true, publishedVersion: nextPublishedVersion, versionId, ...pdf, emailStatus, emailError });
   } catch (error) {

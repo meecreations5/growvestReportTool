@@ -3,20 +3,15 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
-import { DEFAULT_SYSTEM_SETTINGS } from "@/services/settingsService";
+import { DEFAULT_SYSTEM_SETTINGS, normaliseBranding } from "@/services/settingsService";
 
 const BrandingContext = createContext(null);
 
 function mergeBranding(value = {}) {
-  return {
+  return normaliseBranding({
     ...DEFAULT_SYSTEM_SETTINGS.branding,
-    ...value,
-    iconLogoUrl: value.iconLogoUrl || value.logoUrl || "",
-    primaryLogoUrl: value.primaryLogoUrl || value.logoUrl || "",
-    whiteLogoUrl: value.whiteLogoUrl || "",
-    emailLogoUrl: value.emailLogoUrl || value.primaryLogoUrl || value.logoUrl || "",
-    watermarkUrl: value.watermarkUrl || ""
-  };
+    ...value
+  });
 }
 
 export function BrandingProvider({ children }) {
@@ -38,8 +33,15 @@ export function BrandingProvider({ children }) {
 
   useEffect(() => {
     if (typeof document === "undefined") return;
-    document.documentElement.style.setProperty("--gv-blue", branding.primaryColor || "#1f4ed8");
-    document.documentElement.style.setProperty("--gv-cyan", branding.secondaryColor || "#18b9d3");
+    const root = document.documentElement;
+    root.style.setProperty("--gv-blue", branding.primaryColor || "#1F4ED8");
+    root.style.setProperty("--gv-blue-strong", branding.primaryColor || "#1F4ED8");
+    root.style.setProperty("--gv-cyan", branding.secondaryColor || "#20B8CD");
+    root.style.setProperty("--gv-ink", branding.darkColor || "#0B0B0F");
+    root.style.setProperty("--gv-danger", branding.dangerColor || "#E53935");
+    root.style.setProperty("--gv-warning", branding.warningColor || "#F5B301");
+    root.style.setProperty("--gv-surface", branding.surfaceColor || "#F4F6F9");
+    root.style.setProperty("--gv-muted", branding.mutedColor || "#6B7280");
     document.title = `${branding.companyName || "GrowVest"} Investor & Reporting Tool`;
 
     const icon = branding.iconLogoUrl;

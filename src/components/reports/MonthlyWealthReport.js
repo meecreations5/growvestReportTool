@@ -198,13 +198,19 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
 
   return (
     <div className="monthly-wealth-report relative grid gap-6 overflow-hidden">
-      {branding.watermarkUrl ? <img src={branding.watermarkUrl} alt="" aria-hidden="true" className="pointer-events-none absolute left-1/2 top-[42%] z-0 max-h-[520px] max-w-[70%] -translate-x-1/2 -translate-y-1/2 object-contain opacity-[0.025]" /> : null}
-      <section id="report-overview" style={{ ...sectionStyle("cover"), backgroundColor: templateAppearance.darkColor || "#111827" }} className={`scroll-mt-32 relative z-[1] overflow-hidden rounded-2xl p-5 text-white shadow-sm sm:p-7 lg:p-8 ${sectionVisible("cover") ? "" : "hidden"}`}>
+      {branding.watermarkUrl ? <img src={branding.watermarkUrl} alt="" aria-hidden="true" style={{ opacity: Math.min(0.15, Math.max(0, Number(branding.watermarkOpacity || 4) / 100)) }} className="pointer-events-none absolute left-1/2 top-[42%] z-0 max-h-[520px] max-w-[70%] -translate-x-1/2 -translate-y-1/2 object-contain" /> : null}
+      <section id="report-overview" style={{
+        ...sectionStyle("cover"),
+        backgroundColor: templateAppearance.darkColor || branding.darkColor || "#111827",
+        backgroundImage: branding.coverBackgroundUrl ? `linear-gradient(rgba(11,11,15,.88), rgba(11,11,15,.92)), url(${branding.coverBackgroundUrl})` : undefined,
+        backgroundSize: "cover",
+        backgroundPosition: "center"
+      }} className={`scroll-mt-32 relative z-[1] overflow-hidden rounded-2xl p-5 text-white shadow-sm sm:p-7 lg:p-8 ${sectionVisible("cover") ? "" : "hidden"}`}>
         <div className="pointer-events-none absolute -right-28 -top-52 h-[480px] w-[620px] rounded-full border border-cyan-400/10" />
         <div className="pointer-events-none absolute -right-10 -top-32 h-[360px] w-[500px] rounded-full border border-blue-400/10" />
 
         <div className="relative z-10 flex items-start justify-between gap-4">
-          {templateDocument.showConfidentialLabel !== false ? <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-300 sm:text-xs">Confidential client report</span> : <span />}
+          {templateDocument.showConfidentialLabel !== false && branding.showConfidentialLabel !== false ? <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-300 sm:text-xs">{branding.confidentialLabel || "Confidential client report"}</span> : <span />}
 
           {templateDocument.showLogo !== false ? <div className="shrink-0">
             {hasInverseLogo ? (
