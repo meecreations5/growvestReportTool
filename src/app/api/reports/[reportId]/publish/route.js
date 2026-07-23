@@ -40,6 +40,9 @@ export async function POST(request, { params }) {
       publishedByUid: actor.uid,
       publishedByName: actor.fullName || actor.email,
       ...pdf,
+      pdfIsStale: false,
+      pdfInvalidatedAt: null,
+      pdfInvalidationReason: null,
       updatedAt: new Date()
     }, { merge: true });
 

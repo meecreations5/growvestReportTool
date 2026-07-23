@@ -48,9 +48,30 @@ export function publishedSnapshotData(report, publishedVersion, versionId) {
   };
 }
 
+async function loadReportHistoryForPdf(report) {
+  if (!report?.investorId) return [];
+  try {
+    const snapshot = await adminDb.collection("monthlyReports")
+      .where("investorId", "==", report.investorId)
+      .limit(50)
+      .get();
+    return snapshot.docs
+      .map((item) => ({ id: item.id, ...item.data() }))
+      .filter((item) => item.id !== report.id && item.reportMonthKey)
+      .sort((a, b) => String(a.reportMonthKey).localeCompare(String(b.reportMonthKey)))
+      .slice(-12);
+  } catch (error) {
+    console.warn("Unable to load report history for PDF generation", error);
+    return [];
+  }
+}
+
 export async function createAndUploadReportPdf(report, { reportId, publishedVersion, versionId = null } = {}) {
   const branding = await getServerBranding();
-  const pdfBytes = await generateMonthlyReportPdf({ ...report, branding });
+  const reportWithId = { ...report, id: report.id || reportId };
+  const history = await loadReportHistoryForPdf(reportWithId);
+  const brandingSnapshot = { ...branding };
+  const pdfBytes = await generateMonthlyReportPdf({ ...reportWithId, branding: brandingSnapshot, brandingSnapshot }, { history });
   const effectiveVersion = Number(publishedVersion || report.publishedVersion || report.version || 1);
   const fileName = brandedPdfFileName(report, branding, effectiveVersion, reportId);
   const storagePath = `monthly-reports/${cleanFilePart(report.investorId || "investor")}/${cleanFilePart(reportId)}/${fileName}`;
@@ -74,7 +95,9 @@ export async function createAndUploadReportPdf(report, { reportId, publishedVers
     pdfFileName: fileName,
     pdfSizeBytes: pdfBytes.length,
     pdfGeneratedAt: new Date(),
-    pdfVersion: effectiveVersion
+    pdfVersion: effectiveVersion,
+    pdfRendererVersion: "2.0.0",
+    brandingSnapshot
   };
 }
 

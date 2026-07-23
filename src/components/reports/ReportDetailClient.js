@@ -270,7 +270,7 @@ export default function ReportDetailClient({ reportId }) {
               {reportPeriod} Monthly Report
             </h1>
             <p className="mt-1 text-sm text-slate-500">
-              {report.investorName} · {report.clientCode || report.reportCode} · Working version {report.version || 1}
+              {report.investorName} · {report.clientCode || report.reportCode} · Working version {report.version || 1} · {report.templateSnapshot?.name || "Report template"} v{report.templateVersion || report.templateSnapshot?.version || 1}
             </p>
           </div>
 
@@ -402,6 +402,21 @@ export default function ReportDetailClient({ reportId }) {
         <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">
           <CheckCircle2 size={18} className="mt-0.5 shrink-0" />
           {notice}
+        </div>
+      ) : null}
+
+      {report.pdfIsStale ? (
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3 text-sm text-amber-900">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-700" />
+            <div>
+              <p className="font-bold">The working report changed after its previous PDF was generated.</p>
+              <p className="mt-1 leading-6 text-amber-800">The HTML preview below uses {report.templateSnapshot?.name || "the selected template"} version {report.templateVersion || report.templateSnapshot?.version || 1}. Generate a new PDF before sending or publishing this revision.</p>
+            </div>
+          </div>
+          <button type="button" onClick={handleGeneratePdf} disabled={working || report.status !== "completed"} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 text-sm font-bold text-white hover:bg-amber-700 disabled:opacity-50">
+            <RefreshCcw size={16} /> Regenerate PDF
+          </button>
         </div>
       ) : null}
 

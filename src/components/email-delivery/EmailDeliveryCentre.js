@@ -15,6 +15,7 @@ import {
   Mail,
   MailCheck,
   MailOpen,
+  LayoutTemplate,
   Paperclip,
   RefreshCcw,
   Search,
@@ -29,6 +30,13 @@ import EmailDeliveryStatusBadge from "@/components/email-delivery/EmailDeliveryS
 import { useAuth } from "@/contexts/AuthContext";
 import { DELIVERY_ATTENTION_STATES, DELIVERY_SUCCESS_STATES, normaliseDeliveryStatus } from "@/lib/constants/emailDelivery";
 import { getMonthLabel } from "@/lib/constants/report";
+import {
+  DEFAULT_EMAIL_TEMPLATE_ID,
+  SIGNATURE_SOURCE_LABELS,
+  createEmailTemplateSnapshot,
+  mergeEmailFields
+} from "@/lib/constants/emailTemplates";
+import { subscribeEmailTemplates } from "@/services/emailTemplateService";
 import {
   listEmailDeliveries,
   scheduleReportDelivery,
@@ -63,23 +71,56 @@ function eligibleForDelivery(row) {
   return row.reportStatus === "completed" && row.investorVisible === true;
 }
 
-function defaultSubject(row) {
-  return `Your GrowVest Monthly Wealth Report — ${periodLabel(row)}`;
+function deliveryMergeFields(row) {
+  return {
+    investor_name: row.investorName || "Investor",
+    investor_first_name: String(row.investorName || "Investor").trim().split(/\s+/)[0],
+    report_month: row.reportMonth ? getMonthLabel(row.reportMonth) : "Monthly",
+    report_year: row.reportYear || "",
+    report_reference: row.reportCode || "—",
+    statement_date: "",
+    advisor_name: row.advisorName || "GrowVest Advisor",
+    advisor_designation: "",
+    advisor_mobile: "",
+    advisor_email: "",
+    report_url: "",
+    company_name: "GrowVest"
+  };
 }
 
-function defaultMessage(row) {
-  return `Your GrowVest monthly wealth report for ${periodLabel(row)} is ready. Please review it through your secure Investor Portal. You may reply to this email or contact your Advisor if you would like to discuss any part of the report.`;
+function defaultsFromTemplate(row, templateValue) {
+  const template = createEmailTemplateSnapshot(templateValue);
+  const fields = deliveryMergeFields(row);
+  return {
+    subject: mergeEmailFields(template.content.subject, fields),
+    message: mergeEmailFields(template.content.body, fields),
+    attachPdf: Boolean(row.pdfStoragePath) && template.delivery.attachPdf !== false,
+    signatureSource: row.signatureSource || row.templateSnapshot?.delivery?.signatureSource || template.signature.source
+  };
 }
 
-function DeliveryComposer({ row, profile, mode, onClose, onComplete }) {
+function DeliveryComposer({ row, profile, templates, mode, onClose, onComplete }) {
   const previous = row.latestDelivery || {};
+  const assignedTemplateId = previous.emailTemplateId || row.emailTemplateId || row.templateSnapshot?.delivery?.emailTemplateId || DEFAULT_EMAIL_TEMPLATE_ID;
+  const preservedTemplate = previous.emailTemplateSnapshot || row.templateSnapshot?.delivery?.emailTemplateSnapshot || null;
+  const assignedTemplate = preservedTemplate
+    ? createEmailTemplateSnapshot({
+      ...preservedTemplate,
+      id: assignedTemplateId,
+      name: previous.emailTemplateName || row.templateSnapshot?.delivery?.emailTemplateName || preservedTemplate.name,
+      version: previous.emailTemplateVersion || row.templateSnapshot?.delivery?.emailTemplateVersion || preservedTemplate.version
+    })
+    : templates.find((item) => item.id === assignedTemplateId) || templates.find((item) => item.isDefault) || templates[0];
+  const templateDefaults = defaultsFromTemplate(row, assignedTemplate);
   const [form, setForm] = useState({
     recipientEmail: previous.recipientEmail || row.investorEmail || "",
     cc: Array.isArray(previous.cc) ? previous.cc.join(", ") : "",
     bcc: Array.isArray(previous.bcc) ? previous.bcc.join(", ") : "",
-    subject: previous.subject || defaultSubject(row),
-    message: previous.message || defaultMessage(row),
-    attachPdf: Boolean(row.pdfStoragePath),
+    emailTemplateId: assignedTemplate?.id || assignedTemplateId,
+    signatureSource: previous.signatureSource || templateDefaults.signatureSource,
+    subject: previous.subject || templateDefaults.subject,
+    message: previous.message || templateDefaults.message,
+    attachPdf: previous.attachPdf ?? templateDefaults.attachPdf,
     scheduledFor: ""
   });
   const [busy, setBusy] = useState("");
@@ -87,6 +128,19 @@ function DeliveryComposer({ row, profile, mode, onClose, onComplete }) {
 
   function update(key, value) {
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function changeTemplate(templateId) {
+    const selected = templates.find((item) => item.id === templateId);
+    const defaults = defaultsFromTemplate(row, selected);
+    setForm((current) => ({
+      ...current,
+      emailTemplateId: templateId,
+      signatureSource: defaults.signatureSource,
+      subject: defaults.subject,
+      message: defaults.message,
+      attachPdf: defaults.attachPdf
+    }));
   }
 
   async function run(action) {
@@ -144,6 +198,14 @@ function DeliveryComposer({ row, profile, mode, onClose, onComplete }) {
             <label className="grid gap-2 text-sm font-semibold text-slate-700">
               BCC <span className="text-xs font-normal text-slate-400">Comma separated</span>
               <input className={inputClassName} value={form.bcc} onChange={(event) => update("bcc", event.target.value)} placeholder="archive@growvest.info" />
+            </label>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-2 text-sm font-semibold text-slate-700">Email template
+              <select className={inputClassName} value={form.emailTemplateId} onChange={(event) => changeTemplate(event.target.value)}>{assignedTemplate && !templates.some((item) => item.id === assignedTemplate.id && Number(item.version || 1) === Number(assignedTemplate.version || 1)) ? <option value={assignedTemplate.id}>{assignedTemplate.name} · v{assignedTemplate.version || 1} (report snapshot)</option> : null}{templates.map((item) => <option key={item.id} value={item.id}>{item.name} · v{item.version || 1}</option>)}</select>
+            </label>
+            <label className="grid gap-2 text-sm font-semibold text-slate-700">Signature source
+              <select className={inputClassName} value={form.signatureSource} onChange={(event) => update("signatureSource", event.target.value)}>{Object.entries(SIGNATURE_SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
             </label>
           </div>
           <label className="grid gap-2 text-sm font-semibold text-slate-700">
@@ -247,6 +309,7 @@ export default function EmailDeliveryCentre() {
   const { profile } = useAuth();
   const [rows, setRows] = useState([]);
   const [deliveries, setDeliveries] = useState([]);
+  const [emailTemplates, setEmailTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -275,6 +338,10 @@ export default function EmailDeliveryCentre() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => subscribeEmailTemplates(
+    (items) => setEmailTemplates(items.filter((item) => item.status === "active")),
+    (nextError) => console.warn("Unable to load email templates", nextError)
+  ), []);
 
   const monthOptions = useMemo(() => [...new Set(rows.map((row) => row.reportMonthKey).filter(Boolean))].sort((a, b) => b.localeCompare(a)), [rows]);
   const advisorOptions = useMemo(() => {
@@ -337,7 +404,7 @@ export default function EmailDeliveryCentre() {
           <h1 className="gv-page-title mt-2">Email & Delivery Centre</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">Send, schedule and track monthly Investor report emails, PDF attachments and delivery outcomes from one audit-friendly workspace.</p>
         </div>
-        <Button type="button" variant="secondary" onClick={() => load(true)} disabled={refreshing}><RefreshCcw size={17} className={refreshing ? "animate-spin" : ""} /> Refresh delivery status</Button>
+        <div className="flex flex-wrap gap-2"><Link href="/email-delivery/templates" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#1F4ED8] px-4 text-sm font-semibold text-white"><LayoutTemplate size={17} /> Email templates</Link><Button type="button" variant="secondary" onClick={() => load(true)} disabled={refreshing}><RefreshCcw size={17} className={refreshing ? "animate-spin" : ""} /> Refresh delivery status</Button></div>
       </header>
 
       {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{notice}</div> : null}
@@ -395,7 +462,7 @@ export default function EmailDeliveryCentre() {
         <div className="gv-card p-5"><div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-violet-50 text-violet-700"><CalendarClock size={19} /></span><div><h2 className="font-heading text-lg font-bold text-slate-950">Scheduled delivery</h2><p className="text-sm text-slate-500">Process due emails through the protected cron endpoint</p></div></div><p className="mt-4 text-sm leading-6 text-slate-600">Call <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">/api/cron/report-deliveries</code> with the configured cron secret on a regular schedule.</p></div>
       </section>
 
-      {composer ? <DeliveryComposer row={composer.row} profile={profile} mode={composer.mode} onClose={() => setComposer(null)} onComplete={completeAction} /> : null}
+      {composer ? <DeliveryComposer row={composer.row} profile={profile} templates={emailTemplates} mode={composer.mode} onClose={() => setComposer(null)} onComplete={completeAction} /> : null}
       {details ? <DeliveryDetails row={details} deliveries={deliveries} onClose={() => setDetails(null)} onSend={() => { const row = details; setDetails(null); setComposer({ row, mode: DELIVERY_ATTENTION_STATES.has(latestStatus(row)) ? "retry" : "send" }); }} onDownload={() => handleDownload(details)} /> : null}
     </div>
   );

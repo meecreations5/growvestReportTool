@@ -73,7 +73,7 @@ export default function ReportPrintClient({ reportId }) {
     <div>
       <div className="monthly-report-print-toolbar sticky top-0 z-50 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
         <button type="button" onClick={() => router.push(backHref)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600"><ArrowLeft size={16} /> Back to report</button>
-        <div className="text-center"><p className="text-sm font-black text-slate-950">A4 Report Preview</p><p className="text-xs text-slate-400">Published version {report.publishedVersion || 1}</p></div>
+        <div className="text-center"><p className="text-sm font-black text-slate-950">A4 Report Preview</p><p className="text-xs text-slate-400">{profile?.role === "investor" ? `Published version ${report.publishedVersion || 1}` : `Working version ${report.version || 1} · ${report.templateSnapshot?.name || "Report template"} v${report.templateVersion || report.templateSnapshot?.version || 1}`}</p></div>
         <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2 text-sm font-bold text-white"><Printer size={16} /> Print</button>
       </div>
       <MonthlyReportPrintDocument report={report} history={history} />

@@ -29,6 +29,8 @@ import {
   createReportTemplateSnapshot,
   visibleTemplateSections
 } from "@/lib/constants/reportTemplates";
+import { SIGNATURE_SOURCE_LABELS, createEmailTemplateSnapshot } from "@/lib/constants/emailTemplates";
+import { subscribeEmailTemplates } from "@/services/emailTemplateService";
 import {
   activateReportTemplate,
   duplicateReportTemplate,
@@ -98,7 +100,8 @@ function cloneTemplate(template) {
     appearance: {
       ...snapshot.appearance,
       document: { ...snapshot.appearance.document }
-    }
+    },
+    delivery: { ...snapshot.delivery }
   };
 }
 
@@ -152,6 +155,7 @@ export default function ReportTemplateEditor({ templateId }) {
   const [activePanel, setActivePanel] = useState("sections");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [draggedKey, setDraggedKey] = useState(null);
+  const [emailTemplates, setEmailTemplates] = useState([]);
   const signatureRef = useRef("");
   const readyRef = useRef(false);
 
@@ -184,6 +188,12 @@ export default function ReportTemplateEditor({ templateId }) {
     loadTemplate();
     return () => { active = false; };
   }, [profile?.id, templateId]);
+
+
+  useEffect(() => subscribeEmailTemplates(
+    (items) => setEmailTemplates(items.filter((item) => item.status === "active")),
+    (nextError) => console.warn("Unable to load email templates for report assignment", nextError)
+  ), []);
 
   useEffect(() => {
     if (!template || !readyRef.current || readOnly) return;
@@ -231,6 +241,27 @@ export default function ReportTemplateEditor({ templateId }) {
       appearance: {
         ...current.appearance,
         document: { ...current.appearance?.document, [field]: value }
+      }
+    }));
+  }
+
+  function updateDelivery(field, value) {
+    setTemplate((current) => ({
+      ...current,
+      delivery: { ...current.delivery, [field]: value }
+    }));
+  }
+
+  function selectEmailTemplate(emailTemplateId) {
+    const selected = emailTemplates.find((item) => item.id === emailTemplateId);
+    setTemplate((current) => ({
+      ...current,
+      delivery: {
+        ...current.delivery,
+        emailTemplateId,
+        emailTemplateName: selected?.name || "Monthly Report Ready — Premium",
+        emailTemplateVersion: Number(selected?.version || 1),
+        emailTemplateSnapshot: selected ? createEmailTemplateSnapshot(selected) : current.delivery?.emailTemplateSnapshot || null
       }
     }));
   }
@@ -391,6 +422,20 @@ export default function ReportTemplateEditor({ templateId }) {
           <label className="grid gap-1.5 text-sm font-semibold text-slate-700">Disclaimer format<select disabled={readOnly} className={inputClassName} value={template.appearance?.document?.disclaimerStyle || "standard"} onChange={(event) => updateDocument("disclaimerStyle", event.target.value)}><option value="standard">Standard panel</option><option value="compact">Compact footer note</option><option value="detailed">Dedicated disclaimer section</option></select></label>
         </div>
       </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-4">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">Email delivery assignment</p>
+        <div className="mt-4 grid gap-3">
+          <label className="grid gap-1.5 text-sm font-semibold text-slate-700">Default email template<select disabled={readOnly} className={inputClassName} value={template.delivery?.emailTemplateId || "monthly-report-ready-premium"} onChange={(event) => selectEmailTemplate(event.target.value)}>{template.delivery?.emailTemplateId && !emailTemplates.some((item) => item.id === template.delivery.emailTemplateId) ? <option value={template.delivery.emailTemplateId}>{template.delivery.emailTemplateName || "Assigned email template"} · v{template.delivery.emailTemplateVersion || 1}</option> : null}{emailTemplates.length ? emailTemplates.map((item) => <option key={item.id} value={item.id}>{item.name} · v{item.version || 1}</option>) : <option value="monthly-report-ready-premium">Monthly Report Ready — Premium</option>}</select></label>
+          <label className="grid gap-1.5 text-sm font-semibold text-slate-700">Signature source<select disabled={readOnly} className={inputClassName} value={template.delivery?.signatureSource || "assigned_advisor"} onChange={(event) => updateDelivery("signatureSource", event.target.value)}>{Object.entries(SIGNATURE_SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          {[
+            ["includeSecureLink", "Include secure report link"],
+            ["attachPdf", "Attach generated PDF"],
+            ["includeSignature", "Include published signature"]
+          ].map(([field, label]) => <div key={field} className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 p-3"><span className="text-sm font-semibold text-slate-700">{label}</span><Toggle checked={template.delivery?.[field] !== false} disabled={readOnly} onChange={(value) => updateDelivery(field, value)} label={label} /></div>)}
+          <Link href="/email-delivery/templates" className="inline-flex min-h-10 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-semibold text-blue-700">Manage email templates</Link>
+        </div>
+      </section>
     </div>
   ) : null;
 
@@ -441,7 +486,7 @@ export default function ReportTemplateEditor({ templateId }) {
             <section className="rounded-xl border border-slate-200 bg-white p-4">
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Configuration</p>
               <div className="mt-3 grid gap-2">
-                {[{ id: "sections", label: "Sections", count: visibleCount }, { id: "appearance", label: "Appearance" }, { id: "document", label: "Header & footer" }].map((item) => <button key={item.id} type="button" onClick={() => setActivePanel(item.id)} className={`flex min-h-11 items-center justify-between rounded-lg px-3 text-left text-sm font-semibold ${activePanel === item.id ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50"}`}><span>{item.label}</span><span className="flex items-center gap-2">{item.count !== undefined ? <span className="rounded-full bg-white px-2 py-0.5 text-xs ring-1 ring-slate-200">{item.count}</span> : null}<ChevronRight size={15} /></span></button>)}
+                {[{ id: "sections", label: "Sections", count: visibleCount }, { id: "appearance", label: "Appearance" }, { id: "document", label: "Header & footer" }, { id: "delivery", label: "Email delivery" }].map((item) => <button key={item.id} type="button" onClick={() => setActivePanel(item.id)} className={`flex min-h-11 items-center justify-between rounded-lg px-3 text-left text-sm font-semibold ${activePanel === item.id ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50"}`}><span>{item.label}</span><span className="flex items-center gap-2">{item.count !== undefined ? <span className="rounded-full bg-white px-2 py-0.5 text-xs ring-1 ring-slate-200">{item.count}</span> : null}<ChevronRight size={15} /></span></button>)}
               </div>
             </section>
           </aside>

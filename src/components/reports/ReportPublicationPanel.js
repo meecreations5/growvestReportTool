@@ -37,7 +37,7 @@ function Step({ label, helper, complete, icon: Icon }) {
 export default function ReportPublicationPanel({ report, acknowledgement }) {
   const [expanded, setExpanded] = useState(false);
   const completed = report.status === "completed" || report.status === "locked";
-  const pdfReady = Boolean(report.pdfStoragePath);
+  const pdfReady = Boolean(report.pdfStoragePath) && !report.pdfIsStale;
   const published = Boolean(report.investorVisible);
   const emailSent = ["sent", "delivered", "opened", "clicked"].includes(
     String(report.lastEmailStatus || "").toLowerCase()
@@ -98,7 +98,7 @@ export default function ReportPublicationPanel({ report, acknowledgement }) {
           />
           <Step
             label="Generate secure PDF"
-            helper={pdfReady ? report.pdfFileName || "PDF stored securely" : "Generate and store the branded PDF."}
+            helper={pdfReady ? report.pdfFileName || "PDF stored securely" : report.pdfIsStale ? "Report changed. Regenerate the branded PDF." : "Generate and store the branded PDF."}
             complete={pdfReady}
             icon={Download}
           />

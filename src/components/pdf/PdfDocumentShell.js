@@ -1,6 +1,8 @@
 "use client";
 
 import { useBranding } from "@/contexts/BrandingContext";
+import { resolveReportTemplate } from "@/lib/constants/reportTemplates";
+import { resolveReportBranding, resolveReportTheme } from "@/lib/utils/reportBranding";
 
 function joinContact(branding) {
   if (branding.showContactInFooter === false) return "";
@@ -12,8 +14,7 @@ export function PdfWatermark({ url, opacity = 4 }) {
   return <img src={url} alt="" aria-hidden="true" style={{ opacity: Math.min(0.15, Math.max(0, Number(opacity || 0) / 100)) }} className="report-print-watermark" />;
 }
 
-export function PdfHeader({ title, compact = false }) {
-  const { branding } = useBranding();
+export function PdfHeader({ title, compact = false, branding }) {
   const logo = branding.pdfLogoUrl || branding.primaryLogoUrl || branding.emailLogoUrl || branding.iconLogoUrl;
   return (
     <>
@@ -29,15 +30,23 @@ export function PdfHeader({ title, compact = false }) {
   );
 }
 
-export function PdfFooter({ report, number, documentTitle }) {
-  const { branding } = useBranding();
+export function PdfFooter({ report, number, branding, documentSettings = {} }) {
   const icon = branding.footerLogoUrl || branding.iconLogoUrl;
-  const contact = joinContact(branding);
+  const showContact = documentSettings.showContactInformation !== false;
+  const contact = showContact ? joinContact(branding) : "";
+  const showPageNumbers = documentSettings.showPageNumbers !== false && branding.showPageNumbers !== false;
+  const showClientCode = documentSettings.showClientCode !== false;
+  const showReportMonth = documentSettings.showReportMonth !== false;
+  const showConfidential = documentSettings.showConfidentialLabel !== false && branding.showConfidentialLabel !== false;
+  const reportPeriod = [
+    ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][Number(report?.reportMonth) - 1],
+    report?.reportYear
+  ].filter(Boolean).join(" ");
   const footerMeta = [
-    branding.showConfidentialLabel === false ? "" : (branding.confidentialLabel || "Confidential"),
-    report?.clientCode || "Client document",
-    documentTitle,
-    branding.showPageNumbers === false ? "" : `Page ${String(number).padStart(2, "0")}`
+    showConfidential ? (branding.confidentialLabel || "Confidential") : "",
+    showClientCode ? (report?.clientCode || "Client document") : "",
+    showReportMonth ? reportPeriod : "",
+    showPageNumbers ? `Page ${String(number).padStart(2, "0")}` : ""
   ].filter(Boolean).join(" · ");
 
   return (
@@ -58,14 +67,29 @@ export function PdfFooter({ report, number, documentTitle }) {
 }
 
 export function PdfPage({ report, number, children, title = "", documentTitle = "Monthly Wealth Progress Report", compactHeader = false, className = "" }) {
-  const { branding } = useBranding();
+  const { branding: liveBranding } = useBranding();
+  const branding = resolveReportBranding(report, liveBranding);
+  const template = resolveReportTemplate(report);
+  const theme = resolveReportTheme(report, branding, template);
+  const documentSettings = template.appearance?.document || {};
   return (
-    <section className={`report-print-page ${className}`} style={{ "--report-primary": branding.primaryColor, "--report-secondary": branding.secondaryColor }}>
+    <section
+      className={`report-print-page ${className}`}
+      style={{
+        "--report-primary": theme.primaryColor,
+        "--report-secondary": theme.secondaryColor,
+        "--report-dark": theme.darkColor,
+        "--report-danger": theme.dangerColor,
+        "--report-warning": theme.warningColor,
+        "--report-surface": theme.surfaceColor,
+        "--report-muted": theme.mutedColor
+      }}
+    >
       <PdfWatermark url={branding.watermarkUrl} opacity={branding.watermarkOpacity} />
-      <PdfHeader title={documentTitle} compact={compactHeader} />
+      <PdfHeader title={documentTitle} compact={compactHeader} branding={branding} />
       {title ? <h2 className="report-print-title"><span />{title}</h2> : null}
       <div className="report-print-content">{children}</div>
-      <PdfFooter report={report} number={number} documentTitle={documentTitle} />
+      <PdfFooter report={report} number={number} branding={branding} documentSettings={documentSettings} />
     </section>
   );
 }

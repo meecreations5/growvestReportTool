@@ -11,6 +11,7 @@ import {
   PencilLine,
   FileText,
   Laptop,
+  Mail,
   Monitor,
   Smartphone,
   Sparkles
@@ -22,6 +23,7 @@ import {
   templateCategoryLabel,
   visibleTemplateSections
 } from "@/lib/constants/reportTemplates";
+import { SIGNATURE_SOURCE_LABELS } from "@/lib/constants/emailTemplates";
 import {
   duplicateReportTemplate,
   getReportTemplateVersions,
@@ -159,6 +161,7 @@ export default function ReportTemplateDetail({ templateId }) {
     { value: "overview", label: "Overview" },
     { value: "sections", label: "Sections", count: visibleSections.length },
     { value: "appearance", label: "Appearance" },
+    { value: "delivery", label: "Email delivery" },
     { value: "usage", label: "Usage", count: templateReports.length },
     { value: "versions", label: "Version history" }
   ];
@@ -286,6 +289,40 @@ export default function ReportTemplateDetail({ templateId }) {
               ].map(([label, value, tone]) => <div key={label} className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 p-4"><div className="flex items-center gap-3"><span className={`h-9 w-9 rounded-lg border border-black/5 ${tone}`} /><div><p className="text-xs text-slate-400">{label}</p><p className="mt-0.5 font-mono text-sm font-semibold text-slate-900">{value}</p></div></div><span className="text-xs font-semibold text-slate-500">Brand controlled</span></div>)}
             </div>
           </section>
+        </div>
+      ) : null}
+
+      {tab === "delivery" ? (
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
+            <div className="flex items-start gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-700"><Mail size={20} /></span>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">Report-template assignment</p>
+                <h2 className="mt-1 font-heading text-2xl font-bold text-slate-950">Email delivery configuration</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-500">Every report created with this template stores a versioned snapshot of the assigned email design and signature rules.</p>
+              </div>
+            </div>
+            <dl className="mt-6 grid gap-3 sm:grid-cols-2">
+              {[
+                ["Assigned email template", template.delivery?.emailTemplateName || "Monthly Report Ready — Premium"],
+                ["Email template version", `v${template.delivery?.emailTemplateVersion || 1}`],
+                ["Signature source", SIGNATURE_SOURCE_LABELS[template.delivery?.signatureSource] || "Assigned Advisor's published signature"],
+                ["Secure report link", template.delivery?.includeSecureLink === false ? "Excluded" : "Included"],
+                ["PDF attachment", template.delivery?.attachPdf === false ? "Not attached" : "Attached by default"],
+                ["Advisor signature", template.delivery?.includeSignature === false ? "Hidden" : "Included"]
+              ].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 p-4"><dt className="text-xs text-slate-400">{label}</dt><dd className="mt-1 font-semibold text-slate-900">{value}</dd></div>)}
+            </dl>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Link href={`/email-delivery/templates/${template.delivery?.emailTemplateId || "monthly-report-ready-premium"}/edit`} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#1F4ED8] px-4 text-sm font-semibold text-white">Preview assigned email</Link>
+              {isAdmin ? <Link href={`/report-templates/${template.id}/edit`} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-700">Change assignment</Link> : null}
+            </div>
+          </section>
+          <aside className="rounded-xl border border-blue-100 bg-blue-50 p-5">
+            <Sparkles size={20} className="text-blue-700" />
+            <h3 className="mt-3 font-heading text-lg font-bold text-blue-950">Historical consistency</h3>
+            <p className="mt-2 text-sm leading-6 text-blue-900">Published reports retain the email-template version, branding and signature configuration selected at report creation. Later template changes do not alter earlier deliveries.</p>
+          </aside>
         </div>
       ) : null}
 

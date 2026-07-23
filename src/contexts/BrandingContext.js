@@ -44,6 +44,15 @@ export function BrandingProvider({ children }) {
     root.style.setProperty("--gv-muted", branding.mutedColor || "#6B7280");
     document.title = `${branding.companyName || "GrowVest"} Investor & Reporting Tool`;
 
+    let themeMeta = document.querySelector('meta[name="theme-color"][data-dynamic-branding="true"]');
+    if (!themeMeta) {
+      themeMeta = document.createElement("meta");
+      themeMeta.name = "theme-color";
+      themeMeta.dataset.dynamicBranding = "true";
+      document.head.appendChild(themeMeta);
+    }
+    themeMeta.content = branding.primaryColor || "#1F4ED8";
+
     const icon = branding.iconLogoUrl;
     if (icon) {
       let link = document.querySelector('link[rel="icon"][data-dynamic-branding="true"]');
@@ -54,6 +63,33 @@ export function BrandingProvider({ children }) {
         document.head.appendChild(link);
       }
       link.href = icon;
+    }
+
+    const pwaIcon = branding.pwaAppleTouchIconUrl || branding.pwaIcon512Url || branding.pwaIcon192Url || icon;
+    if (pwaIcon) {
+      let appleIcon = document.querySelector('link[rel="apple-touch-icon"][data-dynamic-branding="true"]');
+      if (!appleIcon) {
+        appleIcon = document.createElement("link");
+        appleIcon.rel = "apple-touch-icon";
+        appleIcon.dataset.dynamicBranding = "true";
+        document.head.appendChild(appleIcon);
+      }
+      appleIcon.href = pwaIcon;
+    }
+
+    let appTitle = document.querySelector('meta[name="apple-mobile-web-app-title"][data-dynamic-branding="true"]');
+    if (!appTitle) {
+      appTitle = document.createElement("meta");
+      appTitle.name = "apple-mobile-web-app-title";
+      appTitle.dataset.dynamicBranding = "true";
+      document.head.appendChild(appTitle);
+    }
+    appTitle.content = `${branding.companyName || "GrowVest"} Investor`;
+
+    const manifestLink = document.querySelector('link[rel="manifest"]');
+    if (manifestLink) {
+      const version = Number(branding.version || 0);
+      manifestLink.href = version ? `/manifest.webmanifest?v=${version}` : "/manifest.webmanifest";
     }
   }, [branding]);
 

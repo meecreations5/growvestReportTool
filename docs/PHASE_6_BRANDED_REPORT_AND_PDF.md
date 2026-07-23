@@ -5,8 +5,8 @@
 Phase 6 converts the structured Phase 5 monthly report data into:
 
 1. An interactive Investor Portal web report based on the approved GrowVest design.
-2. A dedicated A4 report layout suitable for browser printing and Save as PDF.
-3. A controlled report publication workflow with Investor Portal visibility, in-app notification, Brevo email and manual WhatsApp sharing.
+2. A dedicated A4 report layout for browser printing and a secure server-generated PDF stored in Firebase Storage.
+3. A controlled report publication workflow with immutable report versions, Investor Portal visibility, in-app notification, Brevo email and manual WhatsApp sharing.
 
 ## Main routes
 
@@ -46,16 +46,19 @@ The web report contains:
 
 ## A4 report
 
-The print route uses a separate report document designed for A4 portrait output. It supports:
+The print route and secure server renderer use aligned A4 portrait documents. They support:
 
-- GrowVest cover page
-- Portfolio summary and historical trend
-- Advisor insight page
+- GrowVest cover page with published branding snapshot
+- Executive portfolio summary and historical trend
+- Month-on-month performance highlights
 - Dynamic Bucket List pages
-- Portfolio health and asset allocation page
-- Dynamic fund-wise pages
-- Recommended actions, next review and disclaimer
-- Page headers, footers and report references
+- Portfolio health, allocation summary and full allocation details
+- Dynamic fund-wise holding pages
+- Explicit or fund-derived transaction pages
+- Advisor commentary and insight cards
+- Recommended actions and next review
+- Paginated report information and disclaimer
+- Repeating page headers, legal footers, report references and watermarks
 
 ### Save as PDF
 
@@ -68,7 +71,9 @@ Margins: None / Default from report CSS
 Background graphics: Enabled
 ```
 
-The current implementation intentionally uses browser print rendering so the HTML preview and PDF remain visually aligned. It does not upload a generated PDF binary to Firebase Storage.
+The browser print document is provided for live A4 review. On generation or publication, the server also creates a private PDF binary, stores it in Firebase Storage and records its path, filename, size, renderer version and branding snapshot on the report/version record.
+
+The HTML report, browser print document and secure PDF resolve the same saved template order, visibility and shared report-presentation data.
 
 ## Report publication workflow
 
@@ -210,6 +215,6 @@ Phase 6 adds the following optional fields to `monthlyReports`:
 
 All new fields are optional and existing Phase 5 report documents remain compatible. Missing insights and highlights are derived from existing goal, gain and allocation data.
 
-## Known limitation
+## PDF consistency status
 
-The PDF action currently uses the browser's native print-to-PDF capability. A server-side PDF binary generation and Firebase Storage URL can be added later without changing the report data model or visual components.
+The browser A4 document and secure server-generated PDF are aligned for section order, visibility, branding, historical trends, transactions and pagination. Implementation and UAT details are documented in `docs/PDF_CONSISTENCY_PASS.md`.

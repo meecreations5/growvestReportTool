@@ -1,6 +1,8 @@
 import { adminBucket, adminDb, canStaffAccessRecord } from "@/lib/server/firebaseAdmin";
 import { sendTransactionalEmail } from "@/lib/server/brevoMailer";
 import { reportEmailContent } from "@/lib/server/emailTemplates";
+import { getServerEmailTemplate } from "@/lib/server/emailTemplateServer";
+import { DEFAULT_EMAIL_TEMPLATE_ID, SIGNATURE_SOURCES, createEmailTemplateSnapshot } from "@/lib/constants/emailTemplates";
 import { getAdvisorEmailProfile, getServerBranding, getServerCommunicationSettings } from "@/lib/server/settingsServer";
 
 function cleanEmail(value = "") {
@@ -21,6 +23,69 @@ function reportPeriod(report) {
 
 function canSend(actor, report) {
   return canStaffAccessRecord(actor, report);
+}
+
+function reportDeliveryConfig(report = {}) {
+  const delivery = report.templateSnapshot?.delivery || {};
+  return {
+    emailTemplateId: delivery.emailTemplateId || DEFAULT_EMAIL_TEMPLATE_ID,
+    emailTemplateName: delivery.emailTemplateName || "",
+    emailTemplateVersion: Number(delivery.emailTemplateVersion || 1),
+    emailTemplateSnapshot: delivery.emailTemplateSnapshot || null,
+    signatureSource: delivery.signatureSource || SIGNATURE_SOURCES.ASSIGNED_ADVISOR,
+    includeSecureLink: delivery.includeSecureLink !== false,
+    attachPdf: delivery.attachPdf !== false,
+    includeSignature: delivery.includeSignature !== false
+  };
+}
+
+async function resolveDeliveryEmailTemplate({ reportConfig, existing = {}, payload = {} }) {
+  const baselineTemplateId = existing.emailTemplateId || reportConfig.emailTemplateId || DEFAULT_EMAIL_TEMPLATE_ID;
+  const requestedTemplateId = payload.emailTemplateId || baselineTemplateId;
+  const hasDifferentOverride = Boolean(payload.emailTemplateId && payload.emailTemplateId !== baselineTemplateId);
+
+  if (!hasDifferentOverride && existing.emailTemplateSnapshot) {
+    return createEmailTemplateSnapshot({
+      ...existing.emailTemplateSnapshot,
+      id: existing.emailTemplateId || existing.emailTemplateSnapshot.id || requestedTemplateId,
+      name: existing.emailTemplateName || existing.emailTemplateSnapshot.name,
+      version: Number(existing.emailTemplateVersion || existing.emailTemplateSnapshot.version || 1)
+    });
+  }
+
+  if (!hasDifferentOverride && reportConfig.emailTemplateSnapshot) {
+    return createEmailTemplateSnapshot({
+      ...reportConfig.emailTemplateSnapshot,
+      id: reportConfig.emailTemplateId || reportConfig.emailTemplateSnapshot.id || requestedTemplateId,
+      name: reportConfig.emailTemplateName || reportConfig.emailTemplateSnapshot.name,
+      version: Number(reportConfig.emailTemplateVersion || reportConfig.emailTemplateSnapshot.version || 1)
+    });
+  }
+
+  return createEmailTemplateSnapshot(await getServerEmailTemplate(requestedTemplateId));
+}
+
+async function resolveSignatureProfile(report, actor, source) {
+  let uid = report.advisorUid || actor.uid;
+  let fallback = {
+    fullName: report.advisorName || actor.fullName,
+    email: report.advisorEmail || actor.email,
+    designation: report.advisorDesignation || ""
+  };
+
+  if (source === SIGNATURE_SOURCES.REPORT_CREATOR) {
+    uid = report.createdByUid || actor.uid;
+    fallback = { fullName: report.createdByName || actor.fullName, email: actor.email, designation: "" };
+  } else if (source === SIGNATURE_SOURCES.RELATIONSHIP_MANAGER) {
+    uid = report.relationshipManagerUid || report.advisorUid || actor.uid;
+    fallback = {
+      fullName: report.relationshipManagerName || report.advisorName || actor.fullName,
+      email: report.relationshipManagerEmail || report.advisorEmail || actor.email,
+      designation: report.relationshipManagerDesignation || report.advisorDesignation || ""
+    };
+  }
+
+  return getAdvisorEmailProfile(uid, fallback);
 }
 
 async function pdfAttachment(report, attachPdf) {
@@ -56,6 +121,8 @@ export async function createScheduledDelivery({ report, actor, payload }) {
     throw new Error("Choose a future date and time for scheduled delivery.");
   }
   const branding = await getServerBranding();
+  const reportConfig = reportDeliveryConfig(report);
+  const emailTemplate = await resolveDeliveryEmailTemplate({ reportConfig, payload });
   const deliveryRef = adminDb.collection("emailDeliveries").doc();
   const record = {
     reportId: report.id,
@@ -72,9 +139,14 @@ export async function createScheduledDelivery({ report, actor, payload }) {
     recipientEmail,
     cc: cleanList(payload.cc),
     bcc: cleanList(payload.bcc),
-    subject: String(payload.subject || `Your ${branding.companyName || "GrowVest"} Monthly Wealth Report — ${reportPeriod(report)}`).trim(),
-    message: String(payload.message || defaultReportDeliveryMessage(report, branding)).trim(),
-    attachPdf: payload.attachPdf !== false,
+    subject: String(payload.subject || emailTemplate.content?.subject || `Your ${branding.companyName || "GrowVest"} Monthly Wealth Report — ${reportPeriod(report)}`).trim(),
+    message: String(payload.message || emailTemplate.content?.body || defaultReportDeliveryMessage(report, branding)).trim(),
+    emailTemplateId: emailTemplate.id,
+    emailTemplateName: emailTemplate.name,
+    emailTemplateVersion: Number(emailTemplate.version || 1),
+    emailTemplateSnapshot: emailTemplate,
+    signatureSource: payload.signatureSource || reportConfig.signatureSource,
+    attachPdf: payload.attachPdf ?? reportConfig.attachPdf,
     pdfFileName: report.pdfFileName || null,
     advisorUid: report.advisorUid || actor.uid,
     advisorName: report.advisorName || actor.fullName || "",
@@ -108,25 +180,28 @@ export async function sendReportDelivery({ report, actor, payload = {}, delivery
   }
   const branding = await getServerBranding();
   const communicationSettings = await getServerCommunicationSettings();
-  const recipientEmail = cleanEmail(testMode ? actor.email : (payload.recipientEmail || report.investorEmail));
-  if (!recipientEmail) throw new Error(testMode ? "Your staff email address is missing." : "Investor email address is missing.");
-
   const reference = deliveryId
     ? adminDb.collection("emailDeliveries").doc(deliveryId)
     : adminDb.collection("emailDeliveries").doc();
   const snapshot = deliveryId ? await reference.get() : null;
   const existing = snapshot?.exists ? snapshot.data() : {};
-  const subject = String(payload.subject || existing.subject || `Your ${branding.companyName || "GrowVest"} Monthly Wealth Report — ${reportPeriod(report)}`).trim();
-  const message = String(payload.message || existing.message || defaultReportDeliveryMessage(report, branding)).trim();
+  const reportConfig = reportDeliveryConfig(report);
+  const emailTemplate = await resolveDeliveryEmailTemplate({ reportConfig, existing, payload });
+  const loadedEmailTemplate = emailTemplate;
+  const requestedTemplateId = emailTemplate.id || payload.emailTemplateId || existing.emailTemplateId || reportConfig.emailTemplateId;
+  emailTemplate.signature.source = payload.signatureSource || existing.signatureSource || reportConfig.signatureSource || emailTemplate.signature.source;
+  emailTemplate.signature.enabled = reportConfig.includeSignature !== false && emailTemplate.signature.enabled !== false;
+  emailTemplate.delivery.includeSecureLink = reportConfig.includeSecureLink !== false && emailTemplate.delivery.includeSecureLink !== false;
+  const recipientEmail = cleanEmail(testMode ? actor.email : (payload.recipientEmail || report.investorEmail));
+  if (!recipientEmail) throw new Error(testMode ? "Your staff email address is missing." : "Investor email address is missing.");
+
+  const subject = String(payload.subject || existing.subject || "").trim();
+  const message = String(payload.message || existing.message || "").trim();
   const cc = testMode ? [] : cleanList(payload.cc ?? existing.cc);
   const bcc = testMode ? [] : cleanList(payload.bcc ?? existing.bcc);
-  const attachPdf = payload.attachPdf ?? existing.attachPdf ?? true;
+  const attachPdf = payload.attachPdf ?? existing.attachPdf ?? reportConfig.attachPdf ?? emailTemplate.delivery.attachPdf ?? true;
   const viewUrl = `${String(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "")}/investor/reports/${report.id}`;
-  const advisor = await getAdvisorEmailProfile(report.advisorUid, {
-    fullName: report.advisorName || actor.fullName,
-    email: report.advisorEmail || actor.email,
-    designation: report.advisorDesignation || ""
-  });
+  const advisor = await resolveSignatureProfile(report, actor, emailTemplate.signature.source);
   advisor.companyName = branding.companyName;
   advisor.defaultSenderName = communicationSettings.senderName;
   advisor.defaultSenderEmail = communicationSettings.senderEmail;
@@ -134,9 +209,11 @@ export async function sendReportDelivery({ report, actor, payload = {}, delivery
   const content = reportEmailContent(report, viewUrl, {
     branding,
     advisor,
-    subjectOverride: testMode ? `[TEST] ${subject}` : subject,
-    messageOverride: message
+    subjectOverride: subject,
+    messageOverride: message,
+    emailTemplate
   });
+  if (testMode) content.subject = `[TEST] ${content.subject}`;
   const baseRecord = {
     reportId: report.id,
     reportVersionId: report.activePublishedVersionId || null,
@@ -152,10 +229,18 @@ export async function sendReportDelivery({ report, actor, payload = {}, delivery
     recipientEmail,
     cc,
     bcc,
-    subject,
-    message,
+    subject: content.subject,
+    message: message || loadedEmailTemplate.content?.body || defaultReportDeliveryMessage(report, branding),
     htmlPreview: content.html,
     textPreview: content.text,
+    emailTemplateId: loadedEmailTemplate.id || requestedTemplateId,
+    emailTemplateName: loadedEmailTemplate.name || emailTemplate.name,
+    emailTemplateVersion: Number(loadedEmailTemplate.version || emailTemplate.version || 1),
+    emailTemplateSnapshot: content.templateSnapshot || emailTemplate,
+    signatureSource: emailTemplate.signature.source,
+    signatureOwnerUid: advisor.id || null,
+    signatureVersion: Number(advisor.emailSignature?.version || advisor.signatureVersion || 1),
+    signatureSnapshot: advisor.emailSignature || null,
     attachPdf: Boolean(attachPdf),
     pdfFileName: report.pdfFileName || null,
     advisorUid: report.advisorUid || actor.uid,
@@ -219,8 +304,8 @@ export async function sendReportDelivery({ report, actor, payload = {}, delivery
       reportVersionId: report.activePublishedVersionId || null,
       investorId: report.investorId || null,
       advisorUid: report.advisorUid || actor.uid,
-      subject,
-      message,
+      subject: content.subject,
+      message: message || loadedEmailTemplate.content?.body || defaultReportDeliveryMessage(report, branding),
       attachPdf: Boolean(attachPdf),
       pdfFileName: report.pdfFileName || null,
       status,
@@ -267,7 +352,7 @@ export async function sendReportDelivery({ report, actor, payload = {}, delivery
       reportId: report.id,
       investorId: report.investorId || null,
       advisorUid: report.advisorUid || actor.uid,
-      subject,
+      subject: content.subject,
       status: "failed",
       failureReason: failure,
       sentByUid: actor.uid,

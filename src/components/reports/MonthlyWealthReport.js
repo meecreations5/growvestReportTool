@@ -25,6 +25,7 @@ import {
   deriveAdvisorInsights,
   derivePortfolioHealth,
   deriveReportHighlights,
+  deriveReportTransactions,
   goalDisplayStatus,
   goalTone,
   holdingColor,
@@ -38,7 +39,7 @@ import ReportDonutChart from "@/components/reports/ReportDonutChart";
 import { getMonthLabel } from "@/lib/constants/report";
 import { resolveReportTemplate } from "@/lib/constants/reportTemplates";
 import { useBranding } from "@/contexts/BrandingContext";
-import BrandLogo from "@/components/branding/BrandLogo";
+import { resolveReportBranding } from "@/lib/utils/reportBranding";
 
 const toneClasses = {
   success: "border-emerald-100 bg-emerald-50 text-emerald-800",
@@ -46,6 +47,42 @@ const toneClasses = {
   warning: "border-amber-100 bg-amber-50 text-amber-900",
   danger: "border-red-100 bg-red-50 text-red-800"
 };
+
+function templateCoverBackground(appearance = {}, branding = {}) {
+  const primary = appearance.primaryColor || branding.primaryColor || "#1F4ED8";
+  const secondary = appearance.secondaryColor || branding.secondaryColor || "#20B8CD";
+  const dark = appearance.darkColor || branding.darkColor || "#111827";
+
+  if (branding.coverBackgroundUrl) {
+    return `linear-gradient(rgba(11,11,15,.86), rgba(11,11,15,.93)), url(${branding.coverBackgroundUrl})`;
+  }
+
+  switch (appearance.coverStyle) {
+    case "performance-grid":
+      return `linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px), linear-gradient(135deg, ${primary} 0%, ${dark} 76%)`;
+    case "structured-dark":
+      return `linear-gradient(118deg, ${dark} 0%, ${dark} 58%, ${primary} 140%)`;
+    case "compact-gradient":
+      return `linear-gradient(135deg, ${primary} 0%, ${secondary} 145%)`;
+    case "minimal-light":
+      return `linear-gradient(135deg, ${dark} 0%, #334155 100%)`;
+    case "brand-light":
+      return `linear-gradient(135deg, #0F172A 0%, ${primary} 118%)`;
+    case "premium-dark":
+    default:
+      return `radial-gradient(circle at 88% 10%, ${primary}55 0%, transparent 34%), linear-gradient(135deg, ${dark} 0%, #070B14 100%)`;
+  }
+}
+
+
+function ReportBrandMark({ branding, inverse = false, imageClassName = "" }) {
+  const companyName = branding.companyName || "GrowVest";
+  const src = inverse
+    ? (branding.whiteLogoUrl || branding.primaryLogoUrl || branding.iconLogoUrl)
+    : (branding.primaryLogoUrl || branding.iconLogoUrl);
+  if (src) return <img src={src} alt={`${companyName} logo`} className={`block object-contain object-right ${imageClassName}`} />;
+  return <span className="text-lg font-black tracking-tight text-white">{companyName}</span>;
+}
 
 const goalToneClasses = {
   primary: { badge: "bg-blue-50 text-blue-700", bar: "bg-blue-600", value: "text-blue-700" },
@@ -139,7 +176,8 @@ function GoalCard({ goal, listMode = false }) {
 }
 
 export default function MonthlyWealthReport({ report, history = [], viewer = "staff" }) {
-  const { branding } = useBranding();
+  const { branding: liveBranding } = useBranding();
+  const branding = resolveReportBranding(report, liveBranding);
   const [goalSearch, setGoalSearch] = useState("");
   const [goalFilter, setGoalFilter] = useState("All Goals");
   const [goalView, setGoalView] = useState("grid");
@@ -147,13 +185,7 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
   const goals = report.goals || [];
   const allocation = report.allocation || [];
   const funds = report.funds || [];
-  const transactions = funds.flatMap((item, index) => {
-    const date = item.transactionDate || report.statementDate || report.reportMonthKey || "";
-    const rows = [];
-    if (Number(item.investment || 0) > 0) rows.push({ id: `${item.id || index}-investment`, date, type: "Investment", instrumentName: item.instrumentName, amount: Number(item.investment || 0), notes: item.notes || "" });
-    if (Number(item.withdrawal || 0) > 0) rows.push({ id: `${item.id || index}-withdrawal`, date, type: "Withdrawal", instrumentName: item.instrumentName, amount: Number(item.withdrawal || 0), notes: item.notes || "" });
-    return rows;
-  });
+  const transactions = deriveReportTransactions(report);
   const holdings = report.holdings || [];
   const nextSteps = report.nextSteps || [];
   const insights = deriveAdvisorInsights(report);
@@ -196,14 +228,26 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
   const attentionGoals = goals.filter((goal) => goalTone(goal) === "danger").length;
   const onTrackGoals = goals.filter((goal) => ["success", "cyan", "primary"].includes(goalTone(goal))).length;
 
+  const templatePrimary = templateAppearance.primaryColor || branding.primaryColor || "#1F4ED8";
+  const templateSecondary = templateAppearance.secondaryColor || branding.secondaryColor || "#20B8CD";
+
   return (
-    <div className="monthly-wealth-report relative grid gap-6 overflow-hidden">
+    <div
+      className="monthly-wealth-report relative grid gap-6 overflow-hidden"
+      data-report-template={template.id}
+      data-report-template-version={template.version}
+      style={{
+        "--report-primary": templatePrimary,
+        "--report-secondary": templateSecondary,
+        "--report-dark": templateAppearance.darkColor || branding.darkColor || "#111827"
+      }}
+    >
       {branding.watermarkUrl ? <img src={branding.watermarkUrl} alt="" aria-hidden="true" style={{ opacity: Math.min(0.15, Math.max(0, Number(branding.watermarkOpacity || 4) / 100)) }} className="pointer-events-none absolute left-1/2 top-[42%] z-0 max-h-[520px] max-w-[70%] -translate-x-1/2 -translate-y-1/2 object-contain" /> : null}
       <section id="report-overview" style={{
         ...sectionStyle("cover"),
         backgroundColor: templateAppearance.darkColor || branding.darkColor || "#111827",
-        backgroundImage: branding.coverBackgroundUrl ? `linear-gradient(rgba(11,11,15,.88), rgba(11,11,15,.92)), url(${branding.coverBackgroundUrl})` : undefined,
-        backgroundSize: "cover",
+        backgroundImage: templateCoverBackground(templateAppearance, branding),
+        backgroundSize: templateAppearance.coverStyle === "performance-grid" && !branding.coverBackgroundUrl ? "32px 32px, 32px 32px, cover" : "cover",
         backgroundPosition: "center"
       }} className={`scroll-mt-32 relative z-[1] overflow-hidden rounded-2xl p-5 text-white shadow-sm sm:p-7 lg:p-8 ${sectionVisible("cover") ? "" : "hidden"}`}>
         <div className="pointer-events-none absolute -right-28 -top-52 h-[480px] w-[620px] rounded-full border border-cyan-400/10" />
@@ -214,26 +258,13 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
 
           {templateDocument.showLogo !== false ? <div className="shrink-0">
             {hasInverseLogo ? (
-              <BrandLogo
-                variant="wide"
-                inverse
-                className="justify-end"
-                imageClassName="max-h-8 max-w-[145px] object-right sm:max-h-9 sm:max-w-[165px]"
-              />
+              <ReportBrandMark branding={branding} inverse imageClassName="max-h-8 max-w-[145px] sm:max-h-9 sm:max-w-[165px]" />
             ) : branding.primaryLogoUrl ? (
               <div className="rounded-xl bg-white px-3 py-2 shadow-sm">
-                <BrandLogo
-                  variant="wide"
-                  imageClassName="max-h-7 max-w-[135px] object-right sm:max-h-8 sm:max-w-[155px]"
-                />
+                <ReportBrandMark branding={branding} imageClassName="max-h-7 max-w-[135px] sm:max-h-8 sm:max-w-[155px]" />
               </div>
             ) : (
-              <BrandLogo
-                variant="wide"
-                inverse
-                className="justify-end"
-                imageClassName="max-h-8 max-w-[145px] object-right"
-              />
+              <ReportBrandMark branding={branding} inverse imageClassName="max-h-8 max-w-[145px]" />
             )}
           </div> : null}
         </div>
@@ -241,7 +272,7 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
         <div className={`relative z-10 mt-7 grid gap-7 lg:items-end xl:gap-9 ${templateAppearance.advisorCardVisible === false ? "" : "lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_320px]"}`}>
           <div className="min-w-0">
             <div className="flex items-start gap-4">
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#1F4ED8] text-lg font-black text-white shadow-[0_8px_24px_rgba(31,78,216,0.28)]">
+              <span style={{ backgroundColor: templatePrimary }} className="grid h-12 w-12 shrink-0 place-items-center rounded-full text-lg font-black text-white shadow-[0_8px_24px_rgba(31,78,216,0.28)]">
                 {initials(report.investorName)}
               </span>
 
@@ -278,7 +309,7 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-400 sm:text-xs">Your Advisor</p>
 
             <div className="mt-3 flex items-center gap-3">
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#1F4ED8] text-sm font-black text-white">
+              <span style={{ backgroundColor: templatePrimary }} className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-sm font-black text-white">
                 {initials(report.advisorName)}
               </span>
               <div className="min-w-0">

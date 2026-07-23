@@ -18,6 +18,10 @@ export const DEFAULT_BRANDING = {
   brandPositioning: "Your Conscious Wealth Partner",
   documentFooterTagline: "Grow and Invest with Us",
   iconLogoUrl: "",
+  pwaIcon192Url: "",
+  pwaIcon512Url: "",
+  pwaMaskableIconUrl: "",
+  pwaAppleTouchIconUrl: "",
   primaryLogoUrl: "",
   whiteLogoUrl: "",
   emailLogoUrl: "",
@@ -129,6 +133,10 @@ export const DEFAULT_SYSTEM_SETTINGS = {
 export function normaliseBranding(value = {}) {
   const branding = { ...DEFAULT_BRANDING, ...(value || {}) };
   branding.iconLogoUrl = branding.iconLogoUrl || branding.logoUrl || "";
+  branding.pwaIcon512Url = branding.pwaIcon512Url || branding.pwaIconUrl || "";
+  branding.pwaIcon192Url = branding.pwaIcon192Url || branding.pwaIcon512Url || "";
+  branding.pwaMaskableIconUrl = branding.pwaMaskableIconUrl || "";
+  branding.pwaAppleTouchIconUrl = branding.pwaAppleTouchIconUrl || branding.pwaIcon512Url || branding.pwaIcon192Url || "";
   branding.primaryLogoUrl = branding.primaryLogoUrl || branding.logoUrl || "";
   branding.whiteLogoUrl = branding.whiteLogoUrl || "";
   branding.emailLogoUrl = branding.emailLogoUrl || branding.primaryLogoUrl || branding.logoUrl || "";

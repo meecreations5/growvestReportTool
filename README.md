@@ -4,6 +4,49 @@ Standalone Next.js application for GrowVest lead management, investor onboarding
 
 ## Current implementation
 
+## Version 0.25.2 — Report Template Application & PDF Refresh Fix
+
+- Changing the template while editing an existing report now applies the selected active template version to the working report snapshot
+- Existing generated PDF metadata is invalidated whenever report content or the report template changes
+- Staff PDF download now uses the current working report PDF instead of silently falling back to the older published version
+- Investor PDF access continues to use the immutable active published version
+- Template cards show active and applied version numbers, including an **Apply latest version** state
+- Added **Save & preview report** from the report-template step
+- HTML report covers now visibly reflect template cover style and template colours
+- Working report and A4 preview display the applied template name and version
+- Added a stale-PDF warning with a direct **Regenerate PDF** action
+- Copy-next-month flows no longer carry old publication or PDF metadata into the new report
+
+See `docs/REPORT_TEMPLATE_APPLICATION_FIX.md` for the corrected workflow and UAT checklist.
+
+## Version 0.25.1 — Configurable PWA App Icon
+
+- Dedicated **PWA / home-screen app icon** uploader in Settings → Branding → Logo & assets
+- One upload automatically generates 192px, 512px and 180px Apple touch variants
+- Optional Android maskable-icon upload with adaptive-crop guidance
+- Published branding drives the live web app manifest, install prompt and home-screen icon
+- App name, theme colour and background colour in the manifest follow published branding
+- Existing application UI icon remains separate for favicon, sidebar and compact product identity
+- Dynamic Apple touch icon and manifest cache-busting follow branding version updates
+
+See `docs/PWA_BRANDING_ICON_SETTINGS.md` for deployment and UAT guidance.
+
+## Version 0.25.0 — Investor PWA, Mobile App Shell & In-App Notifications
+
+- Installable GrowVest Investor Progressive Web App with manifest, app icons and standalone display
+- Root service worker with static-asset caching and a secure offline fallback
+- No Firestore, API or financial-response caching
+- Mobile app bar, five-item bottom navigation and app-style More sheet
+- Dedicated `/investor/notifications` centre with All/Unread filters and read controls
+- Live notification toast banners and unread badges in mobile and desktop navigation
+- Per-device in-app and browser-alert preferences
+- Install, offline and application-update prompts
+- More prominent mobile Investor sign-in experience with Mobile OTP as the primary journey
+- Existing Username/Password, Mobile OTP and Google authentication preserved
+- Full closed-app web push remains a separate Firebase Cloud Messaging step
+
+See `docs/PWA_INVESTOR_APP_AND_IN_APP_NOTIFICATIONS.md` for deployment and UAT guidance.
+
 ### Report Template Library
 
 - New `/report-templates` module for staff
@@ -87,8 +130,8 @@ Standalone Next.js application for GrowVest lead management, investor onboarding
 - Searchable/filterable Bucket List goal cards
 - Asset allocation and fund-wise CSV exports
 - Advisor-recommended actions and next-review calendar download
-- Dedicated multi-page A4 print layout with dynamic goal and fund pagination
-- Browser Print / Save-as-PDF workflow using the same report data
+- Dedicated multi-page A4 layout with dynamic goal, allocation, holding, transaction, action and disclaimer pagination
+- Browser print and secure server-generated PDF outputs use the same template snapshot, branding snapshot and shared report derivations
 - Publish/unpublish control for the Investor Portal
 - Investor in-app notification and Brevo publication email
 - Manual WhatsApp click-to-chat for published reports
@@ -215,6 +258,17 @@ firebase deploy --only firestore:indexes
 firebase deploy --only storage
 ```
 
+## Version 0.24.0 — Email Template Customisation & Report Assignment
+
+- Adds `/email-delivery/templates` with a responsive email-template library and structured editor.
+- Customises report-email content, subject, preheader, heading, CTA and legal footer using supported merge fields.
+- Configures header background, logo presentation, coloured divider line, canvas, typography and CTA styling.
+- Integrates assigned Advisor, report creator, relationship manager or company-default published signatures.
+- Controls signature logo, icon, designation, phone, WhatsApp, address, website, social profiles and footer taglines.
+- Assigns an active email-template version to every report template, including secure-link, PDF-attachment and signature defaults.
+- Stores email-template, report-template, branding and signature snapshots in report delivery history for historical consistency.
+- Adds desktop/mobile live preview, draft activation, version history and Send Test integration through Email & Delivery.
+
 ## Version 0.22.1
 
 Adds a separate **Email signature icon logo** asset in Branding -> Logo & assets. The dedicated icon is used in the top-right of desktop and mobile staff signatures, with backward-compatible fallbacks to the PDF footer symbol or app icon.
@@ -237,6 +291,7 @@ docs/PHASE_6_BRANDED_REPORT_AND_PDF.md
 docs/PHASE_6_CODE_MANIFEST.md
 docs/PHASE_7_INVESTOR_PORTAL_SECURE_PUBLISHING.md
 docs/PHASE_7_GAP_CLOSURE.md
+docs/PDF_CONSISTENCY_PASS.md
 docs/UI_UX_REPORT_TEMPLATE_LIBRARY.md
 ```
 
@@ -246,7 +301,7 @@ There are no hardcoded login credentials. Staff use Microsoft 365. The Super Adm
 
 - Automatic WhatsApp API and background browser push are not included; WhatsApp uses manual click-to-chat.
 - Microsoft Graph and Google Calendar API integrations are intentionally deferred; meeting links are entered manually.
-- The server-generated PDF uses a dedicated branded data layout. The browser print layout remains available for the richer chart-heavy visual version.
+
 ## Phase 3.1 — Multiple Investment Preferences
 
 Client assessments and investor profiles support multiple contribution preference plans. Existing single-preference records remain compatible and are migrated to the array structure when next saved.
@@ -271,6 +326,11 @@ Routes: `/market-commentary`, `/market-commentary/create`, and `/market-commenta
 
 The report delivery workspace is available at `/email-delivery`. It supports report email composition, PDF attachments, test emails, scheduled delivery, retry history and Brevo delivery-event tracking. See `docs/EMAIL_DELIVERY_CENTRE.md` for webhook, cron and environment configuration.
 
+
+
+## Version 0.23.0
+
+Completes the Monthly Report PDF consistency pass. HTML report, browser A4 preview and secure server PDF now share saved template order/visibility, branding snapshots, historical trends, derived highlights and transactions. Full allocation, holdings, actions and disclaimer data paginate safely with repeated headers and continuation pages. See `docs/PDF_CONSISTENCY_PASS.md`.
 
 ## Version 0.22.2
 

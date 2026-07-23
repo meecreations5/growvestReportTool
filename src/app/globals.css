@@ -126,11 +126,15 @@ img { max-width: 100%; }
   position: relative;
   width: 210mm;
   min-height: 297mm;
+  height: 297mm;
   margin: 0 auto 24px;
   overflow: hidden;
+  box-sizing: border-box;
   background: #fff;
   color: #0b0f19;
-  padding: 14mm 14mm 18mm;
+  padding: 14mm 14mm 20mm;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
   box-shadow: 0 16px 50px rgba(15, 23, 42, 0.12);
   break-after: page;
   page-break-after: always;
@@ -141,27 +145,28 @@ img { max-width: 100%; }
 .report-print-logo span { color: #1db7cf; }
 .report-print-brand-line { height: 4px; margin-top: 8px; background: linear-gradient(90deg, #1f4ed8 0 62%, #1db7cf 62% 100%); }
 .report-print-title { display: flex; align-items: center; gap: 12px; margin: 18px 0 0; font-size: 24px; line-height: 1.2; font-weight: 950; letter-spacing: .01em; }
-.report-print-title > span { width: 26px; height: 4px; background: #1f4ed8; }
-.report-print-content { padding: 16px 0 28px; }
+.report-print-title > span { width: 26px; height: 4px; background: var(--report-primary, #1f4ed8); }
+.report-print-content { padding: 16px 0 28px; overflow: hidden; }
 .report-print-footer { position: absolute; left: 14mm; right: 14mm; bottom: 8mm; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; border-top: 1px solid #e5e7eb; padding-top: 8px; color: #7b8494; font-size: 9px; line-height: 1.55; }
 .report-cover { min-height: 235mm; display: flex; flex-direction: column; justify-content: center; }
-.report-cover-kicker { color: #1f4ed8; font-size: 14px; font-weight: 900; letter-spacing: .34em; }
+.report-cover-kicker { color: var(--report-primary, #1f4ed8); font-size: 14px; font-weight: 900; letter-spacing: .34em; }
 .report-cover h1 { margin: 18px 0 0; font-size: 88px; line-height: .88; font-weight: 950; letter-spacing: -.07em; }
 .report-cover-subtitle { margin-top: 34px; color: #5d6573; font-size: 19px; font-style: italic; }
 .report-cover-date { margin-top: 7px; color: #8b93a0; font-size: 12px; }
+.report-cover-confidential { align-self: flex-end; margin-bottom: 16px; border: 1px solid #e1e5ec; border-radius: 999px; background: rgba(244,246,249,.9); padding: 6px 10px; color: #697386; font-size: 8px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .report-cover-people { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 34px; }
 .report-cover-people > div { border: 1px solid #dfe5ef; border-radius: 18px; background: #f6f8fc; padding: 20px; }
 .report-cover-people > div > p { margin-bottom: 14px; color: #9aa2b0; font-size: 10px; font-weight: 800; letter-spacing: .22em; }
 .report-cover-people strong { display: block; font-size: 18px; }
 .report-cover-people span:not(.report-avatar) { display: block; margin-top: 3px; color: #7b8494; font-size: 11px; }
 .report-avatar { display: grid; width: 44px; height: 44px; place-items: center; border-radius: 999px; color: #fff; font-weight: 900; }
-.report-avatar.is-dark { background: #0b0f19; }
-.report-avatar.is-blue { background: linear-gradient(135deg, #1f4ed8, #1db7cf); }
+.report-avatar.is-dark { background: var(--report-dark, #0b0f19); }
+.report-avatar.is-blue { background: linear-gradient(135deg, var(--report-primary, #1f4ed8), var(--report-secondary, #1db7cf)); }
 .report-cover-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 22px; }
-.report-cover-summary > div { border-radius: 14px; background: #101827; padding: 15px; color: #fff; }
+.report-cover-summary > div { border-radius: 14px; background: var(--report-dark, #101827); padding: 15px; color: #fff; }
 .report-cover-summary span { display: block; color: #aab3c1; font-size: 9px; letter-spacing: .08em; }
 .report-cover-summary strong { display: block; margin-top: 6px; font-size: 18px; }
-.report-dark-kpi { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; border-radius: 20px; background: #0d0d13; padding: 25px; color: #fff; }
+.report-dark-kpi { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; border-radius: 20px; background: var(--report-dark, #0d0d13); padding: 25px; color: #fff; }
 .report-dark-kpi p { color: #a7b0bf; font-size: 10px; letter-spacing: .16em; }
 .report-dark-kpi strong { display: block; margin-top: 7px; font-size: 38px; line-height: 1; }
 .report-dark-kpi span { display: block; margin-top: 8px; color: #c2c8d2; font-size: 11px; }
@@ -169,8 +174,8 @@ img { max-width: 100%; }
 .report-stat > span, .report-panel > h3 { color: #697386; font-size: 10px; font-weight: 900; letter-spacing: .11em; }
 .report-stat > strong { display: block; margin-top: 10px; font-size: 23px; }
 .report-stat > p { margin-top: 4px; color: #8992a0; font-size: 10px; }
-.report-advisor-note { border-radius: 18px; background: #152238; padding: 24px; color: #fff; }
-.report-advisor-note > p { color: #20b8cd; font-size: 10px; font-weight: 900; letter-spacing: .16em; }
+.report-advisor-note { border-radius: 18px; background: var(--report-dark, #152238); padding: 24px; color: #fff; }
+.report-advisor-note > p { color: var(--report-secondary, #20b8cd); font-size: 10px; font-weight: 900; letter-spacing: .16em; }
 .report-advisor-note blockquote { margin: 14px 0 0; font-size: 20px; line-height: 1.55; }
 .report-advisor-note strong, .report-advisor-note span { display: block; }
 .report-advisor-note span { margin-top: 2px; color: #aab3c1; font-size: 10px; }
@@ -186,21 +191,23 @@ img { max-width: 100%; }
 .report-goal-card.is-attention { border-color: #efb3b3; }
 .report-goal-card h3 { font-size: 15px; font-weight: 900; }
 .report-goal-card p { color: #7c8594; font-size: 10px; }
-.report-pill { border-radius: 999px; background: #edf2ff; padding: 5px 8px; color: #1f4ed8; font-size: 9px; font-weight: 900; }
+.report-pill { border-radius: 999px; background: #edf2ff; padding: 5px 8px; color: var(--report-primary, #1f4ed8); font-size: 9px; font-weight: 900; }
 .report-goal-card.is-attention .report-pill { background: #fff0f0; color: #d13a3a; }
 .report-goal-card span:not(.report-pill) { display: block; color: #9aa2b0; font-size: 8px; font-weight: 800; }
 .report-goal-card .grid strong { display: block; margin-top: 3px; font-size: 11px; }
 .report-health-stat { border-radius: 14px; background: #f5f7fb; padding: 13px; text-align: center; }
 .report-health-stat span { display: block; color: #8b94a3; font-size: 9px; }
 .report-health-stat strong { display: block; margin-top: 5px; font-size: 12px; }
-.monthly-report-print-document table { border-collapse: collapse; }
-.monthly-report-print-document th { padding: 10px 11px; font-size: 9px; letter-spacing: .03em; }
-.monthly-report-print-document td { border-bottom: 1px solid #edf0f5; padding: 10px 11px; font-size: 9.5px; }
+.monthly-report-print-document table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.monthly-report-print-document th { padding: 9px 8px; font-size: 8px; line-height: 1.25; letter-spacing: .02em; vertical-align: middle; }
+.monthly-report-print-document td { border-bottom: 1px solid #edf0f5; padding: 9px 8px; font-size: 8.5px; line-height: 1.35; vertical-align: middle; overflow-wrap: anywhere; word-break: normal; }
+.monthly-report-print-document tr { break-inside: avoid; page-break-inside: avoid; }
+.report-table-wrap { break-inside: avoid; page-break-inside: avoid; }
 
 @media print {
   html, body { width: 210mm; background: #fff !important; }
   .monthly-report-print-document { padding: 0 !important; background: #fff !important; }
-  .report-print-page { width: 210mm; min-height: 297mm; margin: 0 !important; box-shadow: none !important; }
+  .report-print-page { width: 210mm; min-height: 297mm; height: 297mm; margin: 0 !important; box-shadow: none !important; }
   .monthly-report-print-toolbar { display: none !important; }
   @page { size: A4 portrait; margin: 0; }
 }
@@ -326,4 +333,17 @@ img { max-width: 100%; }
   border-radius: 999px;
   background: #1f4ed8;
   transition: width 200ms ease;
+}
+
+/* GrowVest Investor PWA and mobile-app shell */
+html, body { overscroll-behavior-y: none; }
+
+@media (display-mode: standalone) {
+  html { background: var(--gv-blue); }
+  body { min-height: 100dvh; }
+}
+
+@media (max-width: 639px) {
+  .gv-page-stack { gap: 1rem; }
+  .gv-card, .gv-card-flat { border-radius: 1.25rem; }
 }

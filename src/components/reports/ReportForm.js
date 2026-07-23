@@ -48,6 +48,7 @@ import {
   createReportTemplateSnapshot,
   getSystemReportTemplate
 } from "@/lib/constants/reportTemplates";
+import { SIGNATURE_SOURCE_LABELS } from "@/lib/constants/emailTemplates";
 import { Field, inputClassName } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -318,6 +319,20 @@ export default function ReportForm({ reportId = null }) {
               title: `Monthly Portfolio Report — ${getMonthLabel(period.month)} ${period.year}`,
               status: "draft",
               investorVisible: false,
+              publicationStatus: "internal",
+              activePublishedVersionId: null,
+              publishedVersion: 0,
+              publishedSourceVersion: null,
+              publishedAt: null,
+              pdfStoragePath: null,
+              pdfFileName: null,
+              pdfSizeBytes: null,
+              pdfVersion: null,
+              pdfGeneratedAt: null,
+              pdfRendererVersion: null,
+              pdfIsStale: false,
+              pdfInvalidatedAt: null,
+              pdfInvalidationReason: null,
               sourceReportId: source.id,
               sourceReportMonthKey: source.reportMonthKey,
               createdAt: undefined,
@@ -699,13 +714,25 @@ export default function ReportForm({ reportId = null }) {
 
   function selectReportTemplate(template) {
     if (!template) return;
-    setForm((current) => ({
-      ...current,
-      templateId: template.id,
-      templateVersion: Number(template.version || 1),
-      templateSnapshot: createReportTemplateSnapshot(template)
-    }));
-    setSuccess(`${template.name} selected for the HTML report and secure PDF.`);
+    setError("");
+    setForm((current) => {
+      const hadGeneratedOrPublishedPdf = Boolean(current.pdfStoragePath || current.activePublishedVersionId);
+      return {
+        ...current,
+        templateId: template.id,
+        templateVersion: Number(template.version || 1),
+        templateSnapshot: createReportTemplateSnapshot(template),
+        pdfStoragePath: null,
+        pdfFileName: null,
+        pdfSizeBytes: null,
+        pdfVersion: null,
+        pdfGeneratedAt: null,
+        pdfRendererVersion: null,
+        pdfIsStale: hadGeneratedOrPublishedPdf,
+        pdfInvalidationReason: hadGeneratedOrPublishedPdf ? "report_template_changed" : null
+      };
+    });
+    setSuccess(`${template.name} version ${Number(template.version || 1)} applied to this working report. The HTML preview will update after autosave${workingReportId ? "; regenerate the PDF before delivery" : ""}.`);
   }
 
   async function copyLatestReport() {
@@ -741,6 +768,20 @@ export default function ReportForm({ reportId = null }) {
         title: `Monthly Portfolio Report — ${getMonthLabel(current.reportMonth)} ${current.reportYear}`,
         status: "draft",
         investorVisible: false,
+        publicationStatus: "internal",
+        activePublishedVersionId: null,
+        publishedVersion: 0,
+        publishedSourceVersion: null,
+        publishedAt: null,
+        pdfStoragePath: null,
+        pdfFileName: null,
+        pdfSizeBytes: null,
+        pdfVersion: null,
+        pdfGeneratedAt: null,
+        pdfRendererVersion: null,
+        pdfIsStale: false,
+        pdfInvalidatedAt: null,
+        pdfInvalidationReason: null,
         sourceReportId: source.id,
         sourceReportMonthKey: source.reportMonthKey,
         createdAt: undefined,
@@ -755,7 +796,7 @@ export default function ReportForm({ reportId = null }) {
   }
 
   async function handleSave(complete = false, options = {}) {
-    const { silent = false, autosave = false } = options;
+    const { silent = false, autosave = false, redirectToPreview = false } = options;
     if (isLocked || saving) return;
 
     setSaving(true);
@@ -811,11 +852,12 @@ export default function ReportForm({ reportId = null }) {
       setSaveState("saved");
       setLastSavedAt(new Date());
       formSignatureRef.current = JSON.stringify(form);
-      if (complete) {
+      if (complete || redirectToPreview) {
         router.push(`/reports/${saved.id}`);
       } else if (!existingWorkingId) {
         router.replace(`/reports/${saved.id}/edit?step=${activeStep}`);
       }
+      return saved;
     } catch (nextError) {
       console.error(nextError);
       if (!silent) setError(nextError.message || "Unable to save the monthly report.");
@@ -1119,6 +1161,7 @@ export default function ReportForm({ reportId = null }) {
                 <ReportTemplateSelectionStep
                   templates={reportTemplates}
                   selectedTemplateId={form.templateId}
+                  selectedTemplateVersion={form.templateVersion || form.templateSnapshot?.version}
                   onSelect={selectReportTemplate}
                   disabled={isLocked}
                 />
@@ -1129,8 +1172,12 @@ export default function ReportForm({ reportId = null }) {
                         <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">Selected output</p>
                         <h3 className="mt-1 font-heading text-lg font-bold text-blue-950">{form.templateSnapshot.name}</h3>
                         <p className="mt-1 text-sm text-blue-800">Version {form.templateVersion || form.templateSnapshot.version || 1} · {form.templateSnapshot.estimatedPages || "6–9 pages"} · {form.templateSnapshot.sectionOrder.filter((key) => form.templateSnapshot.sectionVisibility?.[key] !== false).length} visible sections</p>
+                        <p className="mt-1 text-xs font-semibold text-blue-700">Email: {form.templateSnapshot.delivery?.emailTemplateName || "Monthly Report Ready — Premium"} · {SIGNATURE_SOURCE_LABELS[form.templateSnapshot.delivery?.signatureSource] || "Assigned Advisor's published signature"}</p>
                       </div>
-                      <a href={`/report-templates/${form.templateId}`} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-700"><Eye size={16} /> Preview template</a>
+                      <div className="flex flex-wrap gap-2">
+                        <a href={`/report-templates/${form.templateId}`} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-700"><Eye size={16} /> Preview template</a>
+                        {workingReportId ? <button type="button" onClick={() => handleSave(false, { redirectToPreview: true })} disabled={saving || isLocked} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"><Eye size={16} /> Save & preview report</button> : null}
+                      </div>
                     </div>
                   </section>
                 ) : null}

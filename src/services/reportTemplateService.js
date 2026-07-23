@@ -46,6 +46,10 @@ function mergeTemplates(remoteTemplates = []) {
       sectionVisibility: {
         ...(base?.sectionVisibility || {}),
         ...(item.sectionVisibility || {})
+      },
+      delivery: {
+        ...(base?.delivery || {}),
+        ...(item.delivery || {})
       }
     });
   });
@@ -133,7 +137,8 @@ export async function getReportTemplate(templateId) {
       ...(base || {}),
       ...remote,
       appearance: { ...(base?.appearance || {}), ...(remote.appearance || {}) },
-      sectionVisibility: { ...(base?.sectionVisibility || {}), ...(remote.sectionVisibility || {}) }
+      sectionVisibility: { ...(base?.sectionVisibility || {}), ...(remote.sectionVisibility || {}) },
+      delivery: { ...(base?.delivery || {}), ...(remote.delivery || {}) }
     };
   }
 
@@ -167,6 +172,10 @@ export async function getReportTemplateForEditing(templateId) {
     sectionVisibility: {
       ...(template.sectionVisibility || {}),
       ...(draft.sectionVisibility || {})
+    },
+    delivery: {
+      ...(template.delivery || {}),
+      ...(draft.delivery || {})
     }
   };
 }
@@ -272,6 +281,16 @@ function editableTemplatePayload(templateValue, currentUser) {
         disclaimerStyle: templateValue.appearance?.document?.disclaimerStyle || "standard"
       }
     },
+    delivery: {
+      emailTemplateId: templateValue.delivery?.emailTemplateId || "monthly-report-ready-premium",
+      emailTemplateName: templateValue.delivery?.emailTemplateName || "Monthly Report Ready — Premium",
+      emailTemplateVersion: Number(templateValue.delivery?.emailTemplateVersion || 1),
+      emailTemplateSnapshot: templateValue.delivery?.emailTemplateSnapshot || null,
+      signatureSource: templateValue.delivery?.signatureSource || "assigned_advisor",
+      includeSecureLink: templateValue.delivery?.includeSecureLink !== false,
+      attachPdf: templateValue.delivery?.attachPdf !== false,
+      includeSignature: templateValue.delivery?.includeSignature !== false
+    },
     updatedAt: serverTimestamp(),
     updatedByUid: currentUser.id,
     updatedByName: currentUser.fullName || currentUser.email || "GrowVest User"
@@ -359,6 +378,7 @@ export async function activateReportTemplate(templateId, templateValue, currentU
     sectionOrder: payload.sectionOrder,
     sectionVisibility: payload.sectionVisibility,
     appearance: payload.appearance,
+    delivery: payload.delivery,
     status: TEMPLATE_STATUS.ACTIVE,
     createdAt: activatedAt,
     createdByUid: currentUser.id,

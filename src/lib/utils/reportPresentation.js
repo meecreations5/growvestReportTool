@@ -210,3 +210,44 @@ export function reportWhatsAppMessage(report = {}, viewUrl = "") {
     "GrowVest"
   ].join("\n");
 }
+
+export function deriveReportTransactions(report = {}) {
+  if (Array.isArray(report.transactions) && report.transactions.length) {
+    return report.transactions
+      .map((item, index) => ({
+        id: item.id || `transaction-${index + 1}`,
+        date: item.date || item.transactionDate || report.statementDate || report.reportMonthKey || "",
+        type: item.type || item.transactionType || "Investment",
+        instrumentName: item.instrumentName || item.instrument || item.fundName || "Portfolio transaction",
+        amount: Number(item.amount || item.value || 0),
+        notes: item.notes || item.description || ""
+      }))
+      .filter((item) => item.amount !== 0 || item.instrumentName || item.notes);
+  }
+
+  return (report.funds || []).flatMap((item, index) => {
+    const date = item.transactionDate || report.statementDate || report.reportMonthKey || "";
+    const rows = [];
+    if (Number(item.investment || 0) > 0) {
+      rows.push({
+        id: `${item.id || index}-investment`,
+        date,
+        type: "Investment",
+        instrumentName: item.instrumentName,
+        amount: Number(item.investment || 0),
+        notes: item.notes || ""
+      });
+    }
+    if (Number(item.withdrawal || 0) > 0) {
+      rows.push({
+        id: `${item.id || index}-withdrawal`,
+        date,
+        type: "Withdrawal",
+        instrumentName: item.instrumentName,
+        amount: Number(item.withdrawal || 0),
+        notes: item.notes || ""
+      });
+    }
+    return rows;
+  });
+}

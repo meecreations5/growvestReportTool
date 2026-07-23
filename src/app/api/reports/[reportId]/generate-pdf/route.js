@@ -17,9 +17,15 @@ export async function POST(request, { params }) {
     const pdf = await createAndUploadReportPdf(report, {
       reportId,
       publishedVersion: report.version || 1,
-      versionId: report.activePublishedVersionId || null
+      versionId: null
     });
-    await adminDb.collection("monthlyReports").doc(reportId).set({ ...pdf, updatedAt: new Date() }, { merge: true });
+    await adminDb.collection("monthlyReports").doc(reportId).set({
+      ...pdf,
+      pdfIsStale: false,
+      pdfInvalidatedAt: null,
+      pdfInvalidationReason: null,
+      updatedAt: new Date()
+    }, { merge: true });
     await adminDb.collection("activityLogs").add({
       recordType: "monthly_report",
       recordId: reportId,

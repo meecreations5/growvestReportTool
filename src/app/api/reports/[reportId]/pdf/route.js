@@ -21,7 +21,9 @@ export async function GET(request, { params }) {
     if (accessType === "investor" && requestedVersionId && requestedVersionId !== report.activePublishedVersionId) {
       return NextResponse.json({ error: "Only the active published report version is available." }, { status: 403 });
     }
-    const source = accessType === "investor" ? version : (requestedVersion || version || report);
+    const source = accessType === "investor"
+      ? version
+      : (requestedVersion || report);
     if (!source?.pdfStoragePath) return NextResponse.json({ error: "The final PDF has not been generated yet." }, { status: 404 });
 
     const [buffer] = await adminBucket.file(source.pdfStoragePath).download();

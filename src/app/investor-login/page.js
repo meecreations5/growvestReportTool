@@ -247,10 +247,27 @@ export default function InvestorLoginPage() {
   }
 
   return (
-    <main className="min-h-[100dvh] bg-white lg:grid lg:grid-cols-[minmax(420px,0.88fr)_minmax(620px,1.12fr)]">
-      <section className="flex min-h-[100dvh] flex-col bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-6 sm:bg-[var(--gv-surface)] sm:px-8 sm:py-10 lg:justify-center">
-        <div className="mx-auto w-full max-w-[460px] sm:rounded-[28px] sm:border sm:border-slate-200 sm:bg-white sm:p-9 sm:shadow-[var(--gv-shadow-card)]">
-          <div className="flex items-center justify-between gap-4">
+    <main className="min-h-[100dvh] bg-[var(--gv-ink)] lg:grid lg:grid-cols-[minmax(420px,0.88fr)_minmax(620px,1.12fr)]">
+      <section className="min-h-[100dvh] bg-white lg:flex lg:flex-col lg:justify-center lg:bg-[var(--gv-surface)] lg:px-8 lg:py-10">
+        <div className="relative overflow-hidden bg-[linear-gradient(145deg,#0b0b0f_0%,#13224d_56%,var(--gv-blue)_100%)] px-5 pb-20 pt-[max(1.25rem,env(safe-area-inset-top))] text-white sm:px-8 lg:hidden">
+          <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full border border-white/10" />
+          <div className="absolute -right-4 top-10 h-48 w-48 rounded-full border border-cyan-300/20" />
+          <div className="relative flex items-center justify-between gap-3">
+            <div className="rounded-2xl bg-white px-3.5 py-2.5 shadow-xl"><BrandLogo variant="wide" className="max-w-[165px]" /></div>
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-cyan-100">Investor App</span>
+          </div>
+          <div className="relative mt-9 max-w-md">
+            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-200">Secure wealth access</p>
+            <h1 className="mt-3 font-heading text-[2.55rem] font-bold leading-[0.98] tracking-[-0.045em] text-white sm:text-5xl">Your wealth journey, always within reach.</h1>
+            <p className="mt-4 max-w-sm text-sm leading-6 text-blue-100">Open reports, goals, meetings, documents and investor updates from one private mobile workspace.</p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              {["Bank-grade sign-in", "Live app alerts", "Advisor guided"].map((item) => <span key={item} className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-bold text-white"><CheckCircle2 size={13} className="text-cyan-200" /> {item}</span>)}
+            </div>
+          </div>
+        </div>
+
+        <div className="relative z-10 -mt-10 rounded-t-[32px] bg-white px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6 shadow-[0_-20px_60px_rgba(11,11,15,.16)] sm:mx-auto sm:-mt-12 sm:w-[calc(100%-3rem)] sm:max-w-[500px] sm:rounded-[30px] sm:px-8 sm:pb-8 lg:mt-0 lg:w-full lg:max-w-[460px] lg:rounded-[28px] lg:border lg:border-slate-200 lg:p-9 lg:shadow-[var(--gv-shadow-card)]">
+          <div className="hidden items-center justify-between gap-4 lg:flex">
             <BrandLogo variant="wide" className="max-w-[210px]" />
             <div className="border-l border-slate-200 pl-4 text-right">
               <p className="font-heading text-sm">Investor Portal</p>
@@ -258,13 +275,13 @@ export default function InvestorLoginPage() {
             </div>
           </div>
 
-          <div className="mt-9">
+          <div className="lg:mt-9">
             <p className="gv-eyebrow">Welcome back</p>
-            <h1 className="font-heading mt-1 text-[2.15rem] leading-[1.05] sm:text-[2.45rem]">Access your wealth journey securely.</h1>
-            <p className="mt-3 text-sm leading-6 text-slate-500">Review published reports, Bucket List goals and upcoming reviews.</p>
+            <h2 className="mt-1 font-heading text-[2rem] font-bold leading-[1.03] text-slate-950 sm:text-[2.3rem] lg:text-[2.45rem]">Sign in to your investor app.</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-500">Use your registered mobile number for the fastest secure access.</p>
           </div>
 
-          <div className="mt-7 grid grid-cols-3 gap-1 rounded-2xl bg-slate-100 p-1.5" role="tablist" aria-label="Investor login methods">
+          <div className="mt-6 grid grid-cols-3 gap-1 rounded-2xl bg-slate-100 p-1.5" role="tablist" aria-label="Investor login methods">
             {METHODS.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
@@ -272,7 +289,7 @@ export default function InvestorLoginPage() {
                 role="tab"
                 aria-selected={activeTab === key}
                 onClick={() => changeMethod(key)}
-                className={`flex min-h-12 items-center justify-center gap-1.5 rounded-xl px-2 text-xs font-semibold transition sm:text-sm ${activeTab === key ? "bg-white text-[var(--gv-blue)] shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                className={`flex min-h-[52px] items-center justify-center gap-1.5 rounded-xl px-2 text-xs font-bold transition sm:text-sm ${activeTab === key ? "bg-white text-[var(--gv-blue)] shadow-sm ring-1 ring-slate-200" : "text-slate-500 hover:text-slate-800"}`}
               >
                 <Icon size={17} />
                 <span className="whitespace-nowrap">{label}</span>
@@ -289,12 +306,12 @@ export default function InvestorLoginPage() {
                   <label className="grid gap-2 text-sm font-semibold text-slate-700">
                     Registered mobile number
                     <div className="relative">
-                      <Smartphone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                      <input className={`${inputClassName} pl-11 text-base font-semibold`} value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} placeholder="+91 98765 43210" inputMode="tel" autoComplete="tel" required />
+                      <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={19} />
+                      <input className={`${inputClassName} min-h-14 rounded-2xl pl-12 text-base font-semibold`} value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} placeholder="+91 98765 43210" inputMode="tel" autoComplete="tel" required />
                     </div>
                     <span className="text-xs font-normal leading-5 text-slate-500">Use the mobile number registered with your GrowVest profile.</span>
                   </label>
-                  <button type="submit" disabled={submitting} className="min-h-13 rounded-xl bg-[var(--gv-blue)] px-4 text-sm font-bold text-white transition hover:bg-[var(--gv-blue-strong)] disabled:cursor-not-allowed disabled:opacity-60">{submitting ? "Sending secure OTP…" : "Send secure OTP"}</button>
+                  <button type="submit" disabled={submitting} className="min-h-14 rounded-2xl bg-[var(--gv-blue)] px-4 text-sm font-bold text-white shadow-[0_12px_28px_rgba(31,78,216,.24)] transition hover:bg-[var(--gv-blue-strong)] disabled:cursor-not-allowed disabled:opacity-60">{submitting ? "Sending secure OTP…" : "Send OTP and continue"}</button>
                 </form>
               ) : (
                 <form onSubmit={handleVerifyOtp} className="grid gap-5">
@@ -305,7 +322,7 @@ export default function InvestorLoginPage() {
                     </div>
                     <div className="mt-3"><OtpInputs value={otp} onChange={setOtp} disabled={submitting} /></div>
                   </div>
-                  <button type="submit" disabled={submitting || otp.length !== 6} className="min-h-13 rounded-xl bg-[var(--gv-blue)] px-4 text-sm font-bold text-white transition hover:bg-[var(--gv-blue-strong)] disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Verifying…" : "Verify and continue"}</button>
+                  <button type="submit" disabled={submitting || otp.length !== 6} className="min-h-14 rounded-2xl bg-[var(--gv-blue)] px-4 text-sm font-bold text-white shadow-[0_12px_28px_rgba(31,78,216,.24)] transition hover:bg-[var(--gv-blue-strong)] disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Verifying…" : "Verify and open app"}</button>
                   <div className="text-center text-xs text-slate-500">
                     {resendSeconds > 0 ? `Resend OTP in 00:${String(resendSeconds).padStart(2, "0")}` : <button type="button" onClick={requestOtp} disabled={submitting} className="font-semibold text-[var(--gv-blue)]">Resend OTP</button>}
                   </div>
@@ -320,49 +337,45 @@ export default function InvestorLoginPage() {
               <label className="grid gap-2 text-sm font-semibold text-slate-700">
                 GrowVest username
                 <div className="relative">
-                  <UserRound className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                  <input className={`${inputClassName} pl-11`} value={username} onChange={(event) => setUsername(event.target.value)} placeholder="arjun.mehta" autoComplete="username" required />
+                  <UserRound className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={19} />
+                  <input className={`${inputClassName} min-h-14 rounded-2xl pl-12`} value={username} onChange={(event) => setUsername(event.target.value)} placeholder="arjun.mehta" autoComplete="username" required />
                 </div>
                 <span className="text-xs font-normal leading-5 text-slate-500">Enter your GrowVest username, not your email address.</span>
               </label>
               <label className="grid gap-2 text-sm font-semibold text-slate-700">
                 Password
                 <div className="relative">
-                  <LockKeyhole className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                  <input className={`${inputClassName} pl-11 pr-12`} type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter password" autoComplete="current-password" required />
-                  <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute right-1.5 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
+                  <LockKeyhole className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={19} />
+                  <input className={`${inputClassName} min-h-14 rounded-2xl pl-12 pr-12`} type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter password" autoComplete="current-password" required />
+                  <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute right-2 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-xl text-slate-500 hover:bg-slate-100" aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
                 </div>
               </label>
-              <button type="submit" disabled={submitting} className="min-h-13 rounded-xl bg-[var(--gv-blue)] px-4 text-sm font-bold text-white transition hover:bg-[var(--gv-blue-strong)] disabled:cursor-not-allowed disabled:opacity-60">{submitting ? "Signing in…" : "Sign in securely"}</button>
+              <button type="submit" disabled={submitting} className="min-h-14 rounded-2xl bg-[var(--gv-blue)] px-4 text-sm font-bold text-white shadow-[0_12px_28px_rgba(31,78,216,.24)] transition hover:bg-[var(--gv-blue-strong)] disabled:cursor-not-allowed disabled:opacity-60">{submitting ? "Signing in…" : "Sign in securely"}</button>
               <p className="text-center text-xs leading-5 text-slate-500">Contact your Advisor to reset access or enable another login method.</p>
             </form>
           ) : null}
 
           {activeTab === TABS.GOOGLE ? (
             <div className="mt-6 grid gap-4">
-              <button type="button" onClick={handleGoogleLogin} disabled={submitting} className="inline-flex min-h-13 items-center justify-center gap-3 rounded-xl border border-[var(--gv-border)] bg-white px-4 text-sm font-bold text-slate-800 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60">
+              <button type="button" onClick={handleGoogleLogin} disabled={submitting} className="inline-flex min-h-14 items-center justify-center gap-3 rounded-2xl border border-[var(--gv-border)] bg-white px-4 text-sm font-bold text-slate-800 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60">
                 <GoogleMark /> {submitting ? "Connecting to Google…" : "Continue with Google"}
               </button>
               <p className="text-center text-xs leading-5 text-slate-500">Use the Google account already connected from Login &amp; Security.</p>
             </div>
           ) : null}
 
-          <div className="mt-7 flex items-start gap-3 rounded-2xl bg-slate-50 px-4 py-3.5 text-xs leading-5 text-slate-600">
+          <div className="mt-6 flex items-start gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3.5 text-xs leading-5 text-emerald-900">
             <ShieldCheck className="mt-0.5 shrink-0 text-[var(--gv-success)]" size={18} />
             <p>Your financial information is protected and available only through your authorised GrowVest account.</p>
           </div>
 
-          <div className="mt-7 border-t border-slate-200 pt-6 text-center">
-            <p className="text-sm text-slate-500">Are you a GrowVest Advisor or Administrator?</p>
-            <Link href="/staff-login" className="mt-2 inline-flex items-center gap-1 text-sm font-bold text-[var(--gv-blue)] hover:text-[var(--gv-blue-strong)]">Open Staff Login <ChevronRight size={16} /></Link>
+          <div className="mt-6 border-t border-slate-200 pt-5 text-center">
+            <p className="text-xs text-slate-500 sm:text-sm">GrowVest Advisor or Administrator?</p>
+            <Link href="/staff-login" className="mt-2 inline-flex min-h-10 items-center gap-1 rounded-xl px-3 text-sm font-bold text-[var(--gv-blue)] hover:bg-blue-50">Open Staff Login <ChevronRight size={16} /></Link>
           </div>
 
-          <div className="mt-6 flex justify-center gap-4 text-[11px] font-medium text-slate-400">
-            <a href="mailto:connect@growvest.info">Contact Support</a>
-            <span aria-hidden="true">·</span>
-            <span>Privacy</span>
-            <span aria-hidden="true">·</span>
-            <span>Terms</span>
+          <div className="mt-5 flex flex-wrap justify-center gap-x-4 gap-y-2 text-[11px] font-medium text-slate-400">
+            <a href="mailto:connect@growvest.info">Contact Support</a><span aria-hidden="true">·</span><span>Privacy</span><span aria-hidden="true">·</span><span>Terms</span>
           </div>
         </div>
       </section>

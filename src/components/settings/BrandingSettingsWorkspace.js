@@ -20,6 +20,7 @@ import {
 import Button from "@/components/ui/Button";
 import BrandAssetUploader from "@/components/settings/BrandAssetUploader";
 import BrandFontUploader from "@/components/settings/BrandFontUploader";
+import PwaIconUploader from "@/components/settings/PwaIconUploader";
 import BrandingPreviewPanel from "@/components/settings/BrandingPreviewPanel";
 import BrandingVersionHistory from "@/components/settings/BrandingVersionHistory";
 import { inputClassName } from "@/components/ui/Field";
@@ -219,6 +220,12 @@ export default function BrandingSettingsWorkspace() {
     setError("");
   }
 
+  function updateMany(values) {
+    setDraft((current) => ({ ...current, ...values }));
+    setNotice("");
+    setError("");
+  }
+
   async function saveDraftNow() {
     setWorking(true);
     setError("");
@@ -357,7 +364,14 @@ export default function BrandingSettingsWorkspace() {
             <div className="grid gap-6">
               <SectionIntro eyebrow="Logo system" title="Brand assets for every surface" description="Upload purpose-specific assets so logos remain clear on light, dark, email and document backgrounds. Original proportions are always preserved." icon={FileImage} />
               <div className="grid gap-4 md:grid-cols-2">
-                <BrandAssetUploader label="App icon / square mark" assetKey="icon-logo" value={draft.iconLogoUrl} onChange={(value) => update("iconLogoUrl", value)} recommended="512 × 512px transparent PNG or WebP" hint="Used for the favicon, collapsed navigation and compact portal identity." previewTone="checker" />
+                <PwaIconUploader
+                  icon192Url={draft.pwaIcon192Url}
+                  icon512Url={draft.pwaIcon512Url}
+                  appleTouchIconUrl={draft.pwaAppleTouchIconUrl}
+                  maskableIconUrl={draft.pwaMaskableIconUrl}
+                  onChange={updateMany}
+                />
+                <BrandAssetUploader label="Application UI icon / square mark" assetKey="icon-logo" value={draft.iconLogoUrl} onChange={(value) => update("iconLogoUrl", value)} recommended="512 × 512px transparent PNG or WebP" hint="Used for the favicon, collapsed navigation and compact portal identity. The installed Investor PWA uses the dedicated PWA icon above." previewTone="checker" />
                 <BrandAssetUploader label="Primary wide logo" assetKey="primary-logo" value={draft.primaryLogoUrl} onChange={(value) => { update("primaryLogoUrl", value); update("logoUrl", value); }} recommended="1200 × 320px transparent PNG or WebP" hint="Used on white and light backgrounds." />
                 <BrandAssetUploader label="White / inverse logo" assetKey="white-logo" value={draft.whiteLogoUrl} onChange={(value) => update("whiteLogoUrl", value)} recommended="1200 × 320px transparent PNG" hint="Used on premium black, Royal Trust Blue and dark report covers." previewTone="dark" />
                 <BrandAssetUploader label="Email header logo" assetKey="email-logo" value={draft.emailLogoUrl} onChange={(value) => update("emailLogoUrl", value)} recommended="600 × 160px transparent PNG" hint="Optimised for Brevo transactional email headers." />

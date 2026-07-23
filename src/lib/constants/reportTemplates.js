@@ -1,3 +1,10 @@
+import {
+  DEFAULT_EMAIL_TEMPLATE_ID,
+  SIGNATURE_SOURCES,
+  createEmailTemplateSnapshot,
+  getSystemEmailTemplate
+} from "@/lib/constants/emailTemplates";
+
 export const TEMPLATE_STATUS = {
   DRAFT: "draft",
   ACTIVE: "active",
@@ -144,6 +151,16 @@ function template({
       bodyDensity: tableDensity,
       headerStyle: "compact",
       footerStyle: "legal"
+    },
+    delivery: {
+      emailTemplateId: DEFAULT_EMAIL_TEMPLATE_ID,
+      emailTemplateName: getSystemEmailTemplate(DEFAULT_EMAIL_TEMPLATE_ID)?.name || "Monthly Report Ready — Premium",
+      emailTemplateVersion: Number(getSystemEmailTemplate(DEFAULT_EMAIL_TEMPLATE_ID)?.version || 1),
+      emailTemplateSnapshot: createEmailTemplateSnapshot(getSystemEmailTemplate(DEFAULT_EMAIL_TEMPLATE_ID)),
+      signatureSource: SIGNATURE_SOURCES.ASSIGNED_ADVISOR,
+      includeSecureLink: true,
+      attachPdf: true,
+      includeSignature: true
     }
   };
 }
@@ -283,6 +300,22 @@ export function createReportTemplateSnapshot(templateValue) {
         ...(getSystemReportTemplate(DEFAULT_REPORT_TEMPLATE_ID)?.appearance?.document || {}),
         ...(template?.appearance?.document || {})
       }
+    },
+    delivery: {
+      emailTemplateId: DEFAULT_EMAIL_TEMPLATE_ID,
+      emailTemplateName: getSystemEmailTemplate(DEFAULT_EMAIL_TEMPLATE_ID)?.name || "Monthly Report Ready — Premium",
+      emailTemplateVersion: Number(getSystemEmailTemplate(DEFAULT_EMAIL_TEMPLATE_ID)?.version || 1),
+      emailTemplateSnapshot: createEmailTemplateSnapshot(getSystemEmailTemplate(DEFAULT_EMAIL_TEMPLATE_ID)),
+      signatureSource: SIGNATURE_SOURCES.ASSIGNED_ADVISOR,
+      includeSecureLink: true,
+      attachPdf: true,
+      includeSignature: true,
+      ...(getSystemReportTemplate(DEFAULT_REPORT_TEMPLATE_ID)?.delivery || {}),
+      ...(template?.delivery || {}),
+      emailTemplateSnapshot: createEmailTemplateSnapshot(
+        template?.delivery?.emailTemplateSnapshot
+          || getSystemEmailTemplate(template?.delivery?.emailTemplateId || DEFAULT_EMAIL_TEMPLATE_ID)
+      )
     }
   };
 }

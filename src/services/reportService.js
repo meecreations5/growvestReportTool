@@ -147,6 +147,66 @@ function normaliseHighlights(rows = []) {
   })).slice(0, 4);
 }
 
+function renderableReportData(report = {}) {
+  return {
+    investorId: report.investorId || "",
+    investorName: report.investorName || "",
+    clientCode: report.clientCode || "",
+    advisorUid: report.advisorUid || "",
+    assignedAdvisorUid: report.assignedAdvisorUid || "",
+    advisorName: report.advisorName || "",
+    advisorEmail: report.advisorEmail || "",
+    advisorPhone: report.advisorPhone || "",
+    advisorDesignation: report.advisorDesignation || "",
+    journeyDurationMonths: Number(report.journeyDurationMonths || 0),
+    reportMonth: Number(report.reportMonth || 0),
+    reportYear: Number(report.reportYear || 0),
+    reportMonthKey: report.reportMonthKey || "",
+    statementDate: report.statementDate || "",
+    title: report.title || "",
+    templateId: report.templateId || DEFAULT_REPORT_TEMPLATE_ID,
+    templateVersion: Number(report.templateVersion || report.templateSnapshot?.version || 1),
+    templateSnapshot: report.templateSnapshot || null,
+    summary: report.summary || {},
+    holdings: report.holdings || [],
+    advisorNote: report.advisorNote || {},
+    advisorInsights: report.advisorInsights || {},
+    monthlyHighlights: report.monthlyHighlights || [],
+    portfolioHealth: report.portfolioHealth || {},
+    goals: report.goals || [],
+    allocation: report.allocation || [],
+    funds: report.funds || [],
+    nextSteps: report.nextSteps || [],
+    nextReview: report.nextReview || {},
+    disclaimer: report.disclaimer || ""
+  };
+}
+
+function stableSerializableValue(value) {
+  if (Array.isArray(value)) return value.map(stableSerializableValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.keys(value)
+    .sort()
+    .reduce((result, key) => {
+      result[key] = stableSerializableValue(value[key]);
+      return result;
+    }, {});
+}
+
+function stableSerialize(value) {
+  return JSON.stringify(stableSerializableValue(value));
+}
+
+function reportRenderFingerprint(report = {}) {
+  return stableSerialize(renderableReportData(report));
+}
+
+function reportTemplateChanged(existing = {}, next = {}) {
+  return String(existing.templateId || DEFAULT_REPORT_TEMPLATE_ID) !== String(next.templateId || DEFAULT_REPORT_TEMPLATE_ID)
+    || Number(existing.templateVersion || existing.templateSnapshot?.version || 1) !== Number(next.templateVersion || next.templateSnapshot?.version || 1)
+    || stableSerialize(existing.templateSnapshot || null) !== stableSerialize(next.templateSnapshot || null);
+}
+
 function normaliseReportPayload(payload, currentUser, status) {
   const summary = {
     totalCorpus: Number(payload.summary?.totalCorpus || 0),
@@ -371,6 +431,11 @@ export async function saveMonthlyReport(payload, currentUser, { reportId = null,
     ? Math.max(1, Number(existing.version || 1))
     : Number(existing.version || 0) + 1;
   const hasPublishedSnapshot = Boolean(existing.investorVisible && existing.activePublishedVersionId);
+  const renderChanged = existingSnapshot.exists()
+    && reportRenderFingerprint(existing) !== reportRenderFingerprint(normalised);
+  const templateChanged = existingSnapshot.exists() && reportTemplateChanged(existing, normalised);
+  const workingPdfBecameStale = renderChanged
+    && Boolean(existing.pdfStoragePath || existing.activePublishedVersionId);
   const reportWrite = {
     ...normalised,
     reportCode,
@@ -382,10 +447,21 @@ export async function saveMonthlyReport(payload, currentUser, { reportId = null,
     publishedVersion: existing.publishedVersion || 0,
     publishedSourceVersion: existing.publishedSourceVersion || null,
     publishedAt: existing.publishedAt || null,
-    pdfStoragePath: existing.pdfStoragePath || null,
-    pdfFileName: existing.pdfFileName || null,
-    pdfSizeBytes: existing.pdfSizeBytes || null,
-    pdfVersion: existing.pdfVersion || null,
+    pdfStoragePath: renderChanged ? null : (existing.pdfStoragePath || null),
+    pdfFileName: renderChanged ? null : (existing.pdfFileName || null),
+    pdfSizeBytes: renderChanged ? null : (existing.pdfSizeBytes || null),
+    pdfVersion: renderChanged ? null : (existing.pdfVersion || null),
+    pdfGeneratedAt: renderChanged ? null : (existing.pdfGeneratedAt || null),
+    pdfRendererVersion: renderChanged ? null : (existing.pdfRendererVersion || null),
+    pdfIsStale: renderChanged ? workingPdfBecameStale : Boolean(existing.pdfIsStale),
+    pdfInvalidatedAt: renderChanged
+      ? (workingPdfBecameStale ? serverTimestamp() : null)
+      : (existing.pdfInvalidatedAt || null),
+    pdfInvalidationReason: renderChanged
+      ? (workingPdfBecameStale
+        ? (templateChanged ? "report_template_changed" : "report_content_changed")
+        : null)
+      : (existing.pdfInvalidationReason || null),
     completedAt: complete ? serverTimestamp() : existing.completedAt || null,
     createdAt: existing.createdAt || serverTimestamp(),
     createdByUid: existing.createdByUid || currentUser.id,
@@ -424,7 +500,7 @@ export async function saveMonthlyReport(payload, currentUser, { reportId = null,
   batch.update(doc(db, "investors", normalised.investorId), {
     latestReportId: documentId,
     latestReportMonthKey: normalised.reportMonthKey,
-    latestReportStatus: status,
+    latestReportStatus: reportWrite.status,
     latestReportedCorpus: normalised.summary.totalCorpus,
     nextReviewDate: normalised.nextReview.date || null,
     updatedAt: serverTimestamp()
