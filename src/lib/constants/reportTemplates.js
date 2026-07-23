@@ -321,16 +321,22 @@ export function createReportTemplateSnapshot(templateValue) {
 }
 
 export function resolveReportTemplate(report) {
-  if (report?.templateSnapshot) {
+  const snapshot = report?.templateSnapshot || null;
+  const requestedTemplateId = report?.templateId || snapshot?.id || DEFAULT_REPORT_TEMPLATE_ID;
+  const systemTemplate = getSystemReportTemplate(requestedTemplateId);
+
+  if (snapshot) {
+    // Top-level report fields are authoritative. Older records can contain a
+    // stale snapshot id/version after changing the template, so apply them last.
     return createReportTemplateSnapshot({
-      id: report.templateId || report.templateSnapshot.id,
-      version: report.templateVersion || report.templateSnapshot.version,
-      ...report.templateSnapshot
+      ...(systemTemplate || {}),
+      ...snapshot,
+      id: requestedTemplateId,
+      version: Number(report?.templateVersion || snapshot?.version || systemTemplate?.version || 1)
     });
   }
-  return createReportTemplateSnapshot(
-    getSystemReportTemplate(report?.templateId || DEFAULT_REPORT_TEMPLATE_ID)
-  );
+
+  return createReportTemplateSnapshot(systemTemplate);
 }
 
 

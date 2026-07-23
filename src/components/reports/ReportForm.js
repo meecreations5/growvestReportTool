@@ -190,6 +190,7 @@ export default function ReportForm({ reportId = null }) {
   const [saveState, setSaveState] = useState(reportId ? "saved" : "idle");
   const [lastSavedAt, setLastSavedAt] = useState(null);
   const [workingReportId, setWorkingReportId] = useState(reportId);
+  const [applyingTemplateId, setApplyingTemplateId] = useState("");
   const formSignatureRef = useRef("");
   const formReadyRef = useRef(false);
   const corpusTouchedRef = useRef(Boolean(reportId));
@@ -712,27 +713,83 @@ export default function ReportForm({ reportId = null }) {
     setSuccess(`${commentary.title} was copied into the report. Review and personalise the content before completion.`);
   }
 
-  function selectReportTemplate(template) {
-    if (!template) return;
+  async function selectReportTemplate(template) {
+    if (!template || applyingTemplateId) return;
+
     setError("");
-    setForm((current) => {
-      const hadGeneratedOrPublishedPdf = Boolean(current.pdfStoragePath || current.activePublishedVersionId);
-      return {
-        ...current,
-        templateId: template.id,
-        templateVersion: Number(template.version || 1),
-        templateSnapshot: createReportTemplateSnapshot(template),
+    setSuccess("");
+
+    const hadGeneratedOrPublishedPdf = Boolean(form.pdfStoragePath || form.activePublishedVersionId);
+    const appliedAt = new Date().toISOString();
+    const nextForm = {
+      ...form,
+      templateId: template.id,
+      templateVersion: Number(template.version || 1),
+      templateSnapshot: createReportTemplateSnapshot(template),
+      templateAppliedAt: appliedAt,
+      pdfStoragePath: null,
+      pdfFileName: null,
+      pdfSizeBytes: null,
+      pdfVersion: null,
+      pdfGeneratedAt: null,
+      pdfRendererVersion: null,
+      pdfIsStale: hadGeneratedOrPublishedPdf,
+      pdfInvalidationReason: hadGeneratedOrPublishedPdf ? "report_template_changed" : null
+    };
+
+    setForm(nextForm);
+    setSaveState("dirty");
+
+    // New reports can keep the selected template locally until the first draft
+    // save. Existing reports persist the template immediately so opening HTML
+    // or PDF preview cannot race against the delayed autosave.
+    if (!workingReportId || !canSaveDraft) {
+      setSuccess(`${template.name} version ${Number(template.version || 1)} selected. Save the report draft to apply it to HTML and PDF output.`);
+      return;
+    }
+
+    setApplyingTemplateId(template.id);
+    setSaving(true);
+    setSaveState("saving");
+
+    try {
+      const saved = await saveMonthlyReport(nextForm, profile, {
+        reportId: workingReportId,
+        complete: form.status === "completed",
+        autosave: false
+      });
+
+      const persistedForm = {
+        ...nextForm,
+        templateId: saved.templateId,
+        templateVersion: saved.templateVersion,
+        templateSnapshot: saved.templateSnapshot,
+        templateAppliedAt: appliedAt,
+        version: saved.version,
+        status: saved.status,
+        publicationStatus: saved.publicationStatus,
         pdfStoragePath: null,
         pdfFileName: null,
         pdfSizeBytes: null,
         pdfVersion: null,
         pdfGeneratedAt: null,
         pdfRendererVersion: null,
-        pdfIsStale: hadGeneratedOrPublishedPdf,
-        pdfInvalidationReason: hadGeneratedOrPublishedPdf ? "report_template_changed" : null
+        pdfIsStale: saved.pdfIsStale,
+        pdfInvalidationReason: saved.pdfInvalidationReason
       };
-    });
-    setSuccess(`${template.name} version ${Number(template.version || 1)} applied to this working report. The HTML preview will update after autosave${workingReportId ? "; regenerate the PDF before delivery" : ""}.`);
+      setForm(persistedForm);
+      formSignatureRef.current = JSON.stringify(persistedForm);
+      setLastSavedAt(new Date());
+      setSaveState("saved");
+      setSuccess(`${template.name} version ${Number(template.version || 1)} is now saved on this working report. Open HTML Preview to verify it${hadGeneratedOrPublishedPdf ? ", then regenerate the PDF" : ""}.`);
+    } catch (nextError) {
+      console.error(nextError);
+      setSaveState("error");
+      setError(nextError.message || "The report template could not be applied.");
+    } finally {
+      setSaving(false);
+      setApplyingTemplateId("");
+    }
   }
 
   async function copyLatestReport() {

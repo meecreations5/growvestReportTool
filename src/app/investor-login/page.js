@@ -99,6 +99,7 @@ function OtpInputs({ value, onChange, disabled }) {
 function Feedback({ error, message, onUseMobile, onUsePassword }) {
   if (!error && !message) return null;
   const isGoogleSetup = Boolean(error && /google/i.test(error) && /(not linked|setup|required|connect)/i.test(error));
+  const isPhoneConfiguration = Boolean(error && /(SMS region policy|Authorized domains|Phone OTP request)/i.test(error));
   if (message) {
     return (
       <div role="status" className="mt-5 flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-sm text-emerald-800">
@@ -111,6 +112,14 @@ function Feedback({ error, message, onUseMobile, onUsePassword }) {
     <div role="alert" className={`mt-5 rounded-2xl border px-4 py-3.5 text-sm ${isGoogleSetup ? "border-amber-200 bg-amber-50 text-amber-900" : "border-red-200 bg-red-50 text-red-700"}`}>
       {isGoogleSetup ? <p className="font-bold">Google account setup required</p> : null}
       <p className={isGoogleSetup ? "mt-1 leading-6" : "leading-6"}>{error}</p>
+      {isPhoneConfiguration ? (
+        <div className="mt-3 rounded-xl border border-red-200 bg-white/70 p-3 text-xs leading-5 text-red-800">
+          <p className="font-bold">Firebase console checklist</p>
+          <p className="mt-1">Authentication → Settings → SMS region policy: allow India.</p>
+          <p>Authentication → Settings → Authorized domains: add insights.growvest.info.</p>
+          <p>Project settings → Web app: redeploy the matching production Firebase config.</p>
+        </div>
+      ) : null}
       {isGoogleSetup ? (
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" onClick={onUseMobile} className="rounded-lg bg-white px-3 py-2 text-xs font-semibold ring-1 ring-inset ring-amber-200">Use Mobile OTP</button>

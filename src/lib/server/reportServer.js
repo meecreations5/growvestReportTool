@@ -96,7 +96,7 @@ export async function createAndUploadReportPdf(report, { reportId, publishedVers
     pdfSizeBytes: pdfBytes.length,
     pdfGeneratedAt: new Date(),
     pdfVersion: effectiveVersion,
-    pdfRendererVersion: "2.0.0",
+    pdfRendererVersion: "2.1.0",
     brandingSnapshot
   };
 }

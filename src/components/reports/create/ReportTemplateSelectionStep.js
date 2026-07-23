@@ -10,7 +10,8 @@ export default function ReportTemplateSelectionStep({
   selectedTemplateId,
   selectedTemplateVersion,
   onSelect,
-  disabled = false
+  disabled = false,
+  applyingTemplateId = ""
 }) {
   const available = templates.filter((item) => item.status === "active");
 
@@ -34,6 +35,8 @@ export default function ReportTemplateSelectionStep({
         const selected = currentTemplate && appliedVersion === activeVersion;
         const newerVersionAvailable = currentTemplate && appliedVersion !== activeVersion;
         const sectionCount = visibleTemplateSections(template).length;
+        const applying = applyingTemplateId === template.id;
+        const hasUnpublishedDraft = Boolean(template.draftConfig);
         return (
           <article key={template.id} className={`overflow-hidden rounded-xl border bg-white transition ${selected ? "border-blue-500 ring-4 ring-blue-50" : newerVersionAvailable ? "border-amber-400 ring-4 ring-amber-50" : "border-slate-200 hover:border-blue-200"}`}>
             <div className="p-3 pb-0"><TemplateThumbnail template={template} compact /></div>
@@ -45,6 +48,7 @@ export default function ReportTemplateSelectionStep({
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">{templateCategoryLabel(template.category)}</span>
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">Version {activeVersion}</span>
                     {newerVersionAvailable ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700">Report uses v{appliedVersion}</span> : null}
+                    {hasUnpublishedDraft ? <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[10px] font-bold text-violet-700">Unpublished template changes</span> : null}
                   </div>
                   <h3 className="mt-3 font-heading text-xl font-bold text-slate-950">{template.name}</h3>
                   <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-500">{template.description}</p>
@@ -60,11 +64,12 @@ export default function ReportTemplateSelectionStep({
                 <span className="block font-semibold text-blue-700">Assigned delivery email</span>
                 <strong className="mt-1 block truncate text-blue-950">{template.delivery?.emailTemplateName || "Monthly Report Ready — Premium"}</strong>
               </div>
+              {hasUnpublishedDraft ? <p className="mt-2 rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs leading-5 text-violet-800">This report uses the active version. Activate the template draft before applying those latest editor changes.</p> : null}
 
               <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
-                <button type="button" disabled={disabled || selected} onClick={() => onSelect(template)} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition disabled:opacity-60 ${selected ? "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200" : newerVersionAvailable ? "bg-amber-500 text-white hover:bg-amber-600" : "bg-[#1F4ED8] text-white hover:bg-[#173EB4]"}`}>
+                <button type="button" disabled={disabled || selected || applying} onClick={() => onSelect(template)} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition disabled:opacity-60 ${selected ? "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200" : newerVersionAvailable ? "bg-amber-500 text-white hover:bg-amber-600" : "bg-[#1F4ED8] text-white hover:bg-[#173EB4]"}`}>
                   {selected ? <Check size={16} /> : newerVersionAvailable ? <Sparkles size={16} /> : <LayoutTemplate size={16} />}
-                  {selected ? `Applied v${activeVersion}` : newerVersionAvailable ? `Apply latest v${activeVersion}` : "Use template"}
+                  {applying ? "Applying & saving…" : selected ? `Applied v${activeVersion}` : newerVersionAvailable ? `Apply latest v${activeVersion}` : "Use template"}
                 </button>
                 <Link href={`/report-templates/${template.id}`} target="_blank" className="grid h-11 w-11 place-items-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50" aria-label={`Preview ${template.name}`}><Eye size={17} /></Link>
               </div>

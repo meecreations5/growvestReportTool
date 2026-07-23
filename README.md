@@ -4,6 +4,18 @@ Standalone Next.js application for GrowVest lead management, investor onboarding
 
 ## Current implementation
 
+## Version 0.25.3 — Report Template Persistence & Investor OTP Diagnostics
+
+- Existing reports now save a newly selected report template immediately instead of relying only on delayed autosave
+- Report-level template ID/version now override stale values inside older snapshots
+- HTML and A4 preview components remount when the applied template changes
+- Active templates with unpublished editor changes now show a clear warning
+- Working PDF metadata is cleared and renderer metadata is updated to `2.1.0`
+- Investor OTP errors now identify SMS region policy, authorised-domain and production Firebase-config checks
+- PWA cache version bumped so deployed fixes replace the previous cached application shell
+
+See `docs/REPORT_TEMPLATE_AND_OTP_FIX.md` for deployment and UAT guidance.
+
 ## Version 0.25.2 — Report Template Application & PDF Refresh Fix
 
 - Changing the template while editing an existing report now applies the selected active template version to the working report snapshot

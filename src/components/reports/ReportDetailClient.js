@@ -424,7 +424,12 @@ export default function ReportDetailClient({ reportId }) {
       <InvestorReportSectionNav items={reportTemplateNavItems(report)} />
 
       <div className="mx-auto w-full max-w-[1280px]">
-        <MonthlyWealthReport report={report} history={history} viewer="staff" />
+        <MonthlyWealthReport
+          key={`${report.id}-${report.version || 1}-${report.templateId || "template"}-${report.templateVersion || 1}-${report.templateAppliedAt || "initial"}`}
+          report={report}
+          history={history}
+          viewer="staff"
+        />
       </div>
 
       <details className="rounded-xl border border-slate-200 bg-white shadow-sm">

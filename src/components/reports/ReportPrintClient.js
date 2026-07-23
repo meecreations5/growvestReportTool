@@ -76,7 +76,11 @@ export default function ReportPrintClient({ reportId }) {
         <div className="text-center"><p className="text-sm font-black text-slate-950">A4 Report Preview</p><p className="text-xs text-slate-400">{profile?.role === "investor" ? `Published version ${report.publishedVersion || 1}` : `Working version ${report.version || 1} · ${report.templateSnapshot?.name || "Report template"} v${report.templateVersion || report.templateSnapshot?.version || 1}`}</p></div>
         <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2 text-sm font-bold text-white"><Printer size={16} /> Print</button>
       </div>
-      <MonthlyReportPrintDocument report={report} history={history} />
+      <MonthlyReportPrintDocument
+        key={`${report.id}-${report.version || 1}-${report.templateId || "template"}-${report.templateVersion || 1}-${report.templateAppliedAt || "initial"}`}
+        report={report}
+        history={history}
+      />
     </div>
   );
 }

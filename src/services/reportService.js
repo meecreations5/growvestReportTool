@@ -167,6 +167,7 @@ function renderableReportData(report = {}) {
     templateId: report.templateId || DEFAULT_REPORT_TEMPLATE_ID,
     templateVersion: Number(report.templateVersion || report.templateSnapshot?.version || 1),
     templateSnapshot: report.templateSnapshot || null,
+    templateAppliedAt: report.templateAppliedAt || null,
     summary: report.summary || {},
     holdings: report.holdings || [],
     advisorNote: report.advisorNote || {},
@@ -244,13 +245,25 @@ function normaliseReportPayload(payload, currentUser, status) {
     title: payload.title || `Monthly Portfolio Report — ${getMonthLabel(reportMonth)} ${reportYear}`,
     status,
     investorVisible: Boolean(payload.investorVisible && status === REPORT_STATUS.COMPLETED),
-    templateId: payload.templateId || DEFAULT_REPORT_TEMPLATE_ID,
-    templateVersion: Number(payload.templateVersion || payload.templateSnapshot?.version || getSystemReportTemplate(payload.templateId || DEFAULT_REPORT_TEMPLATE_ID)?.version || 1),
+    templateId: payload.templateId || payload.templateSnapshot?.id || DEFAULT_REPORT_TEMPLATE_ID,
+    templateVersion: Number(
+      payload.templateVersion
+      || payload.templateSnapshot?.version
+      || getSystemReportTemplate(payload.templateId || payload.templateSnapshot?.id || DEFAULT_REPORT_TEMPLATE_ID)?.version
+      || 1
+    ),
     templateSnapshot: createReportTemplateSnapshot(
       payload.templateSnapshot
-        ? { id: payload.templateId || payload.templateSnapshot.id, version: payload.templateVersion || payload.templateSnapshot.version, ...payload.templateSnapshot }
+        ? {
+            ...payload.templateSnapshot,
+            // The report's selected template fields must override any stale
+            // id/version that may remain inside an older snapshot.
+            id: payload.templateId || payload.templateSnapshot.id || DEFAULT_REPORT_TEMPLATE_ID,
+            version: Number(payload.templateVersion || payload.templateSnapshot.version || 1)
+          }
         : getSystemReportTemplate(payload.templateId || DEFAULT_REPORT_TEMPLATE_ID)
     ),
+    templateAppliedAt: payload.templateAppliedAt || null,
     summary,
     holdings: normaliseHoldings(payload.holdings, summary.totalCorpus),
     advisorNote: {
