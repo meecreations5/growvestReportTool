@@ -42,7 +42,7 @@ import {
   getReportMonthKey
 } from "@/lib/constants/report";
 import { monthlyReportSchema, validateCompletedReport } from "@/lib/validation/reportSchema";
-import { subscribeReportTemplates } from "@/services/reportTemplateService";
+import { getReportTemplate, subscribeReportTemplates } from "@/services/reportTemplateService";
 import {
   DEFAULT_REPORT_TEMPLATE_ID,
   createReportTemplateSnapshot,
@@ -716,6 +716,11 @@ export default function ReportForm({ reportId = null }) {
   async function selectReportTemplate(template) {
     if (!template || applyingTemplateId) return;
 
+    // Always re-read the published template before applying it. This avoids
+    // applying a stale list/subscription object after a template was activated.
+    const latestTemplate = await getReportTemplate(template.id).catch(() => null);
+    const appliedTemplate = latestTemplate || template;
+
     setError("");
     setSuccess("");
 
@@ -723,9 +728,9 @@ export default function ReportForm({ reportId = null }) {
     const appliedAt = new Date().toISOString();
     const nextForm = {
       ...form,
-      templateId: template.id,
-      templateVersion: Number(template.version || 1),
-      templateSnapshot: createReportTemplateSnapshot(template),
+      templateId: appliedTemplate.id,
+      templateVersion: Number(appliedTemplate.version || 1),
+      templateSnapshot: createReportTemplateSnapshot(appliedTemplate),
       templateAppliedAt: appliedAt,
       pdfStoragePath: null,
       pdfFileName: null,
@@ -744,11 +749,11 @@ export default function ReportForm({ reportId = null }) {
     // save. Existing reports persist the template immediately so opening HTML
     // or PDF preview cannot race against the delayed autosave.
     if (!workingReportId || !canSaveDraft) {
-      setSuccess(`${template.name} version ${Number(template.version || 1)} selected. Save the report draft to apply it to HTML and PDF output.`);
+      setSuccess(`${appliedTemplate.name} version ${Number(appliedTemplate.version || 1)} selected. Save the report draft to apply it to HTML and PDF output.`);
       return;
     }
 
-    setApplyingTemplateId(template.id);
+    setApplyingTemplateId(appliedTemplate.id);
     setSaving(true);
     setSaveState("saving");
 
@@ -781,7 +786,7 @@ export default function ReportForm({ reportId = null }) {
       formSignatureRef.current = JSON.stringify(persistedForm);
       setLastSavedAt(new Date());
       setSaveState("saved");
-      setSuccess(`${template.name} version ${Number(template.version || 1)} is now saved on this working report. Open HTML Preview to verify it${hadGeneratedOrPublishedPdf ? ", then regenerate the PDF" : ""}.`);
+      setSuccess(`${appliedTemplate.name} version ${Number(appliedTemplate.version || 1)} is now saved on this working report. Open HTML Preview to verify it${hadGeneratedOrPublishedPdf ? ", then regenerate the PDF" : ""}.`);
     } catch (nextError) {
       console.error(nextError);
       setSaveState("error");

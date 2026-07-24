@@ -65,44 +65,57 @@ export default function InvestorShell({ children }) {
       <PwaUpdateBanner />
       <InvestorNotificationToasts />
 
-      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
-        <div className="mx-auto flex min-h-[66px] max-w-[1440px] items-center justify-between gap-3 px-3.5 sm:px-6 lg:px-8">
-          <Link href="/investor/dashboard" className="flex min-w-0 items-center gap-2.5" aria-label="GrowVest Investor home">
-            <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-2xl bg-[var(--gv-blue)] p-1.5 shadow-sm sm:hidden">
-              <BrandLogo variant="icon" className="!h-full !w-full" imageClassName="!h-full !w-full rounded-xl bg-white object-contain p-1" />
-            </span>
-            <BrandLogo variant="wide" inverse={darkMode} className="hidden max-w-[172px] sm:flex" />
-            <div className="min-w-0 sm:border-l sm:border-slate-200 sm:pl-4">
-              <p className="truncate font-heading text-[15px] font-bold leading-tight text-[var(--gv-ink)] sm:text-base">Hello, {firstName}</p>
-              <p className="mt-0.5 truncate text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-400 sm:normal-case sm:tracking-normal">GrowVest Investor App</p>
+      <header className="sticky top-0 z-30 pt-[env(safe-area-inset-top)]">
+        <div className="bg-[linear-gradient(135deg,var(--gv-ink),var(--gv-blue))] px-3.5 py-2.5 text-white shadow-lg sm:hidden">
+          <div className="mx-auto flex min-h-[58px] max-w-lg items-center justify-between gap-3">
+            <Link href="/investor/dashboard" className="flex min-w-0 items-center gap-3" aria-label="GrowVest Investor home">
+              <BrandLogo variant="wide" inverse className="max-w-[128px]" imageClassName="max-h-9 w-auto object-contain" />
+              <span className="min-w-0 border-l border-white/20 pl-3">
+                <span className="block truncate text-[10px] font-bold uppercase tracking-[0.14em] text-cyan-200">Investor App</span>
+                <span className="mt-0.5 block truncate font-heading text-sm font-bold text-white">Hello, {firstName}</span>
+              </span>
+            </Link>
+            <div className="flex items-center gap-2">
+              <NotificationBell inverted />
+              <button type="button" onClick={() => setMoreOpen(true)} className="grid h-11 w-11 place-items-center overflow-hidden rounded-2xl border border-white/15 bg-white/10 text-xs font-bold text-white" aria-label="Open profile and more options">
+                <ProfileAvatar profile={profile} className="h-11 w-11" rounded="rounded-2xl" />
+              </button>
             </div>
-          </Link>
+          </div>
+        </div>
 
-          <div className="flex items-center gap-2">
-            {canInstall ? <div className="hidden md:block"><PwaInstallCard compact /></div> : null}
-            <ThemeToggle compact />
-            <NotificationBell />
-
-            <details className="relative hidden sm:block">
-              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-2xl border border-slate-200 bg-white px-2.5 py-1.5 text-left transition hover:bg-slate-50">
-                <ProfileAvatar profile={profile} />
-                <span className="hidden max-w-[150px] lg:block">
-                  <strong className="block truncate text-xs text-slate-800">{profile?.fullName || "Investor"}</strong>
-                  <span className="block truncate text-[10px] text-slate-400">{profile?.clientCode || "Secure portal"}</span>
-                </span>
-                <ChevronDown size={15} className="text-slate-400" />
-              </summary>
-              <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-slate-200 bg-white p-2 shadow-[var(--gv-shadow-float)]">
-                <Link href="/investor/profile" className="flex min-h-10 items-center rounded-xl px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">View profile</Link>
-                <Link href="/investor/change-password" className="flex min-h-10 items-center rounded-xl px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">Login &amp; security</Link>
-                {canInstall ? <button type="button" onClick={installApp} className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-semibold text-[var(--gv-blue)] hover:bg-blue-50"><Download size={16} /> Install app</button> : null}
-                <button type="button" onClick={handleLogout} className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-semibold text-red-600 hover:bg-red-50"><LogOut size={16} /> Sign out</button>
+        <div className="hidden border-b border-slate-200/80 bg-white/95 backdrop-blur-xl sm:block">
+          <div className="mx-auto flex min-h-[66px] max-w-[1440px] items-center justify-between gap-3 px-6 lg:px-8">
+            <Link href="/investor/dashboard" className="flex min-w-0 items-center gap-2.5" aria-label="GrowVest Investor home">
+              <BrandLogo variant="wide" inverse={darkMode} className="max-w-[172px]" />
+              <div className="min-w-0 border-l border-slate-200 pl-4">
+                <p className="truncate font-heading text-base font-bold leading-tight text-[var(--gv-ink)]">Hello, {firstName}</p>
+                <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-400">GrowVest Investor App</p>
               </div>
-            </details>
+            </Link>
 
-            <button type="button" onClick={() => setMoreOpen(true)} className="grid h-11 w-11 place-items-center overflow-hidden rounded-2xl bg-slate-950 text-xs font-bold text-white shadow-sm sm:hidden" aria-label="Open profile and more options">
-              <ProfileAvatar profile={profile} className="h-11 w-11" rounded="rounded-2xl" />
-            </button>
+            <div className="flex items-center gap-2">
+              {canInstall ? <div className="hidden md:block"><PwaInstallCard compact /></div> : null}
+              <ThemeToggle compact />
+              <NotificationBell />
+
+              <details className="relative hidden sm:block">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-2xl border border-slate-200 bg-white px-2.5 py-1.5 text-left transition hover:bg-slate-50">
+                  <ProfileAvatar profile={profile} />
+                  <span className="hidden max-w-[150px] lg:block">
+                    <strong className="block truncate text-xs text-slate-800">{profile?.fullName || "Investor"}</strong>
+                    <span className="block truncate text-[10px] text-slate-400">{profile?.clientCode || "Secure portal"}</span>
+                  </span>
+                  <ChevronDown size={15} className="text-slate-400" />
+                </summary>
+                <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-slate-200 bg-white p-2 shadow-[var(--gv-shadow-float)]">
+                  <Link href="/investor/profile" className="flex min-h-10 items-center rounded-xl px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">View profile</Link>
+                  <Link href="/investor/change-password" className="flex min-h-10 items-center rounded-xl px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">Login &amp; security</Link>
+                  {canInstall ? <button type="button" onClick={installApp} className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-semibold text-[var(--gv-blue)] hover:bg-blue-50"><Download size={16} /> Install app</button> : null}
+                  <button type="button" onClick={handleLogout} className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-semibold text-red-600 hover:bg-red-50"><LogOut size={16} /> Sign out</button>
+                </div>
+              </details>
+            </div>
           </div>
         </div>
       </header>
@@ -144,8 +157,7 @@ export default function InvestorShell({ children }) {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             const badge = item.href === "/investor/notifications" ? notifications?.unreadCount : 0;
             return (
-              <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={`relative flex min-h-[61px] flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-bold transition ${active ? "text-[var(--gv-blue)]" : "text-slate-500"}`}>
-                {active ? <span className="absolute top-0 h-1 w-7 rounded-full bg-[var(--gv-blue)]" /> : null}
+              <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={`relative flex min-h-[61px] flex-col items-center justify-center gap-1 rounded-2xl text-[10px] font-bold transition ${active ? "bg-blue-50 text-[var(--gv-blue)]" : "text-slate-500"}`}>
                 <span className="relative"><Icon size={21} strokeWidth={active ? 2.5 : 2} />{badge ? <span className="absolute -right-2.5 -top-2 grid min-h-4 min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[8px] font-black text-white ring-2 ring-white">{Math.min(badge, 9)}</span> : null}</span>
                 <span>{item.label}</span>
               </Link>
@@ -181,6 +193,19 @@ export default function InvestorShell({ children }) {
                 );
               })}
             </div>
+
+            <div className="mt-3 flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
+              <div>
+                <p className="text-sm font-bold text-slate-800">App appearance</p>
+                <p className="mt-0.5 text-[11px] text-slate-500">Switch between light and dark mode.</p>
+              </div>
+              <ThemeToggle compact />
+            </div>
+
+            <Link href="/investor/notifications" onClick={() => setMoreOpen(false)} className="mt-3 flex min-h-12 items-center justify-between rounded-2xl border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-[var(--gv-blue)]">
+              <span>Notification preferences</span>
+              <span className="rounded-full bg-white px-2 py-1 text-[10px]">{notifications?.pushEnabled ? "Push on" : "Set up"}</span>
+            </Link>
 
             {canInstall ? <button type="button" onClick={async () => { await installApp(); setMoreOpen(false); }} className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[var(--gv-blue)] px-4 text-sm font-bold text-white"><Download size={17} /> Install GrowVest Investor App</button> : null}
             <button type="button" onClick={handleLogout} className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 text-sm font-bold text-red-700"><LogOut size={17} /> Sign out securely</button>

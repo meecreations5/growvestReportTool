@@ -8,6 +8,7 @@ import { USER_ROLES, isStaffRole } from "@/lib/constants/roles";
 import { validateApplicationProfile } from "@/lib/auth/session";
 import { clearWorkspaceCaches } from "@/lib/utils/offlineAccess";
 import { clearWorkspaceSearchCache } from "@/services/workspaceSearchService";
+import { disablePushNotifications, isPushEnabledLocally } from "@/services/pushNotificationService";
 
 const AuthContext = createContext(null);
 
@@ -84,11 +85,15 @@ export function AuthProvider({ children }) {
     setAuthorizationError("");
     clearWorkspaceCaches();
     clearWorkspaceSearchCache();
+    if (profile?.role === USER_ROLES.INVESTOR && isPushEnabledLocally()) {
+      try { await disablePushNotifications(); }
+      catch (error) { console.warn("Push subscription could not be removed during logout", error); }
+    }
     if (typeof navigator !== "undefined" && navigator.serviceWorker?.controller) {
       navigator.serviceWorker.controller.postMessage({ type: "CLEAR_PRIVATE_CACHES" });
     }
     await signOut(auth);
-  }, []);
+  }, [profile?.role]);
 
   const value = useMemo(() => {
     const isAuthenticated = Boolean(firebaseUser && profile && profile.status === "active");

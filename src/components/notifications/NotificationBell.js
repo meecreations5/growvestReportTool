@@ -12,7 +12,7 @@ import {
 } from "@/services/notificationService";
 import { formatDateTime } from "@/lib/utils/date";
 
-export default function NotificationBell({ className = "" }) {
+export default function NotificationBell({ className = "", inverted = false }) {
   const router = useRouter();
   const { profile } = useAuth();
   const investorContext = useInvestorNotifications();
@@ -73,7 +73,7 @@ export default function NotificationBell({ className = "" }) {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="relative grid h-11 w-11 place-items-center rounded-2xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
+        className={`relative grid h-11 w-11 place-items-center rounded-2xl border transition ${inverted ? "border-white/15 bg-white/10 text-white hover:bg-white/20" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`}
         aria-label={`Open notifications${unread.length ? `, ${unread.length} unread` : ""}`}
         aria-expanded={open}
       >

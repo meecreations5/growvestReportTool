@@ -2,6 +2,7 @@ import { applicationDefault, cert, getApps, initializeApp } from "firebase-admin
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
+import { getMessaging } from "firebase-admin/messaging";
 
 function createAdminApp() {
   if (getApps().length) return getApps()[0];
@@ -30,6 +31,7 @@ export const adminApp = createAdminApp();
 export const adminAuth = getAuth(adminApp);
 export const adminDb = getFirestore(adminApp);
 export const adminStorage = getStorage(adminApp);
+export const adminMessaging = getMessaging(adminApp);
 export const adminBucket = adminStorage.bucket();
 
 function getBearerToken(request) {

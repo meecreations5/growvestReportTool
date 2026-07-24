@@ -4,9 +4,7 @@ import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-ch
 import {
   getFirestore,
   initializeFirestore,
-  memoryLocalCache,
-  persistentLocalCache,
-  persistentMultipleTabManager
+  memoryLocalCache
 } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -58,18 +56,11 @@ export const appCheck = appCheckInstance;
 export const auth = getAuth(app);
 
 function createFirestore() {
-  const offlineEnabled = typeof window !== "undefined"
-    && window.localStorage.getItem("growvest-secure-offline-enabled") === "true";
-
   try {
-    return initializeFirestore(app, {
-      localCache: offlineEnabled
-        ? persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-        : memoryLocalCache()
-    });
+    // Financial records are intentionally memory-only. Investor reports,
+    // holdings, documents and MOM data must not persist in IndexedDB.
+    return initializeFirestore(app, { localCache: memoryLocalCache() });
   } catch (error) {
-    // Hot reload or another bundle may already have initialised Firestore.
-    // Reuse the existing instance instead of failing the application boot.
     return getFirestore(app);
   }
 }

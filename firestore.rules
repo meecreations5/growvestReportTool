@@ -337,6 +337,12 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
 
+    // FCM registration tokens are written only by authenticated server routes.
+    // They are intentionally unavailable to browser clients and other users.
+    match /pushSubscriptions/{subscriptionId} {
+      allow read, create, update, delete: if false;
+    }
+
     match /meetingMinutes/{momId} {
       allow create: if isStaff()
         && request.resource.data.createdByUid == request.auth.uid;

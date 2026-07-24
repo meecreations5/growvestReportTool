@@ -1,11 +1,13 @@
 import {
   collection,
   doc,
+  getDoc,
   limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
   writeBatch
@@ -96,4 +98,40 @@ export async function markAllNotificationsRead(items = []) {
     });
   });
   await batch.commit();
+}
+
+
+export const DEFAULT_NOTIFICATION_PREFERENCES = {
+  inAppEnabled: true,
+  pushEnabled: false,
+  pushCategories: {
+    reports: true,
+    meetings: true,
+    documents: true,
+    general: true
+  }
+};
+
+export async function getNotificationPreferences(uid) {
+  if (!uid) return DEFAULT_NOTIFICATION_PREFERENCES;
+  const snapshot = await getDoc(doc(db, "notificationPreferences", uid));
+  if (!snapshot.exists()) return DEFAULT_NOTIFICATION_PREFERENCES;
+  const data = snapshot.data();
+  return {
+    ...DEFAULT_NOTIFICATION_PREFERENCES,
+    ...data,
+    pushCategories: {
+      ...DEFAULT_NOTIFICATION_PREFERENCES.pushCategories,
+      ...(data.pushCategories || {})
+    }
+  };
+}
+
+export async function saveNotificationPreferences(uid, updates = {}) {
+  if (!uid) throw new Error("A user profile is required to save notification preferences.");
+  await setDoc(doc(db, "notificationPreferences", uid), {
+    recipientUid: uid,
+    ...updates,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
 }

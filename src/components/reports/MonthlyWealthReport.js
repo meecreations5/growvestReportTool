@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   ArrowRight,
   CalendarDays,
@@ -34,8 +35,8 @@ import {
   formatClientRelationship,
   previousReportFor
 } from "@/lib/utils/reportPresentation";
-import ReportTrendChart from "@/components/reports/ReportTrendChart";
-import ReportDonutChart from "@/components/reports/ReportDonutChart";
+const ReportTrendChart = dynamic(() => import("@/components/reports/ReportTrendChart"), { ssr: false, loading: () => <div className="h-64 animate-pulse rounded-2xl bg-slate-100" /> });
+const ReportDonutChart = dynamic(() => import("@/components/reports/ReportDonutChart"), { ssr: false, loading: () => <div className="h-64 animate-pulse rounded-full bg-slate-100" /> });
 import { getMonthLabel } from "@/lib/constants/report";
 import { resolveReportTemplate } from "@/lib/constants/reportTemplates";
 import { useBranding } from "@/contexts/BrandingContext";

@@ -134,7 +134,7 @@ export default function InvestorProfilePage() {
         ))}
       </section>
 
-      <OfflineAccessCard />
+      <OfflineAccessCard investor />
 
       <section className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900"><ShieldCheck className="mt-0.5 shrink-0" size={18} /><p>Your Investor Portal displays only information marked as client-visible and approved by GrowVest.</p></section>
     </div>

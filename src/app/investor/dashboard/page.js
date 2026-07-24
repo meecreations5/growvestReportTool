@@ -5,13 +5,16 @@ import { useEffect, useMemo, useState } from "react";
 import { Timestamp, collection, doc, getDoc, getDocs, limit, orderBy, query, where } from "firebase/firestore";
 import {
   ArrowRight,
+  BellRing,
   CalendarClock,
   CheckCircle2,
   ChevronRight,
   FileBarChart2,
+  Files,
   Mail,
   MessageCircleMore,
   Phone,
+  Smartphone,
   Target,
   TrendingDown,
   TrendingUp,
@@ -103,6 +106,7 @@ export default function InvestorDashboardPage() {
   const advisorName = investor?.advisorName || investor?.assignedAdvisorName || "GrowVest Advisor";
   const advisorEmail = investor?.advisorEmail || investor?.assignedAdvisorEmail || "cwp@growvest.info";
   const advisorPhone = investor?.advisorPhone || investor?.assignedAdvisorPhone || "";
+  const advisorWhatsApp = advisorPhone ? `https://wa.me/${String(advisorPhone).replace(/\D/g, "")}` : "";
 
   return (
     <div className="grid gap-5 sm:gap-6">
@@ -146,6 +150,32 @@ export default function InvestorDashboardPage() {
       </section>
 
       {error ? <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">{error}</div> : null}
+
+      {!notifications?.pushEnabled && notifications?.pushSupported && notifications?.pushConfigured ? (
+        <Link href="/investor/notifications" className="flex items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm sm:hidden">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[var(--gv-blue)] text-white"><Smartphone size={20} /></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-[var(--gv-ink)]">Never miss an important update</span><span className="mt-1 block text-xs leading-5 text-slate-600">Enable push alerts for reports, reviews and documents.</span></span>
+          <ChevronRight size={18} className="shrink-0 text-[var(--gv-blue)]" />
+        </Link>
+      ) : null}
+
+      <section className="sm:hidden">
+        <div className="mb-2 flex items-center justify-between"><p className="text-[11px] font-black uppercase tracking-[0.13em] text-slate-400">Quick access</p><span className="text-[10px] font-semibold text-slate-400">Swipe for more</span></div>
+        <div className="gv-scrollbar -mx-3.5 flex snap-x gap-2.5 overflow-x-auto px-3.5 pb-1">
+          {[
+            ["Latest report", latestReport ? `/investor/reports/${latestReport.id}` : "/investor/reports", FileBarChart2, "View"],
+            ["Bucket List", "/investor/goals", Target, `${activeGoals.length} active`],
+            ["Documents", "/investor/documents", Files, "Secure files"],
+            ["Notifications", "/investor/notifications", BellRing, unreadCount ? `${unreadCount} new` : "All caught up"]
+          ].map(([label, href, Icon, hint]) => (
+            <Link key={label} href={href} className="min-w-[142px] snap-start rounded-2xl border border-[var(--gv-border)] bg-white p-3.5 shadow-[var(--gv-shadow-card)]">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50 text-[var(--gv-blue)]"><Icon size={18} /></span>
+              <span className="mt-3 block text-sm font-bold text-[var(--gv-ink)]">{label}</span>
+              <span className="mt-1 block text-[11px] text-slate-500">{hint}</span>
+            </Link>
+          ))}
+        </div>
+      </section>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
@@ -197,9 +227,10 @@ export default function InvestorDashboardPage() {
             <span className="grid h-12 w-12 place-items-center rounded-full bg-[var(--gv-blue)] font-heading text-sm font-bold text-white">{advisorName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}</span>
             <div><p className="text-xs font-semibold text-slate-400">Your GrowVest Advisor</p><h2 className="font-heading text-xl font-bold text-[var(--gv-ink)]">{advisorName}</h2><p className="text-xs text-slate-500">{investor?.advisorDesignation || investor?.assignedAdvisorDesignation || "Relationship Manager"}</p></div>
           </div>
-          <div className="mt-5 grid grid-cols-2 gap-2">
-            <a href={`mailto:${advisorEmail}`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-600"><Mail size={16} /> Email</a>
-            <a href={advisorPhone ? `tel:${advisorPhone}` : `mailto:${advisorEmail}`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-600"><Phone size={16} /> Call</a>
+          <div className={`mt-5 grid gap-2 ${advisorWhatsApp ? "grid-cols-3" : "grid-cols-2"}`}>
+            <a href={`mailto:${advisorEmail}`} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 sm:text-sm"><Mail size={16} /> Email</a>
+            <a href={advisorPhone ? `tel:${advisorPhone}` : `mailto:${advisorEmail}`} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 sm:text-sm"><Phone size={16} /> Call</a>
+            {advisorWhatsApp ? <a href={advisorWhatsApp} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700 sm:text-sm"><MessageCircleMore size={16} /> WhatsApp</a> : null}
           </div>
           <Link href="/investor/profile" className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-[var(--gv-blue)]">View Advisor and profile details <ChevronRight size={15} /></Link>
         </article>

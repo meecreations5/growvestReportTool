@@ -349,7 +349,7 @@ There are no hardcoded login credentials. Staff use Microsoft 365. The Super Adm
 
 ## Current limitations
 
-- Automatic WhatsApp API and background browser push are not included; WhatsApp uses manual click-to-chat.
+- Automatic WhatsApp API is not included; WhatsApp uses manual click-to-chat. Firebase Web Push is included for Investor notifications after VAPID and Cloud Function deployment.
 - Microsoft Graph and Google Calendar API integrations are intentionally deferred; meeting links are entered manually.
 
 ## Phase 3.1 — Multiple Investment Preferences
@@ -397,3 +397,19 @@ Adds a dedicated **Signature branding** section under Branding Settings with com
 ## v0.28.1 — Firebase App Check build fix
 
 Removed the unsupported `getAppCheck` import and made App Check initialisation safe across Next.js hot reloads.
+
+## 0.29.0
+Template application reliability, lazy report charts, memory-only Firestore cache, and restricted investor offline data.
+
+## 0.30.0 — Investor Mobile Experience and Firebase Push Notifications
+
+- Added an app-style Investor mobile header using the published inverse GrowVest logo directly on the navy/blue background.
+- Improved mobile bottom navigation, More sheet, quick-access dashboard actions and Advisor contact actions.
+- Added Firebase Cloud Messaging push registration for Investor devices.
+- Added closed-app background notifications through a dedicated Firebase Messaging service worker.
+- Added push preferences for Reports, Meetings & MOM, Documents and General updates.
+- Added a test-push action and automatic cleanup of invalid FCM tokens.
+- Added an `asia-south1` Firestore-triggered Cloud Function for new notification delivery.
+- Push tokens are server-managed and are removed from the current device during secure logout.
+
+See `docs/V0_30_INVESTOR_MOBILE_AND_PUSH_NOTIFICATIONS.md` for configuration, deployment and UAT steps.
