@@ -60,12 +60,13 @@ export function subscribeNotifications(profileOrUid, callback, onError) {
 
   if (profile.role === "investor" && profile.investorId) {
     return onSnapshot(
-      query(collection(db, "notifications"), where("investorId", "==", profile.investorId)),
-      (snapshot) => callback(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })).sort((a, b) => {
-        const left = typeof a.createdAt?.toDate === "function" ? a.createdAt.toDate().getTime() : new Date(a.createdAt || 0).getTime();
-        const right = typeof b.createdAt?.toDate === "function" ? b.createdAt.toDate().getTime() : new Date(b.createdAt || 0).getTime();
-        return right - left;
-      }).slice(0, 50)),
+      query(
+        collection(db, "notifications"),
+        where("investorId", "==", profile.investorId),
+        orderBy("createdAt", "desc"),
+        limit(50)
+      ),
+      (snapshot) => callback(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))),
       onError
     );
   }

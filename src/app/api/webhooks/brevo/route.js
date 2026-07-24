@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { secureSecretMatch } from "@/lib/server/secureCompare";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import { normaliseDeliveryStatus } from "@/lib/constants/emailDelivery";
 
@@ -24,7 +25,7 @@ function authorised(request) {
   const configured = String(process.env.BREVO_WEBHOOK_TOKEN || "").trim();
   if (!configured) return false;
   const supplied = String(request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
-  return supplied === configured;
+  return secureSecretMatch(supplied, configured);
 }
 
 function customValue(payload) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { isOfflineAccessEnabled } from "@/lib/utils/offlineAccess";
 
 const PwaContext = createContext(null);
 const DISMISS_KEY = "growvest-pwa-install-dismissed-at";
@@ -47,6 +48,8 @@ export function PwaProvider({ children }) {
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").then((nextRegistration) => {
         setRegistration(nextRegistration);
+        const worker = nextRegistration.active || nextRegistration.waiting || nextRegistration.installing;
+        worker?.postMessage({ type: "SET_OFFLINE_ACCESS", enabled: isOfflineAccessEnabled() });
         if (nextRegistration.waiting) setUpdateAvailable(true);
         nextRegistration.addEventListener("updatefound", () => {
           const worker = nextRegistration.installing;

@@ -6,6 +6,8 @@ import { auth } from "@/lib/firebase/client";
 import { resolveUserProfile } from "@/services/authService";
 import { USER_ROLES, isStaffRole } from "@/lib/constants/roles";
 import { validateApplicationProfile } from "@/lib/auth/session";
+import { clearWorkspaceCaches } from "@/lib/utils/offlineAccess";
+import { clearWorkspaceSearchCache } from "@/services/workspaceSearchService";
 
 const AuthContext = createContext(null);
 
@@ -80,6 +82,11 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     setAuthorizationError("");
+    clearWorkspaceCaches();
+    clearWorkspaceSearchCache();
+    if (typeof navigator !== "undefined" && navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: "CLEAR_PRIVATE_CACHES" });
+    }
     await signOut(auth);
   }, []);
 

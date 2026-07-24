@@ -98,6 +98,8 @@ service cloud.firestore {
           && hasPendingStaffInvitation()
           && request.resource.data.email == request.auth.token.email
           && request.resource.data.role == invitationForCurrentEmail().data.role
+          && request.resource.data.get('advisorProfileEnabled', false) == invitationForCurrentEmail().data.get('advisorProfileEnabled', false)
+          && request.resource.data.get('advisorCode', '') == invitationForCurrentEmail().data.get('advisorCode', '')
           && request.resource.data.status == 'active'
           && request.resource.data.authMethod == 'microsoft'
         )
@@ -149,7 +151,7 @@ service cloud.firestore {
             .hasOnly(['fullName', 'photoURL', 'lastLoginAt', 'mustChangePassword', 'authMethods', 'authEmail', 'googleEmail', 'passwordChangedAt', 'updatedAt'])
           && request.resource.data.role == resource.data.role
           && request.resource.data.status == resource.data.status
-          && request.resource.data.investorId == resource.data.investorId
+          && request.resource.data.get('investorId', null) == resource.data.get('investorId', null)
         );
 
       match /signatureVersions/{versionId} {
@@ -188,7 +190,8 @@ service cloud.firestore {
     }
 
     match /counters/{counterId} {
-      allow read, write: if isStaff();
+      allow read, write: if (counterId == 'advisors' && isSuperAdmin())
+        || (counterId != 'advisors' && isStaff());
     }
 
     match /leads/{leadId} {
@@ -200,8 +203,8 @@ service cloud.firestore {
 
       allow update: if isAdmin() || (
         ownsAdvisorRecord(resource.data)
-        && request.resource.data.assignedAdvisorUid == resource.data.assignedAdvisorUid
-        && request.resource.data.createdByUid == resource.data.createdByUid
+        && request.resource.data.get('assignedAdvisorUid', null) == resource.data.get('assignedAdvisorUid', null)
+        && request.resource.data.get('createdByUid', null) == resource.data.get('createdByUid', null)
       );
 
       allow delete: if isSuperAdmin();
@@ -234,8 +237,8 @@ service cloud.firestore {
       allow read: if isAdmin() || ownsAdvisorRecord(resource.data);
       allow update: if isAdmin() || (
         ownsAdvisorRecord(resource.data)
-        && request.resource.data.assignedAdvisorUid == resource.data.assignedAdvisorUid
-        && request.resource.data.leadId == resource.data.leadId
+        && request.resource.data.get('assignedAdvisorUid', null) == resource.data.get('assignedAdvisorUid', null)
+        && request.resource.data.get('leadId', null) == resource.data.get('leadId', null)
       );
       allow delete: if isSuperAdmin();
     }
@@ -265,8 +268,8 @@ service cloud.firestore {
 
       allow update: if isAdmin() || (
         ownsAdvisorRecord(resource.data)
-        && request.resource.data.assignedAdvisorUid == resource.data.assignedAdvisorUid
-        && request.resource.data.advisorUid == resource.data.advisorUid
+        && request.resource.data.get('assignedAdvisorUid', null) == resource.data.get('assignedAdvisorUid', null)
+        && request.resource.data.get('advisorUid', null) == resource.data.get('advisorUid', null)
       );
       allow delete: if isSuperAdmin();
     }
@@ -287,8 +290,8 @@ service cloud.firestore {
 
       allow update: if isAdmin() || (
         ownsAdvisorRecord(resource.data)
-        && request.resource.data.advisorUid == resource.data.advisorUid
-        && request.resource.data.createdByUid == resource.data.createdByUid
+        && request.resource.data.get('advisorUid', null) == resource.data.get('advisorUid', null)
+        && request.resource.data.get('createdByUid', null) == resource.data.get('createdByUid', null)
       );
 
       allow delete: if isSuperAdmin();
@@ -345,7 +348,17 @@ service cloud.firestore {
           && resource.data.investorVisible == true
         );
 
-      allow update: if isAdmin() || ownsAdvisorRecord(resource.data);
+      allow update: if isAdmin() || (
+        ownsAdvisorRecord(resource.data)
+        && request.resource.data.get('advisorUid', null) == resource.data.get('advisorUid', null)
+        && request.resource.data.get('assignedAdvisorUid', null) == resource.data.get('assignedAdvisorUid', null)
+        && request.resource.data.get('investorId', null) == resource.data.get('investorId', null)
+        && request.resource.data.get('investorPortalUid', null) == resource.data.get('investorPortalUid', null)
+        && request.resource.data.get('leadId', null) == resource.data.get('leadId', null)
+        && request.resource.data.get('meetingId', null) == resource.data.get('meetingId', null)
+        && request.resource.data.get('createdByUid', null) == resource.data.get('createdByUid', null)
+        && request.resource.data.get('momCode', null) == resource.data.get('momCode', null)
+      );
       allow delete: if isSuperAdmin();
     }
 
@@ -361,7 +374,15 @@ service cloud.firestore {
           && resource.data.status == 'completed'
         );
 
-      allow update: if isAdmin() || ownsAdvisorRecord(resource.data);
+      allow update: if isAdmin() || (
+        ownsAdvisorRecord(resource.data)
+        && request.resource.data.get('advisorUid', null) == resource.data.get('advisorUid', null)
+        && request.resource.data.get('assignedAdvisorUid', null) == resource.data.get('assignedAdvisorUid', null)
+        && request.resource.data.get('investorId', null) == resource.data.get('investorId', null)
+        && request.resource.data.get('investorPortalUid', null) == resource.data.get('investorPortalUid', null)
+        && request.resource.data.get('createdByUid', null) == resource.data.get('createdByUid', null)
+        && request.resource.data.get('reportCode', null) == resource.data.get('reportCode', null)
+      );
       allow delete: if isSuperAdmin();
     }
 
@@ -415,7 +436,7 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'storagePath', 'fileName', 'mimeType', 'sizeBytes', 'status',
             'uploadedByUid', 'uploadedByRole', 'uploadedByName', 'uploadedAt',
-            'verificationNote', 'verifiedAt', 'verifiedByUid', 'updatedAt'
+            'updatedAt'
           ])
           && request.resource.data.status == 'uploaded'
           && request.resource.data.uploadedByUid == request.auth.uid
@@ -483,8 +504,8 @@ service cloud.firestore {
       allow update: if isAdmin() || (
         isAdvisor()
         && resource.data.advisorUid == request.auth.uid
-        && request.resource.data.advisorUid == resource.data.advisorUid
-        && request.resource.data.investorId == resource.data.investorId
+        && request.resource.data.get('advisorUid', null) == resource.data.get('advisorUid', null)
+        && request.resource.data.get('investorId', null) == resource.data.get('investorId', null)
       );
 
       allow delete: if isSuperAdmin();
@@ -513,7 +534,7 @@ service cloud.firestore {
       allow update: if isAdmin() || (
         isAdvisor()
         && resource.data.createdByUid == request.auth.uid
-        && request.resource.data.createdByUid == resource.data.createdByUid
+        && request.resource.data.get('createdByUid', null) == resource.data.get('createdByUid', null)
         && resource.data.status in ['draft', 'archived', 'approved']
         && request.resource.data.status in ['draft', 'archived']
       );
@@ -565,7 +586,7 @@ service cloud.firestore {
     }
 
     match /reportSettings/{documentId} {
-      allow read: if activeUser();
+      allow read: if isStaff();
       allow create, update, delete: if isAdmin();
     }
 

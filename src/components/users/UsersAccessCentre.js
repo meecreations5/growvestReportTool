@@ -28,6 +28,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { subscribeInvestors } from "@/services/assessmentService";
 import {
+  backfillMissingAdvisorCodes,
   cancelStaffInvitation,
   setStaffUserStatus,
   subscribeStaffAccessActivity,
@@ -36,6 +37,7 @@ import {
 } from "@/services/userService";
 import { ACCESS_LEVEL_LABELS, ACCESS_LEVEL_OPTIONS, ACCESS_LEVELS, PERMISSION_GROUPS, ROLE_SUMMARIES, normalisePermissionOverrides } from "@/lib/constants/permissions";
 import { ROLE_LABELS, USER_ROLES } from "@/lib/constants/roles";
+import { hasAdvisorProfile } from "@/lib/utils/advisorProfile";
 import { formatDateTime } from "@/lib/utils/date";
 import { inputClassName } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
@@ -137,7 +139,7 @@ function StaffCard({ item, canManage, canManageSignature, working, onToggle, onC
       </div>
 
       <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
-        <div><dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Role</dt><dd className="mt-1 font-semibold text-slate-800">{ROLE_LABELS[item.role] || item.role}</dd></div>
+        <div><dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Role</dt><dd className="mt-1 font-semibold text-slate-800">{ROLE_LABELS[item.role] || item.role}</dd>{hasAdvisorProfile(item) ? <span className="mt-1 inline-flex rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-bold text-cyan-700">Advisor · {item.advisorCode || "Code pending"}</span> : null}</div>
         <div><dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Designation</dt><dd className="mt-1 font-semibold text-slate-800">{item.designation || "—"}</dd></div>
         <div><dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Authentication</dt><dd className="mt-1 font-semibold text-slate-800">{staffAuthLabel(item)}</dd></div>
         <div><dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Last login</dt><dd className="mt-1 font-semibold text-slate-800">{invitation ? "Not signed in" : formatDateTime(item.lastLoginAt)}</dd></div>
@@ -161,6 +163,7 @@ function StaffAccessPanel({ users, invitations, profile }) {
   const [status, setStatus] = useState("all");
   const [workingId, setWorkingId] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [confirmation, setConfirmation] = useState(null);
   const canManage = profile?.role === USER_ROLES.SUPER_ADMIN;
   const canManageSignature = [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN].includes(profile?.role);
@@ -170,6 +173,8 @@ function StaffAccessPanel({ users, invitations, profile }) {
     const pending = invitations.filter((item) => item.status !== "linked" && !linkedEmails.has(String(item.email || "").toLowerCase()));
     return [...users, ...pending];
   }, [invitations, users]);
+
+  const missingAdvisorCodeCount = useMemo(() => records.filter((item) => hasAdvisorProfile(item) && !String(item.advisorCode || "").trim()).length, [records]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -207,6 +212,22 @@ function StaffAccessPanel({ users, invitations, profile }) {
     });
   }
 
+  async function generateMissingCodes() {
+    setWorkingId("advisor-code-backfill");
+    setError("");
+    setNotice("");
+    try {
+      const result = await backfillMissingAdvisorCodes(profile);
+      setNotice(result.updated
+        ? `${result.updated} missing Advisor code${result.updated === 1 ? " was" : "s were"} generated successfully.`
+        : "All Advisor-capable staff already have an Advisor code.");
+    } catch (nextError) {
+      setError(nextError.message || "Missing Advisor codes could not be generated.");
+    } finally {
+      setWorkingId("");
+    }
+  }
+
   async function confirmAction() {
     if (!confirmation) return;
     setWorkingId(confirmation.item.id);
@@ -230,6 +251,18 @@ function StaffAccessPanel({ users, invitations, profile }) {
   return (
     <section className="gv-card overflow-hidden">
       {error ? <div role="alert" className="border-b border-red-200 bg-red-50 px-5 py-3 text-sm font-semibold text-red-700">{error}</div> : null}
+      {notice ? <div role="status" className="border-b border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-700">{notice}</div> : null}
+      {canManage && missingAdvisorCodeCount > 0 ? (
+        <div className="flex flex-col gap-3 border-b border-amber-200 bg-amber-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-bold text-amber-950">{missingAdvisorCodeCount} Advisor-capable staff record{missingAdvisorCodeCount === 1 ? " needs" : "s need"} a code</p>
+            <p className="mt-1 text-xs leading-5 text-amber-800">Generate sequential GV-ADV codes for existing Advisors, Admins or Super Admins with Advisor capability.</p>
+          </div>
+          <button type="button" onClick={generateMissingCodes} disabled={workingId === "advisor-code-backfill"} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-60">
+            <UserRoundCheck size={17} />{workingId === "advisor-code-backfill" ? "Generating…" : "Generate missing codes"}
+          </button>
+        </div>
+      ) : null}
       <div className="grid gap-3 border-b border-slate-200 p-4 xl:grid-cols-[minmax(280px,1fr)_190px_190px]">
         <label className="relative"><Search size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" /><input className={`${inputClassName} pl-10`} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, email, designation or Advisor code" /></label>
         <select className={inputClassName} value={role} onChange={(event) => setRole(event.target.value)}><option value="all">All staff roles</option><option value="super_admin">Super Admin</option><option value="admin">Admin</option><option value="advisor">Advisor</option></select>
@@ -244,7 +277,7 @@ function StaffAccessPanel({ users, invitations, profile }) {
               <thead className="sticky top-0 bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">User</th><th className="px-4 py-3">Role</th><th className="px-4 py-3">Designation</th><th className="px-4 py-3">Authentication</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Last Login</th><th className="px-5 py-3 text-right">Actions</th></tr></thead>
               <tbody>{filtered.map((item) => {
                 const invitation = item.recordState === "invitation";
-                return <tr key={`${item.recordState}-${item.id}`} className="border-t border-slate-100 hover:bg-slate-50/70"><td className="px-5 py-4"><div className="flex items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-xs font-bold text-blue-700">{initials(item.fullName)}</span><div><p className="font-semibold text-slate-950">{item.fullName}</p><p className="mt-1 text-xs text-slate-500">{item.email}</p></div></div></td><td className="px-4 py-4 font-semibold text-slate-700">{ROLE_LABELS[item.role] || item.role}</td><td className="px-4 py-4 text-slate-600"><p>{item.designation || "—"}</p>{item.advisorCode ? <p className="mt-1 text-xs text-slate-400">{item.advisorCode}</p> : null}</td><td className="px-4 py-4"><span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700"><KeyRound size={13} />{staffAuthLabel(item)}</span></td><td className="px-4 py-4"><UserStatusBadge status={item.status} invitationStatus={invitation ? item.status : null} /></td><td className="px-4 py-4 text-slate-600">{invitation ? "Not signed in" : formatDateTime(item.lastLoginAt)}</td><td className="px-5 py-4"><div className="flex justify-end gap-2">{!invitation && canManage ? <Link href={`/users/${item.id}/edit`} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"><Pencil size={15} /> Edit</Link> : null}{!invitation && canManageSignature ? <Link href={`/users/${item.id}/signature`} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-700"><PenTool size={15} /> Signature</Link> : null}{!invitation && canManage ? <button type="button" disabled={workingId === item.id} onClick={() => requestToggle(item)} className={`inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold disabled:opacity-60 ${item.status === "active" ? "border-red-200 text-red-700 hover:bg-red-50" : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"}`}>{item.status === "active" ? <Ban size={15} /> : <CheckCircle2 size={15} />}{item.status === "active" ? "Deactivate" : "Activate"}</button> : null}{invitation && canManage && item.status === "pending" ? <button type="button" disabled={workingId === item.id} onClick={() => requestCancel(item)} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"><Ban size={15} /> Cancel</button> : null}</div></td></tr>;
+                return <tr key={`${item.recordState}-${item.id}`} className="border-t border-slate-100 hover:bg-slate-50/70"><td className="px-5 py-4"><div className="flex items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-xs font-bold text-blue-700">{initials(item.fullName)}</span><div><p className="font-semibold text-slate-950">{item.fullName}</p><p className="mt-1 text-xs text-slate-500">{item.email}</p></div></div></td><td className="px-4 py-4"><p className="font-semibold text-slate-700">{ROLE_LABELS[item.role] || item.role}</p>{hasAdvisorProfile(item) ? <span className="mt-1 inline-flex rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-bold text-cyan-700">Advisor enabled</span> : null}</td><td className="px-4 py-4 text-slate-600"><p>{item.designation || "—"}</p>{item.advisorCode ? <p className="mt-1 text-xs font-semibold tracking-wide text-slate-500">{item.advisorCode}</p> : hasAdvisorProfile(item) ? <p className="mt-1 text-xs text-amber-700">Code pending</p> : null}</td><td className="px-4 py-4"><span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700"><KeyRound size={13} />{staffAuthLabel(item)}</span></td><td className="px-4 py-4"><UserStatusBadge status={item.status} invitationStatus={invitation ? item.status : null} /></td><td className="px-4 py-4 text-slate-600">{invitation ? "Not signed in" : formatDateTime(item.lastLoginAt)}</td><td className="px-5 py-4"><div className="flex justify-end gap-2">{!invitation && canManage ? <Link href={`/users/${item.id}/edit`} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"><Pencil size={15} /> Edit</Link> : null}{!invitation && canManageSignature ? <Link href={`/users/${item.id}/signature`} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-700"><PenTool size={15} /> Signature</Link> : null}{!invitation && canManage ? <button type="button" disabled={workingId === item.id} onClick={() => requestToggle(item)} className={`inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold disabled:opacity-60 ${item.status === "active" ? "border-red-200 text-red-700 hover:bg-red-50" : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"}`}>{item.status === "active" ? <Ban size={15} /> : <CheckCircle2 size={15} />}{item.status === "active" ? "Deactivate" : "Activate"}</button> : null}{invitation && canManage && item.status === "pending" ? <button type="button" disabled={workingId === item.id} onClick={() => requestCancel(item)} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"><Ban size={15} /> Cancel</button> : null}</div></td></tr>;
               })}</tbody>
             </table>
           </div>
@@ -465,7 +498,7 @@ export default function UsersAccessCentre() {
     active: users.filter((item) => item.status === "active").length,
     pending: invitations.filter((item) => item.status === "pending").length,
     inactive: users.filter((item) => item.status === "inactive").length,
-    advisors: users.filter((item) => item.role === USER_ROLES.ADVISOR && item.status === "active").length,
+    advisors: users.filter((item) => hasAdvisorProfile(item) && item.status === "active").length,
     investorPortal: investors.filter((item) => item.portalEnabled).length
   }), [invitations, investors, users]);
 

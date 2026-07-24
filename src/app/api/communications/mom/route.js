@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminDb, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, canStaffAccessRecord, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
 import { sendTransactionalEmail } from "@/lib/server/brevoMailer";
 import { momEmailContent } from "@/lib/server/emailTemplates";
 import { getAdvisorEmailProfile, getServerBranding, getServerCommunicationSettings } from "@/lib/server/settingsServer";
@@ -17,8 +17,7 @@ export async function POST(request) {
     const snapshot = await adminDb.collection("meetingMinutes").doc(momId).get();
     if (!snapshot.exists) return NextResponse.json({ error: "MOM was not found." }, { status: 404 });
     const mom = { id: snapshot.id, ...snapshot.data() };
-    const isAdmin = ["super_admin", "admin"].includes(actor.role);
-    if (!isAdmin && mom.advisorUid !== actor.uid) {
+    if (!canStaffAccessRecord(actor, mom)) {
       return NextResponse.json({ error: "You are not authorised to send this MOM." }, { status: 403 });
     }
     if (mom.status !== "completed" || !mom.investorVisible) {

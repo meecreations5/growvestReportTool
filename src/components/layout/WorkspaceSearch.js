@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileBarChart2, Search, UserRound, UsersRound, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { searchWorkspace } from "@/services/workspaceSearchService";
+import { prewarmWorkspaceSearch, searchWorkspace } from "@/services/workspaceSearchService";
 
 const ICONS = { Investor: UserRound, Lead: UsersRound, Report: FileBarChart2 };
 
@@ -16,6 +16,14 @@ export default function WorkspaceSearch() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!profile?.id) return undefined;
+    const schedule = window.requestIdleCallback || ((callback) => window.setTimeout(callback, 400));
+    const cancel = window.cancelIdleCallback || window.clearTimeout;
+    const handle = schedule(() => prewarmWorkspaceSearch(profile));
+    return () => cancel(handle);
+  }, [profile]);
 
   useEffect(() => {
     function close(event) {

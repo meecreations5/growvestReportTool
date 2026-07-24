@@ -2,6 +2,10 @@ import { collection, getDocs, limit, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { USER_ROLES } from "@/lib/constants/roles";
 
+const SEARCH_CACHE_TTL = 5 * 60 * 1000;
+const workspaceCache = new Map();
+const workspaceLoads = new Map();
+
 function normalise(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -29,28 +33,69 @@ async function safeGet(searchQuery) {
   }
 }
 
+function cacheKey(currentUser) {
+  return `${currentUser?.id || "anonymous"}:${currentUser?.role || "unknown"}`;
+}
+
+async function loadWorkspaceIndex(currentUser, { force = false } = {}) {
+  if (!currentUser?.id) return { investors: [], leads: [], reports: [] };
+  const key = cacheKey(currentUser);
+  const cached = workspaceCache.get(key);
+  if (!force && cached && Date.now() - cached.loadedAt < SEARCH_CACHE_TTL) return cached.data;
+  if (!force && workspaceLoads.has(key)) return workspaceLoads.get(key);
+
+  const load = (async () => {
+    const privileged = [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN].includes(currentUser.role);
+    const investorQuery = privileged
+      ? query(collection(db, "investors"), where("isDeleted", "==", false), limit(80))
+      : query(collection(db, "investors"), where("assignedAdvisorUid", "==", currentUser.id), where("isDeleted", "==", false), limit(80));
+    const leadQuery = privileged
+      ? query(collection(db, "leads"), where("isDeleted", "==", false), limit(80))
+      : query(collection(db, "leads"), where("assignedAdvisorUid", "==", currentUser.id), where("isDeleted", "==", false), limit(80));
+    const reportQuery = privileged
+      ? query(collection(db, "monthlyReports"), limit(80))
+      : query(collection(db, "monthlyReports"), where("advisorUid", "==", currentUser.id), limit(80));
+
+    const [investors, leads, reports] = await Promise.all([
+      safeGet(investorQuery),
+      safeGet(leadQuery),
+      safeGet(reportQuery)
+    ]);
+    const data = { investors, leads, reports };
+    workspaceCache.set(key, { data, loadedAt: Date.now() });
+    return data;
+  })();
+
+  workspaceLoads.set(key, load);
+  try {
+    return await load;
+  } finally {
+    workspaceLoads.delete(key);
+  }
+}
+
+export function prewarmWorkspaceSearch(currentUser) {
+  return loadWorkspaceIndex(currentUser).catch(() => null);
+}
+
+export function clearWorkspaceSearchCache(currentUser = null) {
+  if (!currentUser) {
+    workspaceCache.clear();
+    workspaceLoads.clear();
+    return;
+  }
+  const key = cacheKey(currentUser);
+  workspaceCache.delete(key);
+  workspaceLoads.delete(key);
+}
+
 export async function searchWorkspace(currentUser, rawTerm) {
   const term = normalise(rawTerm);
   if (!currentUser?.id || term.length < 2) return [];
 
-  const privileged = [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN].includes(currentUser.role);
-  const investorQuery = privileged
-    ? query(collection(db, "investors"), where("isDeleted", "==", false), limit(80))
-    : query(collection(db, "investors"), where("assignedAdvisorUid", "==", currentUser.id), where("isDeleted", "==", false), limit(80));
-  const leadQuery = privileged
-    ? query(collection(db, "leads"), where("isDeleted", "==", false), limit(80))
-    : query(collection(db, "leads"), where("assignedAdvisorUid", "==", currentUser.id), where("isDeleted", "==", false), limit(80));
-  const reportQuery = privileged
-    ? query(collection(db, "monthlyReports"), limit(80))
-    : query(collection(db, "monthlyReports"), where("advisorUid", "==", currentUser.id), limit(80));
-
-  const [investors, leads, reports] = await Promise.all([
-    safeGet(investorQuery),
-    safeGet(leadQuery),
-    safeGet(reportQuery)
-  ]);
-
+  const { investors, leads, reports } = await loadWorkspaceIndex(currentUser);
   const results = [];
+
   investors.filter((item) => matches(item, ["fullName", "clientCode", "email", "contactNo", "city"], term)).slice(0, 6).forEach((item) => {
     results.push({
       id: `investor-${item.id}`,
@@ -60,6 +105,7 @@ export async function searchWorkspace(currentUser, rawTerm) {
       href: `/investors/${item.id}`
     });
   });
+
   leads.filter((item) => matches(item, ["fullName", "leadCode", "email", "contactNo", "city"], term)).slice(0, 6).forEach((item) => {
     results.push({
       id: `lead-${item.id}`,
@@ -69,6 +115,7 @@ export async function searchWorkspace(currentUser, rawTerm) {
       href: `/leads/${item.id}`
     });
   });
+
   reports.filter((item) => matches(item, ["investorName", "clientCode", "reportCode", "reportMonthKey", "status"], term)).slice(0, 6).forEach((item) => {
     results.push({
       id: `report-${item.id}`,

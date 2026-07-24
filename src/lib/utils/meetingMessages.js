@@ -37,7 +37,7 @@ export function buildInvestorMeetingWhatsAppMessage(meeting) {
   return lines.join("\n");
 }
 
-export function buildInvestorMomWhatsAppMessage(mom) {
+export function buildInvestorMomWhatsAppMessage(mom, options = {}) {
   const lines = [
     `Hello ${mom.investorName || ""},`,
     "",
@@ -54,6 +54,11 @@ export function buildInvestorMomWhatsAppMessage(mom) {
     lines.push("");
   }
 
-  lines.push("Regards,", mom.advisorName || "GrowVest Advisor", "GrowVest");
+  const signatureText = String(options.signatureText || "").trim();
+  if (signatureText) {
+    lines.push(signatureText);
+  } else {
+    lines.push("Regards,", mom.advisorName || "GrowVest Advisor", "GrowVest");
+  }
   return lines.join("\n");
 }

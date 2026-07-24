@@ -28,6 +28,7 @@ const initialValues = {
   email: "",
   role: "advisor",
   designation: "Investment Advisor",
+  advisorProfileEnabled: true,
   advisorCode: "",
   mobile: "",
   signatureEnabled: true,
@@ -98,6 +99,7 @@ export default function UserForm({ userId = null }) {
           email: user.email || "",
           role: user.role || "advisor",
           designation: user.designation || "",
+          advisorProfileEnabled: user.role === "advisor" || user.advisorProfileEnabled === true,
           advisorCode: user.advisorCode || "",
           mobile: user.mobile || "",
           signatureEnabled: user.signatureEnabled !== false,
@@ -110,9 +112,19 @@ export default function UserForm({ userId = null }) {
   }, [editing, userId]);
 
   const editingSelf = editing && userId === profile?.id;
+  const advisorCapability = values.role === "advisor" || values.advisorProfileEnabled === true;
 
   function update(field, value) {
-    setValues((current) => ({ ...current, [field]: value }));
+    setValues((current) => {
+      if (field === "role") {
+        return {
+          ...current,
+          role: value,
+          advisorProfileEnabled: value === "advisor" ? true : current.advisorProfileEnabled
+        };
+      }
+      return { ...current, [field]: value };
+    });
     setErrors((current) => ({ ...current, [field]: undefined }));
     setFormError("");
   }
@@ -182,9 +194,24 @@ export default function UserForm({ userId = null }) {
               <Field label="Designation" required error={errors.designation}>
                 <input className={inputClassName} value={values.designation} onChange={(event) => update("designation", event.target.value)} placeholder="Investment Advisor" />
               </Field>
-              {values.role === "advisor" ? (
-                <Field label="Advisor code" required error={errors.advisorCode} hint="Used for assignment, reporting and audit references.">
-                  <input className={inputClassName} value={values.advisorCode} onChange={(event) => update("advisorCode", event.target.value.toUpperCase())} placeholder="GV-ADV-0001" />
+              <div className="md:col-span-2 rounded-2xl border border-cyan-200 bg-cyan-50/70 p-4">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={advisorCapability}
+                    disabled={values.role === "advisor"}
+                    onChange={(event) => update("advisorProfileEnabled", event.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-cyan-300 text-cyan-700 focus:ring-cyan-200"
+                  />
+                  <span>
+                    <strong className="block text-sm text-cyan-950">Enable Advisor capability</strong>
+                    <span className="mt-1 block text-xs leading-5 text-cyan-800">Super Admin and Admin can also be assigned to Investors, leads, meetings and reports as an Advisor. The Advisor role always has this enabled.</span>
+                  </span>
+                </label>
+              </div>
+              {advisorCapability ? (
+                <Field label="Advisor code" error={errors.advisorCode} hint="Generated automatically and retained for audit history.">
+                  <input className={`${inputClassName} bg-slate-100 font-semibold tracking-wide text-slate-600`} value={values.advisorCode} readOnly placeholder="Generated after save" />
                 </Field>
               ) : null}
               <Field label="Mobile number" error={errors.mobile}>

@@ -3,8 +3,10 @@
 import { Mail, Phone, ShieldCheck, UserRound } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ROLE_LABELS } from "@/lib/constants/roles";
+import { hasAdvisorProfile } from "@/lib/utils/advisorProfile";
 import ProfilePhotoUploader from "@/components/profile/ProfilePhotoUploader";
 import PageHeader from "@/components/ui/PageHeader";
+import OfflineAccessCard from "@/components/pwa/OfflineAccessCard";
 
 function Detail({ label, value }) {
   return <div className="rounded-2xl bg-[var(--gv-surface)] p-4"><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{label}</p><p className="mt-1.5 break-words text-sm font-semibold text-slate-800">{value || "—"}</p></div>;
@@ -28,7 +30,8 @@ export default function StaffProfilePage() {
             <Detail label="Email" value={profile?.email} />
             <Detail label="Mobile" value={profile?.mobile} />
             <Detail label="Designation" value={profile?.designation} />
-            <Detail label="Advisor code" value={profile?.advisorCode} />
+            <Detail label="Advisor capability" value={hasAdvisorProfile(profile) ? "Enabled" : "Not enabled"} />
+            <Detail label="Advisor code" value={hasAdvisorProfile(profile) ? profile?.advisorCode : "—"} />
           </div>
           <div className="mt-5 grid gap-2 sm:grid-cols-2">
             <a href={`mailto:${profile?.email || ""}`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-700"><Mail size={16} /> Email</a>
@@ -36,6 +39,7 @@ export default function StaffProfilePage() {
           </div>
         </article>
       </section>
+      <OfflineAccessCard />
     </div>
   );
 }

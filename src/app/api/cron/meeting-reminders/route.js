@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { secureSecretMatch } from "@/lib/server/secureCompare";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import { sendTransactionalEmail } from "@/lib/server/brevoMailer";
 import { createMeetingIcs } from "@/lib/server/ics";
@@ -15,7 +16,7 @@ function authorised(request) {
       || ""
   ).trim();
 
-  return header === configured;
+  return secureSecretMatch(header, configured);
 }
 
 function primaryClientRecipient(meeting) {

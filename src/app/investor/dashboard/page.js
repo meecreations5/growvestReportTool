@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { collection, doc, getDoc, getDocs, limit, orderBy, query, where } from "firebase/firestore";
+import { Timestamp, collection, doc, getDoc, getDocs, limit, orderBy, query, where } from "firebase/firestore";
 import {
   ArrowRight,
   CalendarClock,
@@ -23,6 +23,7 @@ import { getMonthLabel } from "@/lib/constants/report";
 import { getPublishedInvestorReportsOnce } from "@/services/reportService";
 import { compactCurrency } from "@/lib/utils/reportPresentation";
 import InvestorGoalCard from "@/components/investor/InvestorGoalCard";
+import { useInvestorNotifications } from "@/contexts/InvestorNotificationContext";
 
 function toDate(value) {
   if (!value) return null;
@@ -50,11 +51,11 @@ function goalProgress(goal) {
 
 export default function InvestorDashboardPage() {
   const { profile } = useAuth();
+  const notifications = useInvestorNotifications();
   const [investor, setInvestor] = useState(null);
   const [reports, setReports] = useState([]);
   const [nextMeeting, setNextMeeting] = useState(null);
   const [latestMom, setLatestMom] = useState(null);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -67,19 +68,17 @@ export default function InvestorDashboardPage() {
       setLoading(true);
       setError("");
       try {
-        const nowIso = new Date().toISOString();
-        const [investorSnapshot, reportItems, meetingSnapshot, momSnapshot, notificationSnapshot] = await Promise.all([
+        const now = Timestamp.now();
+        const [investorSnapshot, reportItems, meetingSnapshot, momSnapshot] = await Promise.all([
           getDoc(doc(db, "investors", profile.investorId)),
           getPublishedInvestorReportsOnce(profile.investorId, 2),
-          getDocs(query(collection(db, "meetings"), where("investorId", "==", profile.investorId), where("investorVisible", "==", true), where("startAt", ">=", nowIso), orderBy("startAt", "asc"), limit(1))),
-          getDocs(query(collection(db, "meetingMinutes"), where("investorId", "==", profile.investorId), where("investorVisible", "==", true), orderBy("meetingDate", "desc"), limit(1))),
-          getDocs(query(collection(db, "notifications"), where("investorId", "==", profile.investorId), limit(50)))
+          getDocs(query(collection(db, "meetings"), where("investorId", "==", profile.investorId), where("investorVisible", "==", true), where("startAt", ">=", now), orderBy("startAt", "asc"), limit(1))),
+          getDocs(query(collection(db, "meetingMinutes"), where("investorId", "==", profile.investorId), where("investorVisible", "==", true), orderBy("meetingDate", "desc"), limit(1)))
         ]);
         setInvestor(investorSnapshot.exists() ? { id: investorSnapshot.id, ...investorSnapshot.data() } : null);
         setReports(reportItems || []);
         setNextMeeting(meetingSnapshot.docs[0] ? { id: meetingSnapshot.docs[0].id, ...meetingSnapshot.docs[0].data() } : null);
         setLatestMom(momSnapshot.docs[0] ? { id: momSnapshot.docs[0].id, ...momSnapshot.docs[0].data() } : null);
-        setUnreadCount(notificationSnapshot.docs.filter((item) => item.data().status === "unread").length);
       } catch (nextError) {
         console.error(nextError);
         setError("Some dashboard information could not be loaded. Pull down or refresh after a moment.");
@@ -90,6 +89,7 @@ export default function InvestorDashboardPage() {
     loadDashboard();
   }, [profile?.id, profile?.investorId]);
 
+  const unreadCount = notifications?.unreadCount || 0;
   const goals = useMemo(() => investor?.bucketList?.length ? investor.bucketList : investor?.goals || [], [investor]);
   const activeGoals = goals.filter((item) => !["Completed", "Paused"].includes(item.status));
   const primaryGoal = goals.find((item) => item.isPrimary) || activeGoals[0] || goals[0] || null;

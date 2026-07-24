@@ -16,6 +16,50 @@ import { db } from "@/lib/firebase/client";
 import { INVITATION_STATUSES, STAFF_USER_ROLES, normalizeEmail } from "@/lib/constants/user";
 import { USER_ROLES } from "@/lib/constants/roles";
 
+
+function advisorCapability(payload = {}) {
+  return payload.role === USER_ROLES.ADVISOR || payload.advisorProfileEnabled === true;
+}
+
+function advisorCodeNumber(value = "") {
+  const match = String(value).match(/GV-ADV-(\d+)$/i);
+  return match ? Number(match[1]) : 0;
+}
+
+async function existingAdvisorCodeFloor() {
+  const [usersSnapshot, invitationsSnapshot] = await Promise.all([
+    getDocs(collection(db, "users")),
+    getDocs(collection(db, "staffInvitations"))
+  ]);
+  return [...usersSnapshot.docs, ...invitationsSnapshot.docs]
+    .reduce((maximum, item) => Math.max(maximum, advisorCodeNumber(item.data()?.advisorCode)), 0);
+}
+
+async function reserveAdvisorCodes(count = 1) {
+  const total = Math.max(1, Number(count) || 1);
+  const counterRef = doc(db, "counters", "advisors");
+  const counterSnapshot = await getDoc(counterRef);
+  const floor = counterSnapshot.exists()
+    ? Number(counterSnapshot.data().value || 0)
+    : await existingAdvisorCodeFloor();
+  const range = await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(counterRef);
+    const current = Math.max(snapshot.exists() ? Number(snapshot.data().value || 0) : 0, floor);
+    const next = current + total;
+    transaction.set(counterRef, { value: next, updatedAt: serverTimestamp() }, { merge: true });
+    return { start: current + 1, end: next };
+  });
+
+  return Array.from({ length: total }, (_, index) =>
+    `GV-ADV-${String(range.start + index).padStart(4, "0")}`
+  );
+}
+
+async function reserveAdvisorCode() {
+  const [code] = await reserveAdvisorCodes(1);
+  return code;
+}
+
 function userActivity({ currentUser, recordId, action, title, description, metadata = {} }) {
   return {
     recordType: "user",
@@ -84,6 +128,51 @@ async function ensureSuperAdminContinuity(targetUser, nextRole, nextStatus) {
   }
 }
 
+
+export async function backfillMissingAdvisorCodes(currentUser) {
+  if (currentUser?.role !== USER_ROLES.SUPER_ADMIN) {
+    throw new Error("Only a Super Admin can generate missing Advisor codes.");
+  }
+
+  const [usersSnapshot, invitationsSnapshot] = await Promise.all([
+    getDocs(collection(db, "users")),
+    getDocs(collection(db, "staffInvitations"))
+  ]);
+
+  const records = [
+    ...usersSnapshot.docs.map((item) => ({ collectionName: "users", id: item.id, ...item.data() })),
+    ...invitationsSnapshot.docs.map((item) => ({ collectionName: "staffInvitations", id: item.id, ...item.data() }))
+  ].filter((item) => advisorCapability(item) && !String(item.advisorCode || "").trim());
+
+  if (!records.length) return { updated: 0, codes: [] };
+  if (records.length > 450) throw new Error("Too many staff records require codes. Please process them in smaller groups.");
+
+  const codes = await reserveAdvisorCodes(records.length);
+  const batch = writeBatch(db);
+  records.forEach((item, index) => {
+    batch.update(doc(db, item.collectionName, item.id), {
+      advisorProfileEnabled: true,
+      advisorCode: codes[index],
+      updatedAt: serverTimestamp(),
+      updatedByUid: currentUser.id,
+      updatedByName: currentUser.fullName
+    });
+  });
+
+  const activityRef = doc(collection(db, "activityLogs"));
+  batch.set(activityRef, userActivity({
+    currentUser,
+    recordId: "advisor-code-backfill",
+    action: "advisor_codes_generated",
+    title: "Missing Advisor codes generated",
+    description: `${records.length} Advisor-capable staff record${records.length === 1 ? "" : "s"} received an automatic Advisor code.`,
+    metadata: { updated: records.length, recordIds: records.map((item) => item.id) }
+  }));
+
+  await batch.commit();
+  return { updated: records.length, codes };
+}
+
 export async function createStaffInvitation(payload, currentUser) {
   const email = normalizeEmail(payload.email);
   const existingUsers = await getDocs(query(collection(db, "users"), where("email", "==", email)));
@@ -92,6 +181,12 @@ export async function createStaffInvitation(payload, currentUser) {
   }
 
   const invitationRef = doc(db, "staffInvitations", email);
+  const invitationSnapshot = await getDoc(invitationRef);
+  const existingInvitation = invitationSnapshot.exists() ? invitationSnapshot.data() : null;
+  const advisorEnabled = advisorCapability(payload);
+  const advisorCode = advisorEnabled
+    ? (existingInvitation?.advisorCode || await reserveAdvisorCode())
+    : (existingInvitation?.advisorCode || "");
   const activityRef = doc(collection(db, "activityLogs"));
 
   await runTransaction(db, async (transaction) => {
@@ -105,7 +200,8 @@ export async function createStaffInvitation(payload, currentUser) {
       email,
       role: payload.role,
       designation: payload.designation.trim(),
-      advisorCode: payload.role === "advisor" ? payload.advisorCode.trim() : "",
+      advisorProfileEnabled: advisorEnabled,
+      advisorCode,
       mobile: payload.mobile?.trim() || "",
       signatureEnabled: payload.signatureEnabled !== false,
       emailSignatureHtml: payload.emailSignatureHtml || "",
@@ -125,8 +221,8 @@ export async function createStaffInvitation(payload, currentUser) {
         recordId: email,
         action: "staff_invitation_created",
         title: "Staff access authorised",
-        description: `${payload.fullName} was authorised as ${payload.role}.`,
-        metadata: { email, role: payload.role }
+        description: `${payload.fullName} was authorised as ${payload.role}${advisorEnabled ? ` with Advisor code ${advisorCode}` : ""}.`,
+        metadata: { email, role: payload.role, advisorProfileEnabled: advisorEnabled, advisorCode: advisorCode || null }
       })
     );
   });
@@ -148,17 +244,23 @@ export async function updateStaffUser(userId, payload, currentUser) {
 
   await ensureSuperAdminContinuity(existingUser, payload.role, payload.status);
 
+  const advisorEnabled = advisorCapability(payload);
+  const advisorCode = advisorEnabled
+    ? (existingUser.advisorCode || await reserveAdvisorCode())
+    : (existingUser.advisorCode || "");
   const userRef = doc(db, "users", userId);
   const activityRef = doc(collection(db, "activityLogs"));
   const batch = writeBatch(db);
   const roleChanged = existingUser.role !== payload.role;
   const statusChanged = existingUser.status !== payload.status;
+  const advisorCapabilityChanged = Boolean(existingUser.role === USER_ROLES.ADVISOR || existingUser.advisorProfileEnabled) !== advisorEnabled;
 
   batch.update(userRef, {
     fullName: payload.fullName.trim(),
     role: payload.role,
     designation: payload.designation.trim(),
-    advisorCode: payload.role === "advisor" ? payload.advisorCode.trim() : "",
+    advisorProfileEnabled: advisorEnabled,
+    advisorCode,
     mobile: payload.mobile?.trim() || "",
     signatureEnabled: payload.signatureEnabled !== false,
     emailSignatureHtml: payload.emailSignatureHtml || "",
@@ -173,18 +275,22 @@ export async function updateStaffUser(userId, payload, currentUser) {
     userActivity({
       currentUser,
       recordId: userId,
-      action: roleChanged ? "staff_role_changed" : statusChanged ? "staff_status_changed" : "staff_user_updated",
-      title: roleChanged ? "Staff role changed" : statusChanged ? "Staff access status changed" : "Staff access updated",
+      action: roleChanged ? "staff_role_changed" : statusChanged ? "staff_status_changed" : advisorCapabilityChanged ? "staff_advisor_capability_changed" : "staff_user_updated",
+      title: roleChanged ? "Staff role changed" : statusChanged ? "Staff access status changed" : advisorCapabilityChanged ? "Advisor capability changed" : "Staff access updated",
       description: roleChanged
         ? `${payload.fullName} changed from ${existingUser.role} to ${payload.role}.`
         : statusChanged
           ? `${payload.fullName} access changed from ${existingUser.status} to ${payload.status}.`
-          : `${payload.fullName} staff access details were updated.`,
+          : advisorCapabilityChanged
+            ? `${payload.fullName} Advisor capability was ${advisorEnabled ? "enabled" : "disabled"}.`
+            : `${payload.fullName} staff access details were updated.`,
       metadata: {
         previousRole: existingUser.role,
         role: payload.role,
         previousStatus: existingUser.status,
-        status: payload.status
+        status: payload.status,
+        advisorProfileEnabled: advisorEnabled,
+        advisorCode: advisorCode || null
       }
     })
   );

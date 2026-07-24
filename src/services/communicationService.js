@@ -43,6 +43,10 @@ export function sendMomCommunication(momId) {
   return postAuthenticated("/api/communications/mom", { momId });
 }
 
+export function prepareMomWhatsAppMessage(momId) {
+  return postAuthenticated("/api/communications/mom/whatsapp", { momId });
+}
+
 export function sendReportCommunication(reportId) {
   return postAuthenticated("/api/communications/report", { reportId });
 }
@@ -79,6 +83,32 @@ export async function downloadReportPdf(reportId, versionId = "") {
   const disposition = response.headers.get("content-disposition") || "";
   const match = disposition.match(/filename="?([^\"]+)"?/i);
   const fileName = match?.[1] || "GrowVest-monthly-report.pdf";
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return { fileName };
+}
+
+export async function downloadMomPdf(momId) {
+  const user = auth.currentUser;
+  if (!user) throw new Error("You must be signed in to download this MOM.");
+  const token = await user.getIdToken();
+  const response = await fetch(`/api/mom/${momId}/pdf`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new Error(result.error || "MOM PDF could not be generated.");
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("content-disposition") || "";
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  const fileName = match?.[1] || "GrowVest-MOM.pdf";
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

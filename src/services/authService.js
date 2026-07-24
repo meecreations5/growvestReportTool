@@ -51,6 +51,7 @@ async function claimStaffInvitation(firebaseUser) {
       role: invitation.role,
       status: "active",
       designation: invitation.designation || "",
+      advisorProfileEnabled: invitation.role === USER_ROLES.ADVISOR || invitation.advisorProfileEnabled === true,
       advisorCode: invitation.advisorCode || "",
       signatureEnabled: invitation.signatureEnabled !== false,
       emailSignatureHtml: invitation.emailSignatureHtml || "",

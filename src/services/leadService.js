@@ -15,6 +15,8 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { USER_ROLES } from "@/lib/constants/roles";
+import { STAFF_USER_ROLES } from "@/lib/constants/user";
+import { hasAdvisorProfile } from "@/lib/utils/advisorProfile";
 import { combineLocalDateTime } from "@/lib/utils/date";
 
 async function nextLeadCode() {
@@ -264,8 +266,15 @@ export async function changeLeadStatus(lead, payload, currentUser) {
 }
 
 export async function getActiveAdvisors() {
-  const snapshot = await getDocs(query(collection(db, "users"), where("role", "==", USER_ROLES.ADVISOR), where("status", "==", "active"), orderBy("fullName")));
-  return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+  const snapshot = await getDocs(query(
+    collection(db, "users"),
+    where("role", "in", STAFF_USER_ROLES),
+    where("status", "==", "active"),
+    orderBy("fullName")
+  ));
+  return snapshot.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter(hasAdvisorProfile);
 }
 
 export async function getLead(leadId) {

@@ -10,6 +10,7 @@ import { formatDate } from "@/lib/utils/format";
 import InvestorPageHeader from "@/components/investor/InvestorPageHeader";
 import InvestorGoalCard from "@/components/investor/InvestorGoalCard";
 import ProfilePhotoUploader from "@/components/profile/ProfilePhotoUploader";
+import OfflineAccessCard from "@/components/pwa/OfflineAccessCard";
 
 function initials(name) {
   return String(name || "Investor").split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "I";
@@ -132,6 +133,8 @@ export default function InvestorProfilePage() {
           </Link>
         ))}
       </section>
+
+      <OfflineAccessCard />
 
       <section className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900"><ShieldCheck className="mt-0.5 shrink-0" size={18} /><p>Your Investor Portal displays only information marked as client-visible and approved by GrowVest.</p></section>
     </div>

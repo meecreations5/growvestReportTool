@@ -18,8 +18,7 @@ import {
 import { recordMomWhatsAppOpened, subscribeMom } from "@/services/momService";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
-import { sendMomCommunication } from "@/services/communicationService";
-import { buildInvestorMomWhatsAppMessage } from "@/lib/utils/meetingMessages";
+import { downloadMomPdf, prepareMomWhatsAppMessage, sendMomCommunication } from "@/services/communicationService";
 import { openWhatsAppChat } from "@/lib/utils/whatsapp";
 import { formatDate } from "@/lib/utils/format";
 import Card from "@/components/ui/Card";
@@ -44,6 +43,8 @@ export default function MomDetailClient({ momId }) {
   const [mom, setMom] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [whatsappBusy, setWhatsAppBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => subscribeMom(momId, (item) => {
@@ -69,11 +70,29 @@ export default function MomDetailClient({ momId }) {
   }
 
   async function whatsappMom() {
+    setWhatsAppBusy(true);
+    setMessage("");
     try {
+      const prepared = await prepareMomWhatsAppMessage(mom.id);
       await recordMomWhatsAppOpened(mom, profile);
-      openWhatsAppChat({ mobile: mom.investorMobile, message: buildInvestorMomWhatsAppMessage(mom) });
+      openWhatsAppChat({ mobile: prepared.mobile || mom.investorMobile, message: prepared.message });
     } catch (error) {
       setMessage(error.message);
+    } finally {
+      setWhatsAppBusy(false);
+    }
+  }
+
+  async function pdfMom() {
+    setPdfBusy(true);
+    setMessage("");
+    try {
+      const result = await downloadMomPdf(mom.id);
+      setMessage(`${result.fileName} downloaded successfully.`);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setPdfBusy(false);
     }
   }
 
@@ -93,7 +112,7 @@ export default function MomDetailClient({ momId }) {
       <section className="overflow-hidden rounded-[var(--gv-radius-xl)] bg-[#070b1e] text-white shadow-[var(--gv-shadow-card)] print:bg-white print:text-slate-950 print:shadow-none">
         <div className="grid gap-6 p-5 sm:p-7 xl:grid-cols-[1fr_auto] xl:items-end">
           <div><div className="flex flex-wrap items-center gap-3"><span className={`rounded-full px-3 py-1 text-xs font-bold capitalize ${statusTone(mom.status)}`}>{mom.status}</span><span className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300 print:text-blue-700">{mom.momCode}</span></div><h1 className="mt-4 max-w-3xl font-heading text-3xl font-bold leading-tight text-white sm:text-4xl print:text-slate-950">{mom.meetingTitle}</h1><p className="mt-2 text-sm text-slate-300 print:text-slate-500">{formatDate(mom.meetingDate)} · {mom.investorName || mom.leadName || "Internal"}</p></div>
-          <div className="flex flex-wrap gap-2 print:hidden"><Link href={`/mom/${mom.id}/edit`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold text-white"><Edit3 size={16} /> Edit</Link><Button type="button" variant="secondary" onClick={() => window.print()}><Printer size={16} /> Print / PDF</Button>{mom.status === "completed" && mom.investorVisible ? <Button type="button" onClick={emailMom} disabled={busy}><Mail size={16} /> {busy ? "Sending…" : "Email Investor"}</Button> : null}</div>
+          <div className="flex flex-wrap gap-2 print:hidden"><Link href={`/mom/${mom.id}/edit`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold text-white"><Edit3 size={16} /> Edit</Link><Button type="button" variant="secondary" onClick={pdfMom} disabled={pdfBusy}><Printer size={16} /> {pdfBusy ? "Generating…" : "Download PDF"}</Button>{mom.status === "completed" && mom.investorVisible ? <Button type="button" onClick={emailMom} disabled={busy}><Mail size={16} /> {busy ? "Sending…" : "Email Investor"}</Button> : null}</div>
         </div>
         <div className="grid border-t border-white/10 print:border-slate-200 sm:grid-cols-3">
           <div className="flex items-start gap-3 p-4 sm:p-5"><Users size={19} className="mt-0.5 text-cyan-300 print:text-blue-700" /><div><p className="text-xs uppercase tracking-wide text-slate-400">Client</p><p className="mt-1 font-semibold text-white print:text-slate-950">{mom.investorName || mom.leadName || "Internal"}</p></div></div>
@@ -116,7 +135,7 @@ export default function MomDetailClient({ momId }) {
 
         <aside className="grid content-start gap-5">
           <Card className="p-5"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">Advisor and follow-up</p><p className="mt-3 font-semibold text-slate-950">{mom.advisorName}</p><div className="mt-4 flex items-start gap-3 rounded-xl bg-slate-50 p-3"><CalendarClock size={17} className="mt-0.5 text-blue-700" /><div><p className="text-xs font-bold text-slate-500">Next follow-up</p><p className="mt-1 font-semibold text-slate-900">{mom.followUpRequired ? mom.followUpDate || "Scheduled" : "Not required"}</p><p className="mt-1 text-xs text-slate-500">{mom.followUpPurpose || "—"}</p></div></div></Card>
-          <Card className="p-5 print:hidden"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">Communication</p><div className="mt-3 grid gap-2">{mom.status === "completed" && mom.investorVisible ? <Button type="button" onClick={emailMom} disabled={busy}><Mail size={16} /> {busy ? "Sending…" : "Email Investor"}</Button> : null}{mom.investorMobile ? <Button type="button" variant="secondary" onClick={whatsappMom}><MessageCircle size={16} /> Open WhatsApp</Button> : null}</div></Card>
+          <Card className="p-5 print:hidden"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">Communication</p><div className="mt-3 grid gap-2">{mom.status === "completed" && mom.investorVisible ? <Button type="button" onClick={emailMom} disabled={busy}><Mail size={16} /> {busy ? "Sending…" : "Email Investor"}</Button> : null}{mom.investorMobile ? <Button type="button" variant="secondary" onClick={whatsappMom} disabled={whatsappBusy}><MessageCircle size={16} /> {whatsappBusy ? "Preparing…" : "Open WhatsApp"}</Button> : null}</div></Card>
           <Card className="p-5 print:hidden"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">Linked records</p><div className="mt-3 grid gap-2"><Link href={`/meetings/${mom.meetingId}`} className="font-semibold text-blue-700 hover:underline">Open meeting</Link>{mom.investorId ? <Link href={`/investors/${mom.investorId}`} className="font-semibold text-blue-700 hover:underline">Open Investor</Link> : null}</div></Card>
           <Card className="border-slate-300 bg-slate-100 p-5"><div className="flex items-start gap-3"><EyeOff size={18} className="mt-0.5 text-slate-600" /><div><p className="text-xs font-bold uppercase tracking-wide text-slate-600">Internal notes</p><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{mom.internalNotes || "No internal notes."}</p></div></div></Card>
         </aside>
@@ -124,7 +143,7 @@ export default function MomDetailClient({ momId }) {
 
       <footer className="hidden justify-between border-t border-slate-200 pt-4 text-xs text-slate-500 print:flex"><span>{branding.supportEmail} · {branding.website}</span><span>{branding.documentFooterTagline || branding.tagline}</span></footer>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-2 gap-2 border-t border-slate-200 bg-white/95 p-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden print:hidden"><Button type="button" variant="secondary" onClick={() => window.print()}><Printer size={16} /> PDF</Button>{mom.status === "completed" && mom.investorVisible ? <Button type="button" onClick={emailMom} disabled={busy}><Mail size={16} /> Email</Button> : <Link href={`/mom/${mom.id}/edit`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-700 text-sm font-semibold text-white"><Edit3 size={16} /> Edit</Link>}</div>
+      <div className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-2 gap-2 border-t border-slate-200 bg-white/95 p-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden print:hidden"><Button type="button" variant="secondary" onClick={pdfMom} disabled={pdfBusy}><Printer size={16} /> {pdfBusy ? "Generating…" : "PDF"}</Button>{mom.status === "completed" && mom.investorVisible ? <Button type="button" onClick={emailMom} disabled={busy}><Mail size={16} /> Email</Button> : <Link href={`/mom/${mom.id}/edit`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-700 text-sm font-semibold text-white"><Edit3 size={16} /> Edit</Link>}</div>
     </div>
   );
 }

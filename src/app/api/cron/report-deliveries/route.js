@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { secureSecretMatch } from "@/lib/server/secureCompare";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import { sendReportDelivery } from "@/lib/server/reportDelivery";
 
@@ -12,7 +13,7 @@ function authorised(request) {
       || request.headers.get("authorization")?.replace(/^Bearer\s+/i, "")
       || ""
   ).trim();
-  return supplied === configured;
+  return secureSecretMatch(supplied, configured);
 }
 
 async function run(request) {

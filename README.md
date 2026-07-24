@@ -4,6 +4,29 @@ Standalone Next.js application for GrowVest lead management, investor onboarding
 
 ## Current implementation
 
+## Version 0.28.0 - Advisor Identity, Performance and Trusted-Device Offline Access
+
+- Advisor codes are generated automatically using a transaction-safe `GV-ADV-####` sequence.
+- Super Admin and Admin accounts can be enabled as assignable Advisors without changing their administrative role.
+- Existing Advisor-capable records without a code can be repaired from Users & Roles.
+- Workspace search now uses idle preloading, request deduplication and a five-minute in-memory index.
+- Investor Dashboard removes a duplicate notification listener and notification queries are bounded.
+- Optional Firestore persistent caching and limited top-level offline navigation are available only after trusted-device opt-in.
+- Private APIs, report details, documents and generated PDFs are excluded from service-worker caching.
+
+See `docs/ADVISOR_CODES_PERFORMANCE_AND_OFFLINE.md` for deployment and UAT guidance.
+
+## Version 0.27.0 - MOM Communication, PDF Consistency and Firebase Security Audit
+
+- MOM WhatsApp messages now use the assigned Advisor's published signature and central signature branding.
+- MOM downloads now use a dedicated server-generated A4 PDF with shared GrowVest document branding, pagination and audit logging.
+- Firestore rules protect immutable MOM/report relationship fields and prevent Investor self-verification of uploaded documents.
+- Storage rules restrict Advisor document access to assigned Investors.
+- Firebase App Check support, baseline security headers and constant-time webhook/cron secret checks are included.
+- Current Firestore and Storage data already use platform encryption; application-level encryption is reserved for future PAN, Aadhaar, bank, KYC and similar identifiers.
+
+See `docs/MOM_PDF_SECURITY_AUDIT_AND_ENCRYPTION.md` for deployment, encryption and UAT guidance.
+
 ## Version 0.25.4 — Investor Mobile Sign-In UI Refinement
 
 - Removed the white card/background behind the GrowVest logo on the mobile Investor sign-in hero
@@ -318,6 +341,7 @@ docs/PHASE_6_CODE_MANIFEST.md
 docs/PHASE_7_INVESTOR_PORTAL_SECURE_PUBLISHING.md
 docs/PHASE_7_GAP_CLOSURE.md
 docs/PDF_CONSISTENCY_PASS.md
+docs/MOM_PDF_SECURITY_AUDIT_AND_ENCRYPTION.md
 docs/UI_UX_REPORT_TEMPLATE_LIBRARY.md
 ```
 
@@ -369,3 +393,7 @@ Adds a dedicated **Signature branding** section under Branding Settings with com
 - Added white/inverse navigation logos in dark mode.
 - Preserved branding, email, HTML report and PDF previews independently from app theme.
 - No Firebase migration is required.
+
+## v0.28.1 — Firebase App Check build fix
+
+Removed the unsupported `getAppCheck` import and made App Check initialisation safe across Next.js hot reloads.

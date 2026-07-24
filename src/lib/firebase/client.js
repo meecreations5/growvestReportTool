@@ -1,6 +1,13 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
+import {
+  getFirestore,
+  initializeFirestore,
+  memoryLocalCache,
+  persistentLocalCache,
+  persistentMultipleTabManager
+} from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -21,8 +28,53 @@ if (missingKeys.length > 0) {
 }
 
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+
+let appCheckInstance = null;
+const appCheckSiteKey = process.env.NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY;
+const APP_CHECK_INSTANCE_KEY = Symbol.for("growvest.firebase.appCheck");
+
+if (typeof window !== "undefined" && appCheckSiteKey) {
+  const globalScope = globalThis;
+
+  if (process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG === "true") {
+    globalScope.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+  }
+
+  if (!globalScope[APP_CHECK_INSTANCE_KEY]) {
+    try {
+      globalScope[APP_CHECK_INSTANCE_KEY] = initializeAppCheck(app, {
+        provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
+        isTokenAutoRefreshEnabled: true
+      });
+    } catch (error) {
+      console.warn("Firebase App Check could not be initialised.", error);
+    }
+  }
+
+  appCheckInstance = globalScope[APP_CHECK_INSTANCE_KEY] || null;
+}
+
+export const appCheck = appCheckInstance;
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+
+function createFirestore() {
+  const offlineEnabled = typeof window !== "undefined"
+    && window.localStorage.getItem("growvest-secure-offline-enabled") === "true";
+
+  try {
+    return initializeFirestore(app, {
+      localCache: offlineEnabled
+        ? persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+        : memoryLocalCache()
+    });
+  } catch (error) {
+    // Hot reload or another bundle may already have initialised Firestore.
+    // Reuse the existing instance instead of failing the application boot.
+    return getFirestore(app);
+  }
+}
+
+export const db = createFirestore();
 export const storage = getStorage(app);
 
 export default app;
