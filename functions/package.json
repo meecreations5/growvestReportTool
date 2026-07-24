@@ -1,6 +1,6 @@
 {
   "name": "growvest-notification-functions",
-  "version": "0.30.0",
+  "version": "0.30.3",
   "private": true,
   "main": "index.js",
   "engines": {

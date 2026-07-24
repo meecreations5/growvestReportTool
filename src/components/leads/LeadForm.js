@@ -113,7 +113,15 @@ export default function LeadForm({ lead = null }) {
       }
     } catch (error) {
       console.error(error);
-      setFormError(`Lead could not be ${editing ? "updated" : "created"}. Verify Firebase configuration and Firestore rules.`);
+      const action = editing ? "updated" : "created";
+      const code = String(error?.code || "").replace(/^firestore\//, "");
+      const messages = {
+        "permission-denied": "Your account does not have permission to save this lead. Ask a Super Admin to verify your active role and deploy the latest Firestore rules.",
+        "invalid-argument": "The lead contains an invalid or unsupported field value. Refresh the page and try again.",
+        "failed-precondition": "Firestore requires an updated configuration or index before this lead can be saved.",
+        unavailable: "Firebase is temporarily unavailable. Check your internet connection and try again."
+      };
+      setFormError(messages[code] || `Lead could not be ${action}. ${error?.message || "Please try again."}`);
     } finally {
       setSubmitting(false);
     }

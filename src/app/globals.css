@@ -93,6 +93,9 @@ img { max-width: 100%; }
 .gv-scrollbar::-webkit-scrollbar-thumb { background: #c9d2e2; border-radius: 999px; }
 .gv-scrollbar::-webkit-scrollbar-track { background: transparent; }
 
+/* Keep horizontally scrollable investor carousels from widening the whole mobile viewport. */
+.gv-investor-viewport { width: 100%; min-width: 0; max-width: 100%; overflow-x: clip; }
+
 .gv-skeleton {
   overflow: hidden;
   position: relative;

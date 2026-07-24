@@ -2,9 +2,13 @@
 
 import { Download, RefreshCw, WifiOff, X } from "lucide-react";
 import { usePwa } from "@/contexts/PwaContext";
+import { useBranding } from "@/contexts/BrandingContext";
 
 export function PwaInstallCard({ compact = false }) {
   const { canInstall, installApp, dismissInstall } = usePwa();
+  const { branding } = useBranding();
+  const shortName = branding.pwaShortName || branding.companyName || "GrowVest";
+  const tagline = branding.pwaTagline || branding.brandPositioning || "Your Conscious Wealth Partner";
   if (!canInstall) return null;
 
   if (compact) {
@@ -19,10 +23,10 @@ export function PwaInstallCard({ compact = false }) {
     <section className="relative overflow-hidden rounded-[24px] bg-[linear-gradient(135deg,var(--gv-blue),#173eb4_58%,#0b0b0f)] p-5 text-white shadow-[var(--gv-shadow-card)] sm:p-6">
       <button type="button" onClick={dismissInstall} className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white/80" aria-label="Dismiss install app prompt"><X size={17} /></button>
       <div className="max-w-lg pr-9">
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-200">GrowVest Investor App</p>
-        <h2 className="mt-2 font-heading text-2xl font-bold text-white">Keep your wealth journey one tap away.</h2>
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-200">{tagline}</p>
+        <h2 className="mt-2 font-heading text-2xl font-bold text-white">{shortName} Investor App</h2>
         <p className="mt-2 text-sm leading-6 text-blue-100">Install the secure portal on your phone for an app-like experience, quick access and live in-app notifications.</p>
-        <button type="button" onClick={installApp} className="mt-5 inline-flex min-h-12 items-center gap-2 rounded-2xl bg-white px-5 text-sm font-bold text-[var(--gv-blue)]"><Download size={17} /> Install GrowVest</button>
+        <button type="button" onClick={installApp} className="mt-5 inline-flex min-h-12 items-center gap-2 rounded-2xl bg-white px-5 text-sm font-bold text-[var(--gv-blue)]"><Download size={17} /> Install {shortName}</button>
       </div>
     </section>
   );

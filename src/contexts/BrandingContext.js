@@ -46,7 +46,9 @@ export function BrandingProvider({ children }) {
 
     root.style.setProperty("--gv-brand-danger", branding.dangerColor || "#E53935");
     root.style.setProperty("--gv-brand-warning", branding.warningColor || "#F5B301");
-    document.title = `${branding.companyName || "GrowVest"} Investor & Reporting Tool`;
+    const pwaShortName = branding.pwaShortName || branding.companyName || "GrowVest";
+    const pwaTagline = branding.pwaTagline || branding.brandPositioning || "Your Conscious Wealth Partner";
+    document.title = branding.pwaAppName || `${pwaShortName} – ${pwaTagline}`;
 
     let themeMeta = document.querySelector('meta[name="theme-color"][data-dynamic-branding="true"]');
     if (!themeMeta) {
@@ -88,7 +90,7 @@ export function BrandingProvider({ children }) {
       appTitle.dataset.dynamicBranding = "true";
       document.head.appendChild(appTitle);
     }
-    appTitle.content = `${branding.companyName || "GrowVest"} Investor`;
+    appTitle.content = pwaShortName;
 
     const manifestLink = document.querySelector('link[rel="manifest"]');
     if (manifestLink) {

@@ -1,5 +1,5 @@
-const CACHE_NAME = "growvest-investor-v0.30.0";
-const PAGE_CACHE = "growvest-pages-v0.30.0";
+const CACHE_NAME = "growvest-investor-v0.30.3";
+const PAGE_CACHE = "growvest-pages-v0.30.3";
 const OFFLINE_PREF_CACHE = "growvest-offline-preference-v1";
 const OFFLINE_PREF_URL = "/__growvest_offline_access__";
 const APP_SHELL = [

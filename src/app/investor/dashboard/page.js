@@ -109,15 +109,15 @@ export default function InvestorDashboardPage() {
   const advisorWhatsApp = advisorPhone ? `https://wa.me/${String(advisorPhone).replace(/\D/g, "")}` : "";
 
   return (
-    <div className="grid gap-5 sm:gap-6">
-      <section className="relative overflow-hidden rounded-[28px] bg-[var(--gv-ink)] p-5 text-white shadow-[var(--gv-shadow-card)] sm:p-7">
+    <div className="grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-5 overflow-x-clip sm:gap-6">
+      <section className="relative min-w-0 max-w-full overflow-hidden rounded-[28px] bg-[var(--gv-ink)] p-5 text-white shadow-[var(--gv-shadow-card)] sm:p-7">
         <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full border border-cyan-400/10" />
         <div className="relative">
-          <div className="flex items-start justify-between gap-4">
-            <div>
+          <div className="flex min-w-0 items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-cyan-300">Your wealth journey</p>
               <h1 className="mt-2 font-heading text-3xl font-bold leading-tight text-white sm:text-4xl">Hello, {profile?.fullName?.split(" ")[0] || "Investor"}</h1>
-              <p className="mt-2 text-sm leading-6 text-slate-300">A clear view of your portfolio, Bucket List and next review.</p>
+              <p className="mt-2 max-w-full break-words text-sm leading-6 text-slate-300">A clear view of your portfolio, Bucket List and next review.</p>
             </div>
             {unreadCount > 0 ? <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-cyan-200">{unreadCount} new</span> : null}
           </div>
@@ -141,7 +141,7 @@ export default function InvestorDashboardPage() {
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-[var(--gv-cyan)]" style={{ width: `${Math.min(100, Number(overallProgress || 0))}%` }} /></div>
           </div>
 
-          <div className="mt-6 grid grid-cols-3 gap-2">
+          <div className="mt-6 grid min-w-0 grid-cols-[repeat(3,minmax(0,1fr))] gap-2">
             <Link href={latestReport ? `/investor/reports/${latestReport.id}` : "/investor/reports"} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-white px-3 text-xs font-bold text-[var(--gv-ink)]"><FileBarChart2 size={16} /> Report</Link>
             <Link href="/investor/goals" className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-white/10 px-3 text-xs font-bold text-white"><Target size={16} /> Goals</Link>
             <Link href="/investor/meetings" className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-white/10 px-3 text-xs font-bold text-white"><CalendarClock size={16} /> Review</Link>
@@ -159,16 +159,16 @@ export default function InvestorDashboardPage() {
         </Link>
       ) : null}
 
-      <section className="sm:hidden">
+      <section className="min-w-0 max-w-full overflow-hidden sm:hidden">
         <div className="mb-2 flex items-center justify-between"><p className="text-[11px] font-black uppercase tracking-[0.13em] text-slate-400">Quick access</p><span className="text-[10px] font-semibold text-slate-400">Swipe for more</span></div>
-        <div className="gv-scrollbar -mx-3.5 flex snap-x gap-2.5 overflow-x-auto px-3.5 pb-1">
+        <div className="gv-scrollbar flex w-full min-w-0 max-w-full snap-x gap-2.5 overflow-x-auto overscroll-x-contain pb-1 pr-3.5">
           {[
             ["Latest report", latestReport ? `/investor/reports/${latestReport.id}` : "/investor/reports", FileBarChart2, "View"],
             ["Bucket List", "/investor/goals", Target, `${activeGoals.length} active`],
             ["Documents", "/investor/documents", Files, "Secure files"],
             ["Notifications", "/investor/notifications", BellRing, unreadCount ? `${unreadCount} new` : "All caught up"]
           ].map(([label, href, Icon, hint]) => (
-            <Link key={label} href={href} className="min-w-[142px] snap-start rounded-2xl border border-[var(--gv-border)] bg-white p-3.5 shadow-[var(--gv-shadow-card)]">
+            <Link key={label} href={href} className="w-[142px] min-w-[142px] max-w-[142px] snap-start rounded-2xl border border-[var(--gv-border)] bg-white p-3.5 shadow-[var(--gv-shadow-card)]">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50 text-[var(--gv-blue)]"><Icon size={18} /></span>
               <span className="mt-3 block text-sm font-bold text-[var(--gv-ink)]">{label}</span>
               <span className="mt-1 block text-[11px] text-slate-500">{hint}</span>
@@ -177,14 +177,14 @@ export default function InvestorDashboardPage() {
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <section className="grid min-w-0 grid-cols-[repeat(2,minmax(0,1fr))] gap-3 sm:grid-cols-[repeat(4,minmax(0,1fr))]">
         {[
           ["Monthly SIP", latestReport?.summary?.monthlySip, "Active contribution"],
           ["New money", latestReport?.summary?.newMoneyAdded, "Added this month"],
           ["Investment gain", latestReport?.summary?.investmentGain, "Monthly movement"],
           ["Active goals", activeGoals.length, primaryGoal ? `Primary: ${primaryGoal.name || primaryGoal.goalName}` : "No active goal"]
         ].map(([label, value, hint]) => (
-          <article key={label} className="rounded-[var(--gv-radius-lg)] border border-[var(--gv-border)] bg-white p-4 shadow-[var(--gv-shadow-card)] sm:p-5">
+          <article key={label} className="min-w-0 rounded-[var(--gv-radius-lg)] border border-[var(--gv-border)] bg-white p-4 shadow-[var(--gv-shadow-card)] sm:p-5">
             <p className="text-[10px] font-bold uppercase tracking-[0.11em] text-slate-400">{label}</p>
             <p className="mt-2 font-heading text-xl font-bold text-[var(--gv-ink)] sm:text-2xl">{loading ? "…" : typeof value === "number" && label !== "Active goals" ? compactCurrency(value) : value ?? "—"}</p>
             <p className="mt-1 line-clamp-1 text-[11px] text-slate-500">{hint}</p>
@@ -205,8 +205,8 @@ export default function InvestorDashboardPage() {
 
       <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <article className="rounded-[var(--gv-radius-lg)] border border-[var(--gv-border)] bg-white p-5 shadow-[var(--gv-shadow-card)] sm:p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
+          <div className="flex min-w-0 items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
               <p className="gv-eyebrow">Upcoming review</p>
               <h2 className="mt-1 font-heading text-2xl font-bold text-[var(--gv-ink)]">{nextMeeting?.title || "Next portfolio review"}</h2>
             </div>

@@ -17,14 +17,17 @@ function icon(src, sizes, purpose = "any") {
 export default async function manifest() {
   const branding = await getServerBranding();
   const companyName = branding.companyName || "GrowVest";
+  const shortName = branding.pwaShortName || companyName;
+  const tagline = branding.pwaTagline || branding.brandPositioning || "Your Conscious Wealth Partner";
+  const appName = branding.pwaAppName || `${shortName} – ${tagline}`;
   const icon512 = branding.pwaIcon512Url || branding.iconLogoUrl || "/icons/growvest-pwa-512.png";
   const icon192 = branding.pwaIcon192Url || branding.pwaIcon512Url || branding.iconLogoUrl || "/icons/growvest-pwa-192.png";
-  const maskableIcon = branding.pwaMaskableIconUrl || icon512 || "/icons/growvest-pwa-maskable-512.png";
+  const maskableIcon = branding.pwaMaskableIconUrl || "/icons/growvest-pwa-maskable-512.png";
 
   return {
-    name: `${companyName} Investor`,
-    short_name: companyName,
-    description: `Secure ${companyName} investor reports, goals, meetings, documents and notifications.`,
+    name: appName,
+    short_name: shortName,
+    description: `${tagline}. Secure investor reports, goals, meetings, documents and notifications.`,
     id: "/investor/dashboard",
     start_url: "/investor/dashboard",
     scope: "/",

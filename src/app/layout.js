@@ -16,6 +16,9 @@ import { getServerBranding } from "@/lib/server/settingsServer";
 export async function generateMetadata() {
   const branding = await getServerBranding();
   const companyName = branding.companyName || "GrowVest";
+  const shortName = branding.pwaShortName || companyName;
+  const tagline = branding.pwaTagline || branding.brandPositioning || "Your Conscious Wealth Partner";
+  const appName = branding.pwaAppName || `${shortName} – ${tagline}`;
   const favicon = branding.iconLogoUrl || "/icons/growvest-pwa-192.png";
   const pwaIcon = branding.pwaAppleTouchIconUrl || branding.pwaIcon512Url || branding.pwaIcon192Url || favicon;
 
@@ -24,8 +27,8 @@ export async function generateMetadata() {
       default: `${companyName} Investor & Reporting Tool`,
       template: `%s | ${companyName}`
     },
-    description: `Secure ${companyName} investor reports, goals, documents, meetings and monthly reporting.`,
-    applicationName: `${companyName} Investor`,
+    description: `${tagline}. Secure investor reports, goals, documents, meetings and monthly reporting.`,
+    applicationName: appName,
     manifest: "/manifest.webmanifest",
     icons: {
       icon: [{ url: favicon }],
@@ -33,7 +36,7 @@ export async function generateMetadata() {
     },
     appleWebApp: {
       capable: true,
-      title: `${companyName} Investor`,
+      title: shortName,
       statusBarStyle: "black-translucent"
     },
     formatDetection: {

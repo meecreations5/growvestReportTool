@@ -413,3 +413,30 @@ Template application reliability, lazy report charts, memory-only Firestore cach
 - Push tokens are server-managed and are removed from the current device during secure logout.
 
 See `docs/V0_30_INVESTOR_MOBILE_AND_PUSH_NOTIFICATIONS.md` for configuration, deployment and UAT steps.
+
+
+## 0.30.1 — Investor Mobile Width and Overflow Fix
+
+- Fixed right-side clipping and page-level horizontal overflow on the Investor dashboard.
+- Kept Quick Access horizontally scrollable without widening the full page.
+- Constrained hero actions and KPI cards to the mobile viewport.
+- Updated the PWA static cache version.
+
+
+## 0.30.2 — Lead Creation Reliability Fix
+
+- Normalises blank optional lead fields before Firestore writes.
+- Prevents `undefined` qualification score or amount values from breaking lead creation.
+- Shows actionable Firestore error messages instead of the previous generic message.
+- Updates the PWA cache version.
+
+See `docs/V0_30_2_LEAD_CREATION_FIX.md`.
+
+## 0.30.3 — PWA Icon and Brand Identity
+
+- Corrected Android maskable-icon fallback and removed the wide-logo-in-white-card default icon treatment.
+- Added configurable PWA full name, short name and brand message.
+- Added automatic standard, Apple and maskable icon generation.
+- Added `Your Conscious Wealth Partner` to Investor PWA branding surfaces.
+
+See `docs/V0_30_3_PWA_ICON_AND_BRAND_IDENTITY.md`.

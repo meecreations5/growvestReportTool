@@ -22,6 +22,9 @@ export const DEFAULT_BRANDING = {
   pwaIcon512Url: "",
   pwaMaskableIconUrl: "",
   pwaAppleTouchIconUrl: "",
+  pwaAppName: "GrowVest – Your Conscious Wealth Partner",
+  pwaShortName: "GrowVest",
+  pwaTagline: "Your Conscious Wealth Partner",
   primaryLogoUrl: "",
   whiteLogoUrl: "",
   emailLogoUrl: "",
@@ -137,6 +140,9 @@ export function normaliseBranding(value = {}) {
   branding.pwaIcon192Url = branding.pwaIcon192Url || branding.pwaIcon512Url || "";
   branding.pwaMaskableIconUrl = branding.pwaMaskableIconUrl || "";
   branding.pwaAppleTouchIconUrl = branding.pwaAppleTouchIconUrl || branding.pwaIcon512Url || branding.pwaIcon192Url || "";
+  branding.pwaShortName = branding.pwaShortName || branding.companyName || "GrowVest";
+  branding.pwaTagline = branding.pwaTagline || branding.brandPositioning || "Your Conscious Wealth Partner";
+  branding.pwaAppName = branding.pwaAppName || `${branding.pwaShortName} – ${branding.pwaTagline}`;
   branding.primaryLogoUrl = branding.primaryLogoUrl || branding.logoUrl || "";
   branding.whiteLogoUrl = branding.whiteLogoUrl || "";
   branding.emailLogoUrl = branding.emailLogoUrl || branding.primaryLogoUrl || branding.logoUrl || "";

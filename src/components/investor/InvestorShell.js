@@ -22,6 +22,7 @@ import BrandLogo from "@/components/branding/BrandLogo";
 import { PwaConnectionBanner, PwaInstallCard, PwaUpdateBanner } from "@/components/pwa/PwaStatus";
 import ThemeToggle from "@/components/layout/ThemeToggle";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useBranding } from "@/contexts/BrandingContext";
 
 const MOBILE_ITEMS = INVESTOR_NAV_ITEMS.filter((item) => item.mobile);
 const MORE_ITEMS = INVESTOR_NAV_ITEMS.filter((item) => !item.mobile);
@@ -49,9 +50,11 @@ export default function InvestorShell({ children }) {
   const { canInstall, installApp, isInstalled } = usePwa();
   const notifications = useInvestorNotifications();
   const { resolvedTheme } = useTheme();
+  const { branding } = useBranding();
   const darkMode = resolvedTheme === "dark";
   const [moreOpen, setMoreOpen] = useState(false);
   const firstName = profile?.fullName?.split(" ")[0] || "Investor";
+  const pwaTagline = branding.pwaTagline || branding.brandPositioning || "Your Conscious Wealth Partner";
 
   async function handleLogout() {
     setMoreOpen(false);
@@ -60,7 +63,7 @@ export default function InvestorShell({ children }) {
   }
 
   return (
-    <div className="min-h-dvh bg-[var(--gv-surface)] pb-[calc(5.45rem+env(safe-area-inset-bottom))] lg:pb-0">
+    <div className="gv-investor-viewport min-h-dvh w-full overflow-x-clip bg-[var(--gv-surface)] pb-[calc(5.45rem+env(safe-area-inset-bottom))] lg:pb-0">
       <PwaConnectionBanner />
       <PwaUpdateBanner />
       <InvestorNotificationToasts />
@@ -71,7 +74,7 @@ export default function InvestorShell({ children }) {
             <Link href="/investor/dashboard" className="flex min-w-0 items-center gap-3" aria-label="GrowVest Investor home">
               <BrandLogo variant="wide" inverse className="max-w-[128px]" imageClassName="max-h-9 w-auto object-contain" />
               <span className="min-w-0 border-l border-white/20 pl-3">
-                <span className="block truncate text-[10px] font-bold uppercase tracking-[0.14em] text-cyan-200">Investor App</span>
+                <span className="block max-w-[150px] truncate text-[9px] font-bold uppercase tracking-[0.11em] text-cyan-200">{pwaTagline}</span>
                 <span className="mt-0.5 block truncate font-heading text-sm font-bold text-white">Hello, {firstName}</span>
               </span>
             </Link>
@@ -90,7 +93,7 @@ export default function InvestorShell({ children }) {
               <BrandLogo variant="wide" inverse={darkMode} className="max-w-[172px]" />
               <div className="min-w-0 border-l border-slate-200 pl-4">
                 <p className="truncate font-heading text-base font-bold leading-tight text-[var(--gv-ink)]">Hello, {firstName}</p>
-                <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-400">GrowVest Investor App</p>
+                <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-400">{pwaTagline}</p>
               </div>
             </Link>
 
@@ -120,7 +123,7 @@ export default function InvestorShell({ children }) {
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-[1440px] gap-7 px-3.5 py-4 sm:px-6 sm:py-7 lg:grid-cols-[230px_minmax(0,1fr)] lg:px-8">
+      <div className="mx-auto grid w-full min-w-0 max-w-[1440px] grid-cols-[minmax(0,1fr)] gap-7 px-3.5 py-4 sm:px-6 sm:py-7 lg:grid-cols-[230px_minmax(0,1fr)] lg:px-8">
         <aside className="hidden h-fit rounded-[var(--gv-radius-lg)] border border-slate-200 bg-white p-3 shadow-[var(--gv-shadow-card)] lg:block">
           <div className="mb-3 rounded-2xl bg-[var(--gv-blue-soft)] p-3.5">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--gv-blue)]"><ShieldCheck size={16} /> Secure client access</div>
@@ -144,7 +147,7 @@ export default function InvestorShell({ children }) {
           {isInstalled ? <p className="mt-3 text-center text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-600">App installed</p> : null}
         </aside>
 
-        <main className="min-w-0">
+        <main className="w-full min-w-0 max-w-full overflow-x-clip">
           {pathname === "/investor/dashboard" && canInstall ? <div className="mb-4 md:hidden"><PwaInstallCard /></div> : null}
           {children}
         </main>

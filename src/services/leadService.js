@@ -62,8 +62,18 @@ export async function createLead(payload, currentUser) {
   const activityRef = doc(collection(db, "activityLogs"));
   const batch = writeBatch(db);
   const receivedAt = timestampFromLocal(payload.dateReceived, payload.timeReceived);
+
+  // Firestore rejects `undefined` values. Optional numeric form fields are
+  // returned as undefined by Zod when left blank, so normalise every optional
+  // field before constructing the document written by the batch.
   const lead = {
     ...payload,
+    referrer: payload.referrer || "",
+    qualificationScore: payload.qualificationScore ?? null,
+    amount: payload.amount ?? null,
+    purposeOfInvestment: payload.purposeOfInvestment || "",
+    followUpDue: payload.followUpDue || "",
+    notes: payload.notes || "",
     leadCode,
     receivedAt,
     statusChangedAt: serverTimestamp(),

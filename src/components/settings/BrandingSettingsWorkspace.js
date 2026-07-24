@@ -369,6 +369,10 @@ export default function BrandingSettingsWorkspace() {
                   icon512Url={draft.pwaIcon512Url}
                   appleTouchIconUrl={draft.pwaAppleTouchIconUrl}
                   maskableIconUrl={draft.pwaMaskableIconUrl}
+                  appName={draft.pwaAppName}
+                  shortName={draft.pwaShortName}
+                  tagline={draft.pwaTagline}
+                  primaryColor={draft.primaryColor}
                   onChange={updateMany}
                 />
                 <BrandAssetUploader label="Application UI icon / square mark" assetKey="icon-logo" value={draft.iconLogoUrl} onChange={(value) => update("iconLogoUrl", value)} recommended="512 × 512px transparent PNG or WebP" hint="Used for the favicon, collapsed navigation and compact portal identity. The installed Investor PWA uses the dedicated PWA icon above." previewTone="checker" />
