@@ -93,12 +93,37 @@ function normaliseLiabilities(rows = []) {
       id: item.id || `liability-${index + 1}`,
       type: item.type || "",
       lender: item.lender || "",
+      originalLoanAmount: Number(item.originalLoanAmount || 0),
       outstandingAmount: Number(item.outstandingAmount || 0),
       emiAmount: Number(item.emiAmount || 0),
       interestRate: Number(item.interestRate || 0),
       remainingTenure: item.remainingTenure || "",
+      extraRepayment: Number(item.extraRepayment || 0),
+      targetClosureDate: item.targetClosureDate || "",
       notes: item.notes || ""
     }));
+}
+
+
+function normaliseSurplusAllocations(rows = [], monthlySurplus = 0) {
+  const available = Math.max(0, Number(monthlySurplus || 0));
+  return removeEmptyRows(rows, ["category", "fixedAmount", "percentage", "notes"])
+    .map((item, index) => {
+      const mode = item.mode === "percentage" ? "percentage" : "fixed";
+      const percentage = mode === "percentage" ? Number(item.percentage || 0) : 0;
+      const fixedAmount = mode === "fixed" ? Number(item.fixedAmount || 0) : 0;
+      const calculatedAmount = mode === "percentage" ? available * percentage / 100 : fixedAmount;
+      return {
+        ...item,
+        id: item.id || `surplus-${index + 1}`,
+        category: item.category || "",
+        mode,
+        fixedAmount,
+        percentage,
+        calculatedAmount: Number(calculatedAmount.toFixed(2)),
+        notes: item.notes || ""
+      };
+    });
 }
 
 function normaliseInvestmentPreferences(value = []) {
@@ -175,6 +200,7 @@ function normaliseAssessment(lead, payload, currentUser, status, versionNumber) 
   const bucketList = normaliseBucketList(payload.bucketList);
   const existingInvestments = normaliseInvestments(payload.existingInvestments);
   const liabilities = normaliseLiabilities(payload.liabilities);
+  const surplusAllocations = normaliseSurplusAllocations(payload.surplusAllocations, payload.personalProfile?.monthlySurplus);
   const investmentPreferences = normaliseInvestmentPreferences(payload.investmentPreferences);
 
   return {
@@ -194,6 +220,7 @@ function normaliseAssessment(lead, payload, currentUser, status, versionNumber) 
     goals: deriveLegacyGoals(bucketList),
     existingInvestments,
     liabilities,
+    surplusAllocations,
     investmentPreferences,
     riskAssessment: {
       ...payload.riskAssessment,
@@ -411,6 +438,7 @@ export async function convertLeadToInvestor(lead, assessment, currentUser) {
     const bucketList = getAssessmentBucketList(assessment);
     const existingInvestments = normaliseInvestments(assessment.existingInvestments || []);
     const liabilities = normaliseLiabilities(assessment.liabilities || []);
+    const surplusAllocations = normaliseSurplusAllocations(assessment.surplusAllocations || [], assessment.personalProfile?.monthlySurplus);
     const investmentPreferences = normaliseInvestmentPreferences(assessment.investmentPreferences);
 
     const investor = {
@@ -438,6 +466,7 @@ export async function convertLeadToInvestor(lead, assessment, currentUser) {
       goals: bucketList,
       existingInvestments,
       liabilities,
+      surplusAllocations,
       currentInvestments: assessment.personalProfile?.currentInvestments || "",
       activeLiabilities: assessment.personalProfile?.activeLiabilities || "",
       portalUid: null,
@@ -518,6 +547,7 @@ export async function updateInvestorProfile(investor, payload, currentUser) {
   const bucketList = normaliseBucketList(payload.bucketList);
   const existingInvestments = normaliseInvestments(payload.existingInvestments);
   const liabilities = normaliseLiabilities(payload.liabilities);
+  const surplusAllocations = normaliseSurplusAllocations(payload.surplusAllocations, payload.personalProfile?.monthlySurplus);
   const investmentPreferences = normaliseInvestmentPreferences(payload.investmentPreferences);
   const primaryGoal = getPrimaryGoal(bucketList);
 
@@ -533,6 +563,7 @@ export async function updateInvestorProfile(investor, payload, currentUser) {
     goals: bucketList,
     existingInvestments,
     liabilities,
+    surplusAllocations,
     currentInvestments: existingInvestments.map((item) => `${item.type}: ${item.institution || "Not specified"}`).join("\n"),
     activeLiabilities: liabilities.map((item) => `${item.type}: ${item.lender || "Not specified"}`).join("\n"),
     primaryGoal: primaryGoal?.name || "",

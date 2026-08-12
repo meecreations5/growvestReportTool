@@ -5,6 +5,41 @@ import { sendReportDelivery } from "@/lib/server/reportDelivery";
 
 
 export const runtime = "nodejs";
+
+async function publishLinkedActionVisibility({ investorId, reportId, publishedVersion }) {
+  if (!investorId) return 0;
+  const actionSnapshots = await adminDb.collection("investorActions").where("investorId", "==", investorId).get();
+  const linkedActions = actionSnapshots.docs.filter((item) => {
+    const data = item.data();
+    return data.sourceReportId === reportId || data.lastReportId === reportId;
+  });
+  if (!linkedActions.length) return 0;
+
+  // Keep action/event visibility consistent. Report-origin actions are hidden
+  // while drafts are internal, then both the action and its timeline become
+  // visible together once the source report is published.
+  const operations = [];
+  for (const item of linkedActions) {
+    operations.push({
+      ref: item.ref,
+      data: {
+        investorVisible: true,
+        publishedWithReportId: reportId,
+        publishedWithReportVersion: publishedVersion,
+        updatedAt: new Date()
+      }
+    });
+    const eventSnapshots = await adminDb.collection("investorActionEvents").where("actionId", "==", item.id).get();
+    eventSnapshots.docs.forEach((event) => operations.push({ ref: event.ref, data: { investorVisible: true } }));
+  }
+
+  for (let start = 0; start < operations.length; start += 400) {
+    const batch = adminDb.batch();
+    operations.slice(start, start + 400).forEach((operation) => batch.set(operation.ref, operation.data, { merge: true }));
+    await batch.commit();
+  }
+  return linkedActions.length;
+}
 export async function POST(request, { params }) {
   try {
     const actor = await verifyStaffRequest(request);
@@ -99,6 +134,14 @@ export async function POST(request, { params }) {
       createdAt: new Date()
     });
     await batch.commit();
+
+    // Report-origin actions remain internal while a report is a draft. Publishing
+    // exposes the linked action and its complete client-visible timeline together.
+    await publishLinkedActionVisibility({
+      investorId: report.investorId,
+      reportId,
+      publishedVersion: nextPublishedVersion
+    });
 
     let emailStatus = "not_requested";
     let emailError = null;

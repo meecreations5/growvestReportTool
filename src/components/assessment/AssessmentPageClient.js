@@ -33,10 +33,12 @@ import {
   calculateRiskScore,
   calculateInvestmentPreferenceTotals,
   calculateTotalGoalTarget,
+  recalculatePersonalProfile,
   createEmptyGoal,
   createEmptyInvestment,
   createEmptyInvestmentPreference,
   createEmptyLiability,
+  createEmptySurplusAllocation,
   getInvestmentPreferenceRows,
   getPrimaryGoal,
   getQualificationStatus,
@@ -44,6 +46,7 @@ import {
 } from "@/lib/constants/assessment";
 import { assessmentSchema, validateCompletedAssessment } from "@/lib/validation/assessmentSchema";
 import { formatCurrency, formatDate } from "@/lib/utils/format";
+import { BIRTHDAY_REMINDER_OPTIONS, DEFAULT_BIRTHDAY_REMINDER_OFFSETS } from "@/lib/utils/occasions";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import ProgressNav from "@/components/ui/ProgressNav";
@@ -51,7 +54,8 @@ import { Field, inputClassName } from "@/components/ui/Field";
 import {
   ExistingInvestmentsEditor,
   GoalBucketEditor,
-  LiabilitiesEditor
+  LiabilitiesEditor,
+  SurplusAllocationEditor
 } from "@/components/assessment/RepeatableFinancialRows";
 import InvestmentPreferencesEditor from "@/components/assessment/InvestmentPreferencesEditor";
 
@@ -60,7 +64,7 @@ const today = new Date().toISOString().slice(0, 10);
 const ASSESSMENT_SECTIONS = [
   { id: "assessment-linked", label: "Linked details", helper: "Client and advisor" },
   { id: "assessment-profile", label: "Financial profile", helper: "Capacity and dependants" },
-  { id: "assessment-goals", label: "Bucket List", helper: "Goals and priorities" },
+  { id: "assessment-goals", label: "Goals & Bucket List", helper: "Optional goals and priorities" },
   { id: "assessment-investments", label: "Investments", helper: "Existing portfolio" },
   { id: "assessment-liabilities", label: "Liabilities", helper: "Loans and EMIs" },
   { id: "assessment-preferences", label: "Preferences", helper: "SIP and lump sum" },
@@ -71,13 +75,14 @@ const ASSESSMENT_SECTIONS = [
 
 function assessmentSectionProgress(values) {
   if (!values) return {};
+  const usedGoals = (values.bucketList || []).filter((goal) => goal.name || goal.targetAmount || goal.timeline || goal.targetYear);
   const usedInvestments = (values.existingInvestments || []).filter((item) => item.type || item.institution || item.currentValue);
   const usedLiabilities = (values.liabilities || []).filter((item) => item.type || item.lender || item.outstandingAmount);
   const usedPreferences = getInvestmentPreferenceRows(values.investmentPreferences);
   return {
     "assessment-linked": Boolean(values.assessmentDate && values.assessmentType),
     "assessment-profile": Boolean(values.personalProfile?.age && values.personalProfile?.occupation && values.personalProfile?.monthlySurplus !== ""),
-    "assessment-goals": Boolean((values.bucketList || []).some((goal) => goal.name && Number(goal.targetAmount || 0) > 0)),
+    "assessment-goals": !usedGoals.length || usedGoals.every((goal) => goal.name && Number(goal.targetAmount || 0) > 0 && (goal.timeline || goal.targetYear)),
     "assessment-investments": !usedInvestments.length || usedInvestments.every((item) => item.type && Number(item.currentValue || 0) >= 0),
     "assessment-liabilities": !usedLiabilities.length || usedLiabilities.every((item) => item.type && Number(item.outstandingAmount || 0) >= 0),
     "assessment-preferences": Boolean(usedPreferences.length && usedPreferences.every((item) => item.investmentType && item.preferredFrequency)),
@@ -123,9 +128,17 @@ function makeInitialValues(lead, assessment) {
     assessmentType: assessment?.assessmentType || "Initial Assessment",
     reassessmentReason: assessment?.reassessmentReason || "",
     personalProfile: {
+      dateOfBirth: assessment?.personalProfile?.dateOfBirth || "",
       age: assessment?.personalProfile?.age ?? "",
+      birthdayReminderEnabled: assessment?.personalProfile?.birthdayReminderEnabled !== false,
+      birthdayReminderDaysBefore: assessment?.personalProfile?.birthdayReminderDaysBefore ?? 7,
+      birthdayReminderOffsets: assessment?.personalProfile?.birthdayReminderOffsets?.length
+        ? assessment.personalProfile.birthdayReminderOffsets
+        : [assessment?.personalProfile?.birthdayReminderDaysBefore ?? 7],
       occupation: assessment?.personalProfile?.occupation || "",
       annualIncome: assessment?.personalProfile?.annualIncome ?? "",
+      monthlySurplusMode: assessment?.personalProfile?.monthlySurplusMode || "fixed",
+      monthlySurplusPercentage: assessment?.personalProfile?.monthlySurplusPercentage ?? "",
       monthlySurplus: assessment?.personalProfile?.monthlySurplus ?? "",
       numberOfDependants: assessment?.personalProfile?.numberOfDependants ?? "",
       maritalStatus: assessment?.personalProfile?.maritalStatus || "",
@@ -143,6 +156,7 @@ function makeInitialValues(lead, assessment) {
       : assessment?.personalProfile?.activeLiabilities
         ? [{ ...createEmptyLiability(), type: "Other", notes: assessment.personalProfile.activeLiabilities }]
         : [],
+    surplusAllocations: assessment?.surplusAllocations?.length ? assessment.surplusAllocations : [],
     investmentPreferences: getInvestmentPreferenceRows(assessment?.investmentPreferences).length
       ? getInvestmentPreferenceRows(assessment?.investmentPreferences)
       : [createEmptyInvestmentPreference()],
@@ -391,8 +405,22 @@ export default function AssessmentPageClient({ leadId }) {
   }
 
   function updateSection(section, field, value) {
-    setValues((current) => ({ ...current, [section]: { ...current[section], [field]: value } }));
-    setErrors((current) => ({ ...current, [`${section}.${field}`]: undefined }));
+    setValues((current) => {
+      const nextSection = section === "personalProfile"
+        ? recalculatePersonalProfile({ ...current[section], [field]: value })
+        : { ...current[section], [field]: value };
+      return { ...current, [section]: nextSection };
+    });
+    setErrors((current) => ({
+      ...current,
+      [`${section}.${field}`]: undefined,
+      ...(section === "personalProfile" ? {
+        "personalProfile.age": undefined,
+        "personalProfile.monthlySurplus": undefined,
+        "personalProfile.monthlySurplusPercentage": undefined,
+        "personalProfile.annualIncome": undefined
+      } : {})
+    }));
     markChanged();
   }
 
@@ -545,17 +573,23 @@ export default function AssessmentPageClient({ leadId }) {
           <Card id="assessment-profile" className="scroll-mt-28 p-5 sm:p-7">
             <SectionHeading number="2" title="Personal and financial profile" subtitle="Capture the client's financial capacity and current obligations." tone="blue" />
             <div className="grid gap-5 md:grid-cols-2">
-              <Field label="Age" error={errors["personalProfile.age"]}><input className={inputClassName} type="number" min="18" max="120" value={values.personalProfile.age} onChange={(event) => updateSection("personalProfile", "age", event.target.value)} /></Field>
+              <Field label="Date of birth" error={errors["personalProfile.dateOfBirth"]}><input className={inputClassName} type="date" max={today} value={values.personalProfile.dateOfBirth} onChange={(event) => updateSection("personalProfile", "dateOfBirth", event.target.value)} /></Field>
+              <Field label="Age" error={errors["personalProfile.age"]} hint={values.personalProfile.dateOfBirth ? "Calculated automatically from date of birth" : "Enter age when date of birth is unavailable"}><input className={`${inputClassName} ${values.personalProfile.dateOfBirth ? "bg-slate-50" : ""}`} type="number" min="18" max="120" value={values.personalProfile.age} readOnly={Boolean(values.personalProfile.dateOfBirth)} onChange={(event) => updateSection("personalProfile", "age", event.target.value)} /></Field>
+              <Field label="Birthday reminder"><select className={inputClassName} value={values.personalProfile.birthdayReminderEnabled ? "on" : "off"} onChange={(event) => updateSection("personalProfile", "birthdayReminderEnabled", event.target.value === "on")}><option value="on">Enabled</option><option value="off">Disabled</option></select></Field>
+              <div className="md:col-span-2"><Field label="Birthday reminder schedule" hint="Internal Advisor reminders only; no automatic Investor message."><div className="flex min-h-12 flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5">{BIRTHDAY_REMINDER_OPTIONS.map((days) => { const offsets = values.personalProfile.birthdayReminderOffsets?.length ? values.personalProfile.birthdayReminderOffsets : DEFAULT_BIRTHDAY_REMINDER_OFFSETS; const selected = offsets.includes(days); return <button key={days} type="button" disabled={!values.personalProfile.birthdayReminderEnabled} onClick={() => updateSection("personalProfile", "birthdayReminderOffsets", selected ? offsets.filter((item) => item !== days) : [...offsets, days].sort((a, b) => b - a))} className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${selected ? "border-blue-600 bg-blue-600 text-white" : "border-slate-200 bg-white text-slate-600"}`}>{days === 0 ? "On birthday" : `${days} day${days === 1 ? "" : "s"} before`}</button>; })}</div></Field></div>
               <Field label="Occupation" error={errors["personalProfile.occupation"]}><select className={inputClassName} value={values.personalProfile.occupation} onChange={(event) => updateSection("personalProfile", "occupation", event.target.value)}><option value="">Select occupation</option>{OCCUPATIONS.map((item) => <option key={item}>{item}</option>)}</select></Field>
               <Field label="Annual income (INR)" error={errors["personalProfile.annualIncome"]}><input className={inputClassName} type="number" min="0" value={values.personalProfile.annualIncome} onChange={(event) => updateSection("personalProfile", "annualIncome", event.target.value)} /></Field>
-              <Field label="Monthly surplus (INR)" error={errors["personalProfile.monthlySurplus"]}><input className={inputClassName} type="number" min="0" value={values.personalProfile.monthlySurplus} onChange={(event) => updateSection("personalProfile", "monthlySurplus", event.target.value)} /></Field>
+              <Field label="Surplus method"><select className={inputClassName} value={values.personalProfile.monthlySurplusMode} onChange={(event) => updateSection("personalProfile", "monthlySurplusMode", event.target.value)}><option value="fixed">Fixed monthly amount</option><option value="percentage">Percentage of monthly income</option></select></Field>
+              {values.personalProfile.monthlySurplusMode === "percentage" ? <Field label="Surplus percentage" error={errors["personalProfile.monthlySurplusPercentage"]} hint="Calculated on annual income divided by 12"><div className="relative"><input className={`${inputClassName} pr-10`} type="number" min="0" max="100" step="0.1" value={values.personalProfile.monthlySurplusPercentage} onChange={(event) => updateSection("personalProfile", "monthlySurplusPercentage", event.target.value)} /><span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">%</span></div></Field> : <Field label="Monthly surplus (INR)" error={errors["personalProfile.monthlySurplus"]}><input className={inputClassName} type="number" min="0" value={values.personalProfile.monthlySurplus} onChange={(event) => updateSection("personalProfile", "monthlySurplus", event.target.value)} /></Field>}
+              {values.personalProfile.monthlySurplusMode === "percentage" ? <Field label="Calculated monthly surplus" hint="Auto-calculated and saved as the investable monthly amount"><input className={`${inputClassName} bg-emerald-50 font-bold text-emerald-800`} value={formatCurrency(values.personalProfile.monthlySurplus)} readOnly /></Field> : null}
               <Field label="Number of dependants" error={errors["personalProfile.numberOfDependants"]}><input className={inputClassName} type="number" min="0" value={values.personalProfile.numberOfDependants} onChange={(event) => updateSection("personalProfile", "numberOfDependants", event.target.value)} /></Field>
               <Field label="Marital status" error={errors["personalProfile.maritalStatus"]}><select className={inputClassName} value={values.personalProfile.maritalStatus} onChange={(event) => updateSection("personalProfile", "maritalStatus", event.target.value)}><option value="">Select status</option>{MARITAL_STATUSES.map((item) => <option key={item}>{item}</option>)}</select></Field>
             </div>
+            <div className="mt-8 border-t border-slate-200 pt-7"><p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-700">Monthly surplus allocation</p><p className="mt-1 text-sm text-slate-500">Allocate the available surplus between investments, loan repayment, emergency fund, insurance, goals, tax/cash reserve or trading capital.</p><div className="mt-5"><SurplusAllocationEditor rows={values.surplusAllocations} monthlySurplus={values.personalProfile.monthlySurplus} errors={errors} disabled={readOnly} onAdd={() => addRow("surplusAllocations", createEmptySurplusAllocation)} onRemove={(index) => removeRow("surplusAllocations", index)} onChange={(index, field, value) => updateArray("surplusAllocations", index, field, value)} /></div></div>
           </Card>
 
           <Card id="assessment-goals" className="scroll-mt-28 p-5 sm:p-7">
-            <SectionHeading number="3" title="Bucket list and financial goals" subtitle="Add multiple goals, select one primary goal and define each target independently." tone="green" />
+            <SectionHeading number="3" title="Goals, corpus and Bucket List" subtitle="Goals are optional. Keep wealth as General Wealth Corpus or define one or more financial goals." tone="green" />
             <GoalBucketEditor
               goals={values.bucketList}
               errors={errors}

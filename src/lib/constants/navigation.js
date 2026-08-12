@@ -14,7 +14,10 @@ import {
   BookOpenText,
   MailCheck,
   PenTool,
-  UserRound
+  UserRound,
+  WalletCards,
+  ListChecks,
+  CakeSlice
 } from "lucide-react";
 import { ADMIN_ROLES, STAFF_ROLES } from "./roles";
 
@@ -36,12 +39,15 @@ export const NAV_GROUPS = [
     items: [
       { label: "Investors", href: "/investors", icon: UserRoundCheck, roles: STAFF_ROLES, permission: "investors" },
       { label: "Meetings", href: "/meetings", icon: CalendarDays, roles: STAFF_ROLES, permission: "meetings" },
-      { label: "MOM", href: "/mom", icon: ClipboardList, roles: STAFF_ROLES, permission: "meetings" }
+      { label: "MOM", href: "/mom", icon: ClipboardList, roles: STAFF_ROLES, permission: "meetings" },
+      { label: "Investor Actions", href: "/actions", icon: ListChecks, roles: STAFF_ROLES, permission: "actions" },
+      { label: "Birthdays & Occasions", href: "/occasions", icon: CakeSlice, roles: STAFF_ROLES, permission: "occasions" }
     ]
   },
   {
     label: "Portfolio Management",
     items: [
+      { label: "Daily Portfolio", href: "/portfolio", icon: WalletCards, roles: STAFF_ROLES, permission: "portfolio" },
       { label: "Monthly Reports", href: "/reports", icon: FileBarChart, roles: STAFF_ROLES, permission: "reports" },
       { label: "Data Imports", href: "/data-imports", icon: FileSpreadsheet, roles: STAFF_ROLES, permission: "imports" },
       { label: "Market Commentary", href: "/market-commentary", icon: BookOpenText, roles: STAFF_ROLES, permission: "commentary" },
@@ -67,6 +73,9 @@ export const QUICK_CREATE_ITEMS = [
   { label: "New lead", href: "/leads/create", icon: UsersRound, roles: STAFF_ROLES, permission: "leads" },
   { label: "Schedule meeting", href: "/meetings/create", icon: CalendarDays, roles: STAFF_ROLES, permission: "meetings" },
   { label: "Create MOM", href: "/mom/create", icon: ClipboardList, roles: STAFF_ROLES, permission: "meetings" },
+  { label: "Investor actions", href: "/actions", icon: ListChecks, roles: STAFF_ROLES, permission: "actions" },
+  { label: "Birthdays & occasions", href: "/occasions", icon: CakeSlice, roles: STAFF_ROLES, permission: "occasions" },
+  { label: "Daily portfolio update", href: "/portfolio", icon: WalletCards, roles: STAFF_ROLES, permission: "portfolio" },
   { label: "Monthly report", href: "/reports/create", icon: FileBarChart, roles: STAFF_ROLES, permission: "reports" },
   { label: "Import portfolio data", href: "/data-imports", icon: FileSpreadsheet, roles: STAFF_ROLES, permission: "imports" },
   { label: "New market commentary", href: "/market-commentary/create", icon: BookOpenText, roles: STAFF_ROLES, permission: "commentary" },

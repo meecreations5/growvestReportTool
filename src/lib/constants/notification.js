@@ -3,6 +3,8 @@ export const NOTIFICATION_EVENTS = {
   MEETING_RESCHEDULED: "meeting_rescheduled",
   MEETING_CANCELLED: "meeting_cancelled",
   MEETING_REMINDER: "meeting_reminder",
+  BIRTHDAY_REMINDER: "birthday_reminder",
+  OCCASION_REMINDER: "occasion_reminder",
   MOM_PUBLISHED: "mom_published",
   ACTION_ASSIGNED: "action_assigned",
   FOLLOW_UP_CREATED: "follow_up_created",

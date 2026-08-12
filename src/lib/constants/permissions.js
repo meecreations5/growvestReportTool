@@ -94,6 +94,39 @@ export const PERMISSION_GROUPS = [
         }
       },
       {
+        key: "actions",
+        label: "Investor Actions",
+        description: "Track investor requests, Advisor recommendations, decisions and completion follow-up.",
+        access: {
+          [USER_ROLES.SUPER_ADMIN]: ACCESS_LEVELS.FULL,
+          [USER_ROLES.ADMIN]: ACCESS_LEVELS.FULL,
+          [USER_ROLES.ADVISOR]: ACCESS_LEVELS.ASSIGNED,
+          [USER_ROLES.INVESTOR]: ACCESS_LEVELS.OWN
+        }
+      },
+      {
+        key: "occasions",
+        label: "Birthdays & Occasions",
+        description: "Track Investor and family occasions, Advisor reminders and relationship touchpoint completion.",
+        access: {
+          [USER_ROLES.SUPER_ADMIN]: ACCESS_LEVELS.FULL,
+          [USER_ROLES.ADMIN]: ACCESS_LEVELS.FULL,
+          [USER_ROLES.ADVISOR]: ACCESS_LEVELS.ASSIGNED,
+          [USER_ROLES.INVESTOR]: ACCESS_LEVELS.NONE
+        }
+      },
+      {
+        key: "portfolio",
+        label: "Daily Portfolio",
+        description: "Update and review investor portfolio positions, valuations and daily snapshots.",
+        access: {
+          [USER_ROLES.SUPER_ADMIN]: ACCESS_LEVELS.FULL,
+          [USER_ROLES.ADMIN]: ACCESS_LEVELS.FULL,
+          [USER_ROLES.ADVISOR]: ACCESS_LEVELS.ASSIGNED,
+          [USER_ROLES.INVESTOR]: ACCESS_LEVELS.OWN
+        }
+      },
+      {
         key: "imports",
         label: "Data Imports",
         description: "Upload and validate portfolio files for report preparation.",

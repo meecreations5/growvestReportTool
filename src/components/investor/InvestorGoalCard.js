@@ -1,6 +1,7 @@
 "use client";
 
-import { CalendarDays, ChevronRight, Target } from "lucide-react";
+import Link from "next/link";
+import { CalendarDays, ChevronRight, MessageCircleMore, Target } from "lucide-react";
 import { compactCurrency, goalDisplayStatus, goalTone } from "@/lib/utils/reportPresentation";
 
 const toneMap = {
@@ -88,9 +89,12 @@ export default function InvestorGoalCard({ goal, compact = false, onOpen }) {
       </div>
 
       {!compact ? (
-        <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
+        <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-slate-500">Monthly contribution <strong className="text-slate-800">{monthly ? compactCurrency(monthly) : "Not set"}</strong></p>
-          {onOpen ? <button type="button" onClick={() => onOpen(goal)} className="inline-flex items-center gap-1 text-xs font-bold text-[var(--gv-blue)]">View details <ChevronRight size={15} /></button> : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href={`/investor/actions?new=1&requestType=${encodeURIComponent("Goal / Bucket List Change")}&goalId=${encodeURIComponent(goal?.id || goal?.goalId || "")}&goalName=${encodeURIComponent(name)}`} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700"><MessageCircleMore size={14} /> Discuss goal</Link>
+            {onOpen ? <button type="button" onClick={() => onOpen(goal)} className="inline-flex items-center gap-1 text-xs font-bold text-[var(--gv-blue)]">View details <ChevronRight size={15} /></button> : null}
+          </div>
         </div>
       ) : null}
     </article>

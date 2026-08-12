@@ -21,6 +21,7 @@ import {
   getReportMonthKey
 } from "@/lib/constants/report";
 import { sanitizeForFirestore } from "@/services/assessmentService";
+import { syncMonthlyReportActions } from "@/services/actionService";
 import {
   DEFAULT_REPORT_TEMPLATE_ID,
   createReportTemplateSnapshot,
@@ -108,6 +109,7 @@ function normaliseAllocation(rows = [], totalCorpus = 0) {
 function normaliseFunds(rows = []) {
   return cleanRows(rows, ["instrumentName", "currentValue", "monthlySip"]).map((item, index) => ({
     id: item.id || `fund-${index + 1}`,
+    positionId: item.positionId || "",
     instrumentName: item.instrumentName || "",
     assetClass: item.assetClass || "Other",
     goalId: item.goalId || "",
@@ -122,8 +124,81 @@ function normaliseFunds(rows = []) {
     quantity: Number(item.quantity || 0),
     transactionDate: item.transactionDate || "",
     type: item.type || "Fixed",
+    investmentType: item.investmentType || "",
+    productType: item.productType || "",
+    source: item.source || "",
+    provider: item.provider || "",
+    investmentMode: item.investmentMode || "",
+    totalInvested: Number(item.totalInvested || 0),
+    units: Number(item.units || 0),
+    currentNav: Number(item.currentNav || 0),
+    navDate: item.navDate || "",
+    averageBuyRate: Number(item.averageBuyRate || 0),
+    currentRate: Number(item.currentRate || 0),
+    valuationDate: item.valuationDate || "",
+    isin: item.isin || "",
+    folioNo: item.folioNo || "",
+    symbol: item.symbol || "",
+    policyNumber: item.policyNumber || "",
+    planName: item.planName || "",
+    fundName: item.fundName || "",
+    fundCode: item.fundCode || "",
+    insurer: item.insurer || "",
+    premiumAmount: Number(item.premiumAmount || 0),
+    premiumFrequency: item.premiumFrequency || "",
+    policyTotalPremiumPaid: Number(item.policyTotalPremiumPaid || 0),
+    policyStartDate: item.policyStartDate || "",
+    maturityDate: item.maturityDate || "",
+    sumAssured: Number(item.sumAssured || 0),
+    policyStatus: item.policyStatus || "",
+    gainLossAvailable: item.gainLossAvailable !== false,
     notes: item.notes || ""
   }));
+}
+
+
+
+function normaliseTransactions(rows = []) {
+  return cleanRows(rows, ["instrumentName", "transactionType", "amount", "notes"]).map((item, index) => ({
+    id: item.id || `transaction-${index + 1}`,
+    date: item.date || item.transactionDate || "",
+    transactionDate: item.transactionDate || item.date || "",
+    type: item.type || item.transactionType || "Investment",
+    transactionType: item.transactionType || item.type || "Investment",
+    instrumentName: item.instrumentName || item.schemeName || "Investment",
+    amount: Number(item.amount || 0),
+    notes: item.notes || ""
+  }));
+}
+
+function normaliseFinancialPlan(value = {}) {
+  return {
+    monthlySurplus: Number(value.monthlySurplus || 0),
+    surplusMode: value.surplusMode || "fixed",
+    surplusPercentage: Number(value.surplusPercentage || 0),
+    surplusAllocations: (value.surplusAllocations || []).filter((item) => item?.category || Number(item?.calculatedAmount || item?.fixedAmount || item?.percentage || 0)).map((item, index) => ({
+      id: item.id || `surplus-${index + 1}`,
+      category: item.category || "Other / Custom",
+      mode: item.mode === "percentage" ? "percentage" : "fixed",
+      fixedAmount: Number(item.fixedAmount || 0),
+      percentage: Number(item.percentage || 0),
+      calculatedAmount: Number(item.calculatedAmount || 0),
+      notes: item.notes || ""
+    })),
+    loans: (value.loans || []).filter((item) => item?.type || item?.lender || Number(item?.outstandingAmount || 0)).map((item, index) => ({
+      id: item.id || `loan-${index + 1}`,
+      type: item.type || "Other",
+      lender: item.lender || "",
+      originalLoanAmount: Number(item.originalLoanAmount || 0),
+      outstandingAmount: Number(item.outstandingAmount || 0),
+      emiAmount: Number(item.emiAmount || 0),
+      interestRate: Number(item.interestRate || 0),
+      remainingTenure: item.remainingTenure || "",
+      extraRepayment: Number(item.extraRepayment || 0),
+      targetClosureDate: item.targetClosureDate || "",
+      notes: item.notes || ""
+    }))
+  };
 }
 
 function normaliseActions(rows = []) {
@@ -131,10 +206,18 @@ function normaliseActions(rows = []) {
     id: item.id || `action-${index + 1}`,
     title: item.title || "",
     description: item.description || item.title || "",
+    recommendationType: item.recommendationType || "Portfolio Review",
+    investorDecision: item.investorDecision || "Pending Discussion",
+    relatedGoalId: item.relatedGoalId || "",
+    relatedInvestmentId: item.relatedInvestmentId || "",
+    sourceActionId: item.sourceActionId || "",
+    sourceReportId: item.sourceReportId || "",
+    sourceReportMonthKey: item.sourceReportMonthKey || "",
     owner: item.owner || "Advisor",
     priority: item.priority || "Planned",
     dueDate: item.dueDate || "",
-    status: item.status || "Pending"
+    completionDate: item.completionDate || "",
+    status: item.status || "Recommended"
   }));
 }
 
@@ -163,6 +246,12 @@ function renderableReportData(report = {}) {
     reportYear: Number(report.reportYear || 0),
     reportMonthKey: report.reportMonthKey || "",
     statementDate: report.statementDate || "",
+    portfolioAsOfDate: report.portfolioAsOfDate || "",
+    sourcePortfolioSnapshotId: report.sourcePortfolioSnapshotId || "",
+    portfolioVerificationStatus: report.portfolioVerificationStatus || "",
+    portfolioSourceFreshness: report.portfolioSourceFreshness || [],
+    portfolioVerification: report.portfolioVerification || null,
+    reportGenerationSource: report.reportGenerationSource || "",
     title: report.title || "",
     templateId: report.templateId || DEFAULT_REPORT_TEMPLATE_ID,
     templateVersion: Number(report.templateVersion || report.templateSnapshot?.version || 1),
@@ -170,6 +259,7 @@ function renderableReportData(report = {}) {
     templateAppliedAt: report.templateAppliedAt || null,
     summary: report.summary || {},
     holdings: report.holdings || [],
+    financialPlan: report.financialPlan || {},
     advisorNote: report.advisorNote || {},
     advisorInsights: report.advisorInsights || {},
     monthlyHighlights: report.monthlyHighlights || [],
@@ -177,6 +267,8 @@ function renderableReportData(report = {}) {
     goals: report.goals || [],
     allocation: report.allocation || [],
     funds: report.funds || [],
+    transactions: report.transactions || [],
+    tradingSummary: report.tradingSummary || null,
     nextSteps: report.nextSteps || [],
     nextReview: report.nextReview || {},
     disclaimer: report.disclaimer || ""
@@ -211,6 +303,9 @@ function reportTemplateChanged(existing = {}, next = {}) {
 function normaliseReportPayload(payload, currentUser, status) {
   const summary = {
     totalCorpus: Number(payload.summary?.totalCorpus || 0),
+    totalInvested: Number(payload.summary?.totalInvested || 0),
+    portfolioGainLoss: Number(payload.summary?.portfolioGainLoss || 0),
+    generalWealthCorpus: Number(payload.summary?.generalWealthCorpus || 0),
     lifetimeTarget: Number(payload.summary?.lifetimeTarget || 0),
     overallProgress: Number(payload.summary?.overallProgress || calculatePercentage(payload.summary?.totalCorpus, payload.summary?.lifetimeTarget)),
     monthlySip: Number(payload.summary?.monthlySip || 0),
@@ -242,6 +337,28 @@ function normaliseReportPayload(payload, currentUser, status) {
     reportYear,
     reportMonthKey,
     statementDate: payload.statementDate,
+    portfolioAsOfDate: payload.portfolioAsOfDate || "",
+    sourcePortfolioSnapshotId: payload.sourcePortfolioSnapshotId || null,
+    portfolioVerificationStatus: payload.portfolioVerificationStatus || "",
+    portfolioSourceFreshness: payload.portfolioSourceFreshness || [],
+    portfolioVerification: payload.portfolioVerification ? {
+      required: Boolean(payload.portfolioVerification.required),
+      status: payload.portfolioVerification.status || "pending",
+      asOfDate: payload.portfolioVerification.asOfDate || "",
+      snapshotId: payload.portfolioVerification.snapshotId || payload.sourcePortfolioSnapshotId || "",
+      snapshotDate: payload.portfolioVerification.snapshotDate || payload.portfolioAsOfDate || "",
+      snapshotAgeDays: payload.portfolioVerification.snapshotAgeDays === null || payload.portfolioVerification.snapshotAgeDays === undefined ? null : Number(payload.portfolioVerification.snapshotAgeDays),
+      openingSnapshotId: payload.portfolioVerification.openingSnapshotId || "",
+      openingSnapshotDate: payload.portfolioVerification.openingSnapshotDate || "",
+      checks: payload.portfolioVerification.checks || [],
+      sourceFreshness: payload.portfolioVerification.sourceFreshness || [],
+      counts: payload.portfolioVerification.counts || {},
+      acknowledged: Boolean(payload.portfolioVerification.acknowledged),
+      acknowledgedAt: payload.portfolioVerification.acknowledgedAt || null,
+      acknowledgedByUid: payload.portfolioVerification.acknowledgedByUid || "",
+      acknowledgedByName: payload.portfolioVerification.acknowledgedByName || ""
+    } : null,
+    reportGenerationSource: payload.reportGenerationSource || (payload.sourcePortfolioSnapshotId ? "portfolio_master" : ""),
     title: payload.title || `Monthly Portfolio Report — ${getMonthLabel(reportMonth)} ${reportYear}`,
     status,
     investorVisible: Boolean(payload.investorVisible && status === REPORT_STATUS.COMPLETED),
@@ -266,6 +383,7 @@ function normaliseReportPayload(payload, currentUser, status) {
     templateAppliedAt: payload.templateAppliedAt || null,
     summary,
     holdings: normaliseHoldings(payload.holdings, summary.totalCorpus),
+    financialPlan: normaliseFinancialPlan(payload.financialPlan),
     advisorNote: {
       content: payload.advisorNote?.content || "",
       highlight: payload.advisorNote?.highlight || ""
@@ -294,6 +412,18 @@ function normaliseReportPayload(payload, currentUser, status) {
     goals: normaliseGoals(payload.goals),
     allocation: normaliseAllocation(payload.allocation, summary.totalCorpus),
     funds: normaliseFunds(payload.funds),
+    transactions: normaliseTransactions(payload.transactions),
+    tradingSummary: payload.tradingSummary ? {
+      monthKey: payload.tradingSummary.monthKey || reportMonthKey,
+      totalTrades: Number(payload.tradingSummary.totalTrades || 0),
+      winningTrades: Number(payload.tradingSummary.winningTrades || 0),
+      losingTrades: Number(payload.tradingSummary.losingTrades || 0),
+      turnover: Number(payload.tradingSummary.turnover || 0),
+      grossPnl: Number(payload.tradingSummary.grossPnl || 0),
+      totalCharges: Number(payload.tradingSummary.totalCharges || 0),
+      netPnl: Number(payload.tradingSummary.netPnl || 0),
+      tradingCapital: Number(payload.tradingSummary.tradingCapital || 0)
+    } : null,
     nextSteps: normaliseActions(payload.nextSteps),
     nextReview: {
       date: payload.nextReview?.date || "",
@@ -367,8 +497,13 @@ export function subscribePublishedInvestorReports(investorId, callback, onError)
         return;
       }
       fallbackUnsubscribe = onSnapshot(
-        query(collection(db, "monthlyReports"), where("investorId", "==", investorId)),
-        (snapshot) => callback(sortReportsDescending(rowsFromSnapshot(snapshot).filter((item) => item.investorVisible === true && item.status === REPORT_STATUS.COMPLETED)).slice(0, 36)),
+        query(
+          collection(db, "monthlyReports"),
+          where("investorId", "==", investorId),
+          where("investorVisible", "==", true),
+          where("status", "==", REPORT_STATUS.COMPLETED)
+        ),
+        (snapshot) => callback(sortReportsDescending(rowsFromSnapshot(snapshot)).slice(0, 36)),
         onError
       );
     }
@@ -389,8 +524,13 @@ export async function getPublishedInvestorReportsOnce(investorId, limitCount = 3
     return rowsFromSnapshot(snapshot);
   } catch (error) {
     if (!isIndexUnavailable(error)) throw error;
-    const snapshot = await getDocs(query(collection(db, "monthlyReports"), where("investorId", "==", investorId)));
-    return sortReportsDescending(rowsFromSnapshot(snapshot).filter((item) => item.investorVisible === true && item.status === REPORT_STATUS.COMPLETED)).slice(0, limitCount);
+    const snapshot = await getDocs(query(
+      collection(db, "monthlyReports"),
+      where("investorId", "==", investorId),
+      where("investorVisible", "==", true),
+      where("status", "==", REPORT_STATUS.COMPLETED)
+    ));
+    return sortReportsDescending(rowsFromSnapshot(snapshot)).slice(0, limitCount);
   }
 }
 
@@ -520,6 +660,13 @@ export async function saveMonthlyReport(payload, currentUser, { reportId = null,
   });
 
   await batch.commit();
+  if (!autosave) {
+    try {
+      await syncMonthlyReportActions(documentId);
+    } catch (syncError) {
+      console.warn("Monthly report saved but action workflow sync could not complete", syncError);
+    }
+  }
   return { id: documentId, ...reportWrite };
 }
 

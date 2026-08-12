@@ -247,7 +247,15 @@ export function buildReportImportPayload(rows = []) {
     instrumentName: row.instrumentName,
     assetClass: row.assetClass || "Other",
     goalId: "",
-    goalName: "",
+    goalName: row.goalName || "",
+    investmentType: row.investmentType || "Investment",
+    productType: row.investmentType || "",
+    investmentMode: row.investmentMode || "",
+    provider: row.provider || "",
+    isin: row.isin || "",
+    folioNo: row.folioNo || "",
+    currentNav: Number(row.currentNav || 0),
+    navDate: row.navDate || "",
     monthlySip: Number(row.monthlySip || 0),
     currentValue: Number(row.currentValue || 0),
     openingValue: Number(row.openingValue || 0),
@@ -257,7 +265,7 @@ export function buildReportImportPayload(rows = []) {
     returnPercentage: Number(row.returnPercentage || 0),
     quantity: Number(row.quantity || 0),
     transactionDate: row.transactionDate || "",
-    type: "Fixed",
+    type: row.investmentMode || row.investmentType || "Fixed",
     notes: row.notes || ""
   }));
 

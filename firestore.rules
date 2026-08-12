@@ -368,6 +368,22 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
 
+    match /investorActions/{actionId} {
+      allow read: if isAdmin()
+        || ownsAdvisorRecord(resource.data)
+        || (investorOwnsRecord(resource.data) && resource.data.investorVisible == true);
+      // Investor action writes go through authenticated server API routes so
+      // workflow/audit fields cannot be forged from a browser client.
+      allow create, update, delete: if false;
+    }
+
+    match /investorActionEvents/{eventId} {
+      allow read: if isAdmin()
+        || ownsAdvisorRecord(resource.data)
+        || (investorOwnsRecord(resource.data) && resource.data.investorVisible == true);
+      allow create, update, delete: if false;
+    }
+
     match /monthlyReports/{reportId} {
       allow create: if isStaff()
         && request.resource.data.createdByUid == request.auth.uid;
@@ -497,6 +513,93 @@ service cloud.firestore {
         && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
       allow read, update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
       allow delete: if isSuperAdmin();
+    }
+
+    // Birthday & Occasion Management is server-managed so family relationship
+    // details and touchpoint history are never exposed through broad browser queries.
+    match /investorOccasions/{occasionId} {
+      allow read, create, update, delete: if false;
+    }
+
+    match /occasionTouchpoints/{touchpointId} {
+      allow read, create, update, delete: if false;
+    }
+
+    // Portfolio data is written only by authenticated server APIs. Clients may read
+    // records that belong to them (investors) or to their assigned book (staff).
+    match /portfolioPositions/{positionId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /ulipPolicies/{policyId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /investmentTransactions/{transactionId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /portfolioSnapshots/{snapshotId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /portfolioSnapshotPositions/{snapshotPositionId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /tradingTransactions/{transactionId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /tradingMonthlySummaries/{summaryId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /externalInvestorMappings/{mappingId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    // Full Aadhaar values, when configured, live only in this server-managed
+    // encrypted collection. No browser client can read or write it.
+    match /investorKycSecure/{investorId} {
+      allow read, create, update, delete: if false;
+    }
+
+    match /portfolioImports/{importId} {
+      allow read: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    match /portfolioImportFiles/{fileId} {
+      allow read: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    match /portfolioFileFingerprints/{fingerprintId} {
+      allow read, create, update, delete: if false;
+    }
+
+    match /portfolioImportMappingProfiles/{profileId} {
+      // Generic import column mappings are server-managed. The browser uses
+      // authenticated API routes so providers cannot expose internal mapping
+      // rules or mutate another advisor's import profile directly.
+      allow read, create, update, delete: if false;
+    }
+
+    match /portfolioImportChanges/{changeId} {
+      allow read, create, update, delete: if false;
+    }
+
+    match /portfolioImportChangeItems/{changeItemId} {
+      allow read, create, update, delete: if false;
     }
 
     match /dataImports/{importId} {

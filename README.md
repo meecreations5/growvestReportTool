@@ -4,6 +4,100 @@ Standalone Next.js application for GrowVest lead management, investor onboarding
 
 ## Current implementation
 
+## Version 0.32.3 - GrowVest Standard / Generic Portfolio Importer
+
+- Added a universal fallback portfolio importer for providers without a dedicated Fundbazaar, Bajaj or ULIP adapter.
+- The official `Portfolio_Holdings` + optional `Transactions` workbook imports directly with no column-mapping step.
+- Unknown XLS/XLSX/CSV layouts can be mapped once in Daily Portfolio Update; GrowVest can remember the exact header + sheet layout for later files.
+- Mapping supports investor identity, investment type/mode, provider, instrument identity, valuation fields, transaction fields, maturity, Goal/Bucket List and notes.
+- Generic investor matching uses saved external mapping, PAN, GrowVest Client Code and manual name review with ownership-conflict protection.
+- Current holding imports preserve existing Goal/Bucket List allocations. Exact requested goal names can be applied to genuinely new positions; otherwise they remain General Wealth / Unassigned.
+- Generic imports participate in exact-duplicate protection and Reprocess / Correct Investor / Rollback recovery.
+- Optional complete-snapshot mode can mark missing positions for the represented provider as exited; it is off by default for unknown provider layouts.
+- Added a downloadable standard workbook at `public/templates/GrowVest_Standard_Portfolio_Import_v0.32.3.xlsx`.
+- Dedicated Fundbazaar, Bajaj Broking and ULIP adapters remain preferred when their native reports are available.
+- See `docs/GROWVEST_STANDARD_GENERIC_IMPORT_v0.32.3.md` for workbook structure, mapping behaviour, safeguards and UAT.
+
+## Version 0.32.2 - ULIP Portfolio Importer & Policy Tracking
+
+- Daily Portfolio Update now enables ULIP portfolio detection and commit using policy-level records with multiple underlying fund positions.
+- ULIP investor matching supports saved external mappings, PAN, optional client code, policy-number identity and manual confirmation with ownership-conflict protection.
+- One ULIP policy is stored once in `ulipPolicies`; its underlying funds remain separate `portfolioPositions` so units, NAV, NAV date, fund value and Goal/Bucket allocation can update independently.
+- Policy tracking includes insurer, policy number, plan, start/maturity dates, premium/frequency, total premium paid, sum assured, status, current fund value, fund count and latest NAV date.
+- Fund Goal/Bucket List allocations persist across later ULIP imports. A new fund can use an exact requested goal; otherwise it remains General Wealth / Unassigned for staff review.
+- Fund-level investment return is not fabricated when an insurer report provides only policy-level premium. Policy premium is tracked once while fund current values are summed from the underlying positions.
+- ULIP imports participate in duplicate protection and Reprocess / Correct Investor / Rollback recovery journals, including policy records and policy identity mappings.
+- Investor Portfolio now includes a ULIP Policy Tracking section plus fund-level NAV/freshness details. Monthly Report snapshots retain ULIP policy/fund fields.
+- Missing funds are not automatically treated as switched/exited until a real insurer export confirms that the provider report is a complete authoritative fund snapshot.
+- Exact production aliases still require validation against an actual insurer export; v0.32.2 uses the GrowVest ULIP standard format plus defensive common provider field aliases.
+- See `docs/ULIP_PORTFOLIO_IMPORTER_v0.32.2.md` for supported structure, safety behaviour and UAT.
+
+## Version 0.32.1 - Bajaj Broking Importer
+
+- Daily Portfolio Update now enables Bajaj Broking Delivery Holdings and Intraday/Trade Book detection and commit.
+- Delivery holdings update long-term Portfolio Master positions with quantity, average cost, current rate/value, unrealised P&L and persistent Goal/Bucket allocation.
+- Intraday trades remain separate from long-term wealth and capture turnover, brokerage/taxes/charges, gross P&L and net P&L with monthly trading summaries.
+- Bajaj investor matching uses saved external mapping, PAN, optional broker client code and manual confirmation.
+- Exact duplicate files are skipped and Bajaj imports participate in Reprocess / Correct Investor / Rollback recovery journals.
+- Ambiguous or unmatched side-wise BUY/SELL quantities are blocked rather than guessed.
+- Exact production mapping still requires validation against one real Bajaj Holdings export and one real Trade Book/P&L export.
+- Includes the Investor Action dialog null-safety hotfix and removes the invalid single-field `investorActions.updatedAt` custom index so Firestore index deployment succeeds.
+- See `docs/BAJAJ_BROKING_IMPORTER_v0.32.1.md` for supported signatures, safety behaviour and UAT.
+
+## Version 0.32.0 - Investor Action Requests & Advisor Workflow
+
+- Added a central Investor Actions workspace for Admin/Advisor follow-up, due dates, decisions, status and completion tracking.
+- Added Investor Portal **Actions & Requests** with linked portfolio/Goal discussion shortcuts and client-visible audit timeline.
+- Monthly Report next steps and MOM action items sync into the central workflow. Unresolved actions carry into future Monthly Reports; terminal actions do not.
+- Published-report discussion requests now create/reuse a tracked workflow action.
+- Workflow writes use authenticated server APIs; Firestore browser writes are denied and Investor reads remain own-record + `investorVisible` scoped.
+- See `docs/INVESTOR_ACTIONS_ADVISOR_WORKFLOW_v0.32.0.md` for deployment and acceptance testing.
+
+## Version 0.31.8 - Daily Portfolio Coverage & Missing Investor Tracking
+
+- Daily Fundbazaar coverage dashboard with Expected / Received / Updated / Need Attention / Missing counts.
+- Expected investors are derived from verified Fundbazaar mappings and deduplicated across client-name/PAN identities.
+- Missing daily reports never zero or clear a portfolio; the latest verified portfolio value remains visible with stale-day indicators.
+- Duplicate files count as received but remain safely skipped.
+- Unmatched/problem files are surfaced separately as operational exceptions.
+- Admin/Super Admin can pause/resume daily coverage tracking for an investor without deleting the Fundbazaar mapping.
+- Coverage refreshes after analysis, commit and import recovery actions.
+- New Fundbazaar mappings default to daily coverage tracking enabled.
+
+See `docs/DAILY_PORTFOLIO_COVERAGE_v0.31.8.md` for behaviour and UAT steps.
+
+## Version 0.31.7 - Import Correction, Recovery and Investor KYC Identifiers
+
+- Admin/Super Admin import recovery for Fundbazaar files processed from v0.31.7 onward.
+- Per-file recovery journal captures the pre-import state before portfolio mutations are committed.
+- Safe **Rollback**, **Reprocess**, and **Correct Investor** actions are available from Daily Portfolio Update → History → Manage.
+- Recovery is blocked when a newer import has already changed the same holding, transaction, mapping, or file fingerprint.
+- Same-investor reprocessing preserves existing Goal/Bucket List allocations. Correct-investor moves intentionally do not transfer the old investor's goal allocation.
+- Published monthly reports remain frozen; recovery rebuilds the current corrected daily portfolio snapshot only.
+- Investor Profile now supports PAN and Aadhaar identifiers. PAN is normalised and can auto-match Fundbazaar PAN to the correct Investor Profile.
+- Full Aadhaar is never stored in the normal Investor document. It is encrypted server-side with AES-256-GCM in `investorKycSecure`; only the masked last four digits are exposed to the UI.
+- Aadhaar values are excluded from activity-log payloads and are never used for portfolio matching.
+
+**Required for Aadhaar storage:** configure a strong server-only `KYC_FIELD_ENCRYPTION_KEY` environment secret before saving Aadhaar values.
+
+See `docs/IMPORT_CORRECTION_RECOVERY_KYC_v0.31.7.md` for deployment and UAT steps.
+
+## Version 0.31.0 - Daily Portfolio Master & Portfolio-Driven Monthly Reporting
+
+- Permanent investor Portfolio Master with verified daily snapshots and source freshness.
+- Fundbazaar multi-file import with HTML-style `.xls` support, duplicate protection, saved investor mapping, folio/ISIN validation, missing-report detection, and new/exited holding review.
+- Mutual funds support SIP, Lump Sum, or Both within the same folio while preserving transaction-level detail.
+- Goal assignment is optional: holdings can remain in General Wealth, and multiple investments can fund one Goal/Bucket List.
+- Delivery stocks track quantity, average buy rate, current rate/value, unrealised P&L, and partial/full sale history.
+- Bajaj intraday trading is tracked separately from long-term wealth with gross P&L, charges, and net realised P&L.
+- ULIP holdings support units, NAV, NAV date, premium/invested value, and fund value.
+- Monthly surplus supports fixed or percentage calculation plus configurable allocation to investments, debt repayment, emergency funds, insurance, goals, tax/cash reserves, trading capital, and custom purposes.
+- Loan records now include original/outstanding amount, EMI, rate, tenure, extra repayment, and target closure date.
+- Monthly reports can now load the latest verified snapshot for the report period, calculate opening/closing corpus and known cash flows, include trading/loan/surplus context, and carry unresolved recommendations forward.
+- Existing report preview, PDF, publishing, Email Delivery Centre, and Investor Portal workflows are preserved.
+
+See `docs/PORTFOLIO_MASTER_AND_REPORTING.md` for workflow, data model and deployment notes.
+
 ## Version 0.28.0 - Advisor Identity, Performance and Trusted-Device Offline Access
 
 - Advisor codes are generated automatically using a transaction-safe `GV-ADV-####` sequence.
@@ -23,7 +117,7 @@ See `docs/ADVISOR_CODES_PERFORMANCE_AND_OFFLINE.md` for deployment and UAT guida
 - Firestore rules protect immutable MOM/report relationship fields and prevent Investor self-verification of uploaded documents.
 - Storage rules restrict Advisor document access to assigned Investors.
 - Firebase App Check support, baseline security headers and constant-time webhook/cron secret checks are included.
-- Current Firestore and Storage data already use platform encryption; application-level encryption is reserved for future PAN, Aadhaar, bank, KYC and similar identifiers.
+- Current Firestore and Storage data already use platform encryption; application-level encryption is now used for full Aadhaar values; future bank/KYC secrets should follow the same server-only encrypted-storage pattern.
 
 See `docs/MOM_PDF_SECURITY_AUDIT_AND_ENCRYPTION.md` for deployment, encryption and UAT guidance.
 
@@ -440,3 +534,35 @@ See `docs/V0_30_2_LEAD_CREATION_FIX.md`.
 - Added `Your Conscious Wealth Partner` to Investor PWA branding surfaces.
 
 See `docs/V0_30_3_PWA_ICON_AND_BRAND_IDENTITY.md`.
+
+
+
+## v0.31.2 Firestore index-building fallback
+
+- Portfolio snapshot, trading, portfolio import, and monthly report-source reads now fall back to investor-scoped client-side sorting/filtering when Firestore returns `failed-precondition` because a composite index is still building.
+- The deployed composite indexes remain the preferred path and should be left enabled for performance.
+- This hotfix prevents the UI from failing while newly deployed indexes are still provisioning.
+
+## v0.31.1 permission hotfix
+
+Advisor portfolio reads now include the advisor ownership constraint required by Firestore rules. Deploy `firestore.rules` and `firestore.indexes.json` after updating.
+
+## v0.31.5 Unified Daily Portfolio Update
+
+- One daily portfolio upload surface for Excel portfolio reports.
+- Content-based source/report detection rather than filename-based classification.
+- Fundbazaar Client Wise Valuation remains supported as an optional/legacy valuation input with saved mapping and duplicate protection.
+- Fundbazaar Portfolio Ledger is the recommended primary Fundbazaar daily input. Bajaj Delivery, Bajaj Intraday and ULIP are import-enabled; GrowVest Standard multi-source workbooks remain isolated until their generic commit adapter is enabled.
+- Excel web-wrapper Fundbazaar files now receive a specific missing-companion-package explanation.
+- Admin can review only exceptions and process ready reports without waiting for unrelated unsupported files.
+
+
+## v0.31.6 Fundbazaar Portfolio Ledger Import
+
+- Fundbazaar Portfolio Ledger is now detected and import-enabled in Daily Portfolio Update.
+- Parses investor name, PAN, report period, scheme/folio summary, transaction history, invested amount, units, current value, ABS return and XIRR.
+- SIP/eSIP, purchase, redemption and switch transaction types are normalised for Portfolio Master reconciliation.
+- PAN creates a verified Fundbazaar identity alias after the first confirmed mapping, while the existing client-name mapping remains compatible with Client Wise Valuation files.
+- Ledger holdings reconcile to existing Fundbazaar positions by folio + ISIN/scheme rather than creating duplicate holdings when the Ledger does not contain ISIN.
+- Client Wise Valuation remains authoritative for precise NAV/current valuation when it is as fresh or fresher than the Ledger; Ledger remains authoritative for transaction/reconciliation fields.
+- Transaction canonical keys prevent Client Wise Valuation and Portfolio Ledger from duplicating the same SIP/purchase rows when both reports are imported.

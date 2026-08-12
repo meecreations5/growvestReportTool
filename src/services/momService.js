@@ -15,6 +15,7 @@ import {
 import { db } from "@/lib/firebase/client";
 import { combineLocalDateTime } from "@/lib/utils/date";
 import { addNotificationToBatch } from "@/services/notificationService";
+import { syncMomActions } from "@/services/actionService";
 
 function sanitize(value) {
   if (value === undefined) return null;
@@ -221,6 +222,11 @@ export async function createMom(meeting, payload, currentUser) {
   }
 
   await batch.commit();
+  try {
+    await syncMomActions(momRef.id);
+  } catch (syncError) {
+    console.warn("MOM saved but action workflow sync could not complete", syncError);
+  }
   return { id: momRef.id, ...mom };
 }
 
@@ -319,6 +325,11 @@ export async function updateMom(mom, payload, currentUser) {
   }
 
   await batch.commit();
+  try {
+    await syncMomActions(mom.id);
+  } catch (syncError) {
+    console.warn("MOM updated but action workflow sync could not complete", syncError);
+  }
   return { ...mom, ...updates };
 }
 

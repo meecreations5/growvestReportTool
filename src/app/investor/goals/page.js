@@ -8,12 +8,15 @@ import { db } from "@/lib/firebase/client";
 import { goalDisplayStatus } from "@/lib/utils/reportPresentation";
 import InvestorGoalCard from "@/components/investor/InvestorGoalCard";
 import InvestorPageHeader from "@/components/investor/InvestorPageHeader";
+import { subscribeLatestPortfolioSnapshot } from "@/services/portfolioService";
+import { formatCurrency, formatDate } from "@/lib/utils/format";
 
 const filters = ["All", "On Track", "Near Completion", "Attention Required", "Not Started", "Completed"];
 
 export default function InvestorGoalsPage() {
   const { profile } = useAuth();
   const [investor, setInvestor] = useState(null);
+  const [portfolioSnapshot, setPortfolioSnapshot] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -40,7 +43,36 @@ export default function InvestorGoalsPage() {
     loadGoals();
   }, [profile?.investorId]);
 
-  const goals = useMemo(() => investor?.bucketList?.length ? investor.bucketList : investor?.goals || [], [investor]);
+  useEffect(() => {
+    if (!profile?.investorId) return undefined;
+    return subscribeLatestPortfolioSnapshot(
+      profile.investorId,
+      profile,
+      setPortfolioSnapshot,
+      (nextError) => console.error("Unable to load goal-linked portfolio values", nextError)
+    );
+  }, [profile]);
+
+  const goals = useMemo(() => {
+    const sourceGoals = investor?.bucketList?.length ? investor.bucketList : investor?.goals || [];
+    const liveTotals = new Map((portfolioSnapshot?.goalTotals || []).map((item) => [String(item.goalId || ""), item]));
+    return sourceGoals.map((goal) => {
+      const goalId = String(goal.id || goal.goalId || "");
+      const live = liveTotals.get(goalId);
+      if (!live) return goal;
+      const currentAmount = Number(live.currentValue || 0);
+      const monthlyContribution = Number(live.monthlyContribution || 0);
+      const targetAmount = Number(goal.targetAmount || 0);
+      return {
+        ...goal,
+        currentAmount,
+        currentValue: currentAmount,
+        monthlySip: monthlyContribution,
+        monthlyContribution,
+        progress: targetAmount > 0 ? currentAmount / targetAmount * 100 : 0
+      };
+    });
+  }, [investor, portfolioSnapshot]);
   const filteredGoals = useMemo(() => goals.filter((goal) => {
     const text = `${goal.name || goal.goalName || ""} ${goal.category || ""} ${goal.description || ""}`.toLowerCase();
     const matchesSearch = text.includes(search.trim().toLowerCase());
@@ -56,7 +88,12 @@ export default function InvestorGoalsPage() {
 
   return (
     <div className="grid gap-5 sm:gap-6">
-      <InvestorPageHeader eyebrow="Your Bucket List" title="Goals that matter to you" description="Track the financial journeys created around your family, experiences and future priorities." />
+      <InvestorPageHeader eyebrow="Your Bucket List" title="Goals that matter to you" description="Track the financial journeys created around your family, experiences and future priorities. Goal values are refreshed automatically from investments assigned by GrowVest." />
+
+      {portfolioSnapshot ? <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 sm:flex sm:items-center sm:justify-between">
+        <div><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-700">Portfolio-linked progress</p><p className="mt-1 text-sm font-semibold text-emerald-950">Goal corpus is calculated from your latest verified portfolio assignments.</p></div>
+        <div className="mt-3 text-left sm:mt-0 sm:text-right"><p className="font-heading text-lg font-bold text-emerald-950">{formatCurrency((portfolioSnapshot.goalTotals || []).reduce((sum, item) => sum + Number(item.currentValue || 0), 0))}</p><p className="mt-1 text-xs text-emerald-700">As of {formatDate(portfolioSnapshot.snapshotDate)}</p></div>
+      </section> : null}
 
       <section className="grid grid-cols-3 gap-3">
         {[

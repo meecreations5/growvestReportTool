@@ -96,6 +96,7 @@ export default function InvestorProfilePage() {
             <Detail label="Email" value={investor?.email || profile?.email} />
             <Detail label="Registered mobile" value={investor?.contactNo || profile?.mobile} />
             <Detail label="City" value={investor?.city} />
+            <Detail label="Date of birth" value={investor?.personalProfile?.dateOfBirth ? formatDate(investor.personalProfile.dateOfBirth) : "Not added"} />
             <Detail label="Investor since" value={formatDate(investor?.investorSince)} />
             <Detail label="Client code" value={investor?.clientCode || profile?.clientCode} />
             <Detail label="Risk profile" value={investor?.riskAssessment?.finalProfile || investor?.riskProfile} />

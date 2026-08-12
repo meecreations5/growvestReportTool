@@ -9,6 +9,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   CalendarDays,
+  CakeSlice,
   CheckCircle2,
   ChevronRight,
   CircleDollarSign,
@@ -34,6 +35,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { subscribeInvestors } from "@/services/assessmentService";
 import { subscribeMonthlyReports } from "@/services/reportService";
+import { getOccasions } from "@/services/occasionService";
 import { REPORT_STATUS, getMonthLabel } from "@/lib/constants/report";
 import { formatCurrency, formatDateTime } from "@/lib/utils/format";
 import Skeleton from "@/components/ui/Skeleton";
@@ -600,6 +602,19 @@ function RecentActivity({ items }) {
   );
 }
 
+function UpcomingOccasions({ items = [] }) {
+  const upcoming = items.filter((item) => item.daysUntil <= 7).slice(0, 5);
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-4 sm:px-5">
+        <div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-rose-700">Relationship touchpoints</p><h2 className="mt-1 font-heading text-xl font-bold text-slate-950">Birthdays & occasions</h2></div>
+        <Link href="/occasions" className="text-xs font-semibold text-blue-700 hover:text-blue-900">View all</Link>
+      </div>
+      {upcoming.length ? <div className="divide-y divide-slate-100">{upcoming.map((item) => <Link key={`${item.id}-${item.eventYear}`} href="/occasions" className="flex items-center gap-3 px-4 py-3.5 transition hover:bg-slate-50 sm:px-5"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-50 text-rose-700"><CakeSlice size={17} /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900">{item.personName}</p><p className="mt-0.5 truncate text-xs text-slate-500">{item.relationship === "Investor" ? item.occasionType : `${item.relationship} · ${item.investorName}`} · {item.daysUntil === 0 ? "Today" : item.daysUntil === 1 ? "Tomorrow" : `In ${item.daysUntil} days`}</p></div><span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${item.touchpointStatus === "Completed" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>{item.touchpointStatus}</span></Link>)}</div> : <div className="p-6 text-center text-sm text-slate-500">No birthdays or occasions in the next 7 days.</div>}
+    </section>
+  );
+}
+
 function DashboardLoading() {
   return (
     <div className="grid gap-5">
@@ -623,6 +638,16 @@ export default function DashboardOverview() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [analyticsRange, setAnalyticsRange] = useState("month");
+  const [occasionItems, setOccasionItems] = useState([]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    let active = true;
+    getOccasions({ days: 30 })
+      .then((result) => { if (active) setOccasionItems(result.items || []); })
+      .catch((error) => console.warn("Birthday & occasion summary could not be loaded", error));
+    return () => { active = false; };
+  }, [profile?.id]);
 
   useEffect(() => {
     if (!profile?.id) return undefined;
@@ -816,6 +841,8 @@ export default function DashboardOverview() {
           <section aria-label="Monthly report metrics" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             {metricCards.map((item) => <DashboardMetricCard key={item.label} {...item} />)}
           </section>
+
+          <UpcomingOccasions items={occasionItems} />
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.75fr)]">
             <div className="order-2 xl:order-1"><WorkflowPanel stages={workflow.stages} totalInvestors={monthlyMetrics.totalInvestors || currentMonthReports.length} completion={workflow.completion} delayed={workflow.delayed} averagePreparation={workflow.averagePreparation} /></div>

@@ -7,10 +7,12 @@ import {
   GOAL_PRIORITIES,
   GOAL_STATUSES,
   GOAL_TYPES,
-  LIABILITY_TYPES
+  LIABILITY_TYPES,
+  SURPLUS_ALLOCATION_TYPES
 } from "@/lib/constants/assessment";
 import Button from "@/components/ui/Button";
 import { Field, inputClassName } from "@/components/ui/Field";
+import { formatCurrency } from "@/lib/utils/format";
 
 function RowHeader({ title, badge, onRemove, disabled, canRemove = true }) {
   return (
@@ -51,7 +53,7 @@ export function GoalBucketEditor({
       {goals.map((goal, index) => (
         <div key={goal.id || index} className={`rounded-2xl border p-5 ${goal.isPrimary ? "border-blue-300 bg-blue-50/40" : "border-slate-200 bg-white"}`}>
           <RowHeader
-            title={`Bucket ${index + 1}`}
+            title={`Goal ${index + 1}`}
             badge={goal.isPrimary ? "Primary goal" : "Additional goal"}
             onRemove={() => onRemove(index)}
             disabled={disabled}
@@ -59,7 +61,7 @@ export function GoalBucketEditor({
           />
 
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            <Field label="Goal / bucket name" required error={errors[`bucketList.${index}.name`]}>
+            <Field label="Goal / corpus / bucket name" required error={errors[`bucketList.${index}.name`]}>
               <input
                 list="growvest-goal-options"
                 className={inputClassName}
@@ -89,7 +91,7 @@ export function GoalBucketEditor({
                 {GOAL_PRIORITIES.map((item) => <option key={item}>{item}</option>)}
               </select>
             </Field>
-            <Field label="Bucket type">
+            <Field label="Goal type">
               <select className={inputClassName} value={goal.type || "Flexible"} onChange={(event) => onChange(index, "type", event.target.value)} disabled={disabled}>
                 {GOAL_TYPES.map((item) => <option key={item}>{item}</option>)}
               </select>
@@ -120,8 +122,43 @@ export function GoalBucketEditor({
       ))}
 
       <Button type="button" variant="secondary" onClick={onAdd} disabled={disabled} className="w-fit">
-        <Plus size={17} /> Add another bucket
+        <Plus size={17} /> Add another goal
       </Button>
+    </div>
+  );
+}
+
+
+
+export function SurplusAllocationEditor({ rows, monthlySurplus = 0, errors = {}, disabled = false, onAdd, onRemove, onChange }) {
+  const available = Math.max(0, Number(monthlySurplus || 0));
+  const calculated = (item) => item.mode === "percentage" ? available * Number(item.percentage || 0) / 100 : Number(item.fixedAmount || 0);
+  const total = rows.reduce((sum, item) => sum + calculated(item), 0);
+  const unallocated = available - total;
+
+  return (
+    <div className="grid gap-4">
+      <div className={`rounded-xl border p-4 ${unallocated < -0.01 ? "border-red-200 bg-red-50" : unallocated > 0.01 ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
+        <div className="grid grid-cols-3 gap-3 text-sm"><div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Monthly surplus</p><p className="mt-1 font-black text-slate-950">{formatCurrency(available)}</p></div><div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Allocated</p><p className="mt-1 font-black text-slate-950">{formatCurrency(total)}</p></div><div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Unallocated</p><p className={`mt-1 font-black ${unallocated < -0.01 ? "text-red-700" : unallocated > 0.01 ? "text-amber-700" : "text-emerald-700"}`}>{formatCurrency(unallocated)}</p></div></div>
+        {unallocated < -0.01 ? <p className="mt-2 text-xs font-semibold text-red-700">Allocation exceeds available surplus by {formatCurrency(Math.abs(unallocated))}.</p> : unallocated > 0.01 ? <p className="mt-2 text-xs font-semibold text-amber-800">{formatCurrency(unallocated)} of monthly surplus is still unallocated.</p> : <p className="mt-2 text-xs font-semibold text-emerald-800">Monthly surplus is fully allocated.</p>}
+      </div>
+      {rows.length ? rows.map((item, index) => (
+        <div key={item.id || index} className="rounded-2xl border border-slate-200 bg-white p-5">
+          <RowHeader title={`Allocation ${index + 1}`} badge={calculated(item) ? formatCurrency(calculated(item)) : "Not allocated"} onRemove={() => onRemove(index)} disabled={disabled} />
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+            <Field label="Allocation purpose" error={errors[`surplusAllocations.${index}.category`]}>
+              <select className={inputClassName} value={item.category || ""} onChange={(event) => onChange(index, "category", event.target.value)} disabled={disabled}><option value="">Select purpose</option>{SURPLUS_ALLOCATION_TYPES.map((value) => <option key={value}>{value}</option>)}</select>
+            </Field>
+            <Field label="Allocation method">
+              <select className={inputClassName} value={item.mode || "fixed"} onChange={(event) => onChange(index, "mode", event.target.value)} disabled={disabled}><option value="fixed">Fixed amount</option><option value="percentage">Percentage of surplus</option></select>
+            </Field>
+            {item.mode === "percentage" ? <Field label="Percentage of surplus" error={errors[`surplusAllocations.${index}.percentage`]}><div className="relative"><input className={`${inputClassName} pr-10`} type="number" min="0" max="100" step="0.1" value={item.percentage ?? ""} onChange={(event) => onChange(index, "percentage", event.target.value)} disabled={disabled} /><span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">%</span></div></Field> : <Field label="Fixed amount (INR)"><input className={inputClassName} type="number" min="0" value={item.fixedAmount ?? ""} onChange={(event) => onChange(index, "fixedAmount", event.target.value)} disabled={disabled} /></Field>}
+            <Field label="Calculated allocation"><input className={`${inputClassName} bg-slate-50 font-bold`} value={formatCurrency(calculated(item))} readOnly /></Field>
+            <div className="md:col-span-2 xl:col-span-4"><Field label="Notes"><input className={inputClassName} value={item.notes || ""} onChange={(event) => onChange(index, "notes", event.target.value)} disabled={disabled} placeholder="Optional instruction or purpose" /></Field></div>
+          </div>
+        </div>
+      )) : <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">No monthly surplus allocation plan added.</div>}
+      <Button type="button" variant="secondary" onClick={onAdd} disabled={disabled} className="w-fit"><Plus size={17} /> Add surplus allocation</Button>
     </div>
   );
 }
@@ -187,6 +224,9 @@ export function LiabilitiesEditor({ rows, errors = {}, disabled = false, onAdd, 
             <Field label="Lender">
               <input className={inputClassName} value={item.lender || ""} onChange={(event) => onChange(index, "lender", event.target.value)} disabled={disabled} />
             </Field>
+            <Field label="Original loan amount (INR)">
+              <input className={inputClassName} type="number" min="0" value={item.originalLoanAmount ?? ""} onChange={(event) => onChange(index, "originalLoanAmount", event.target.value)} disabled={disabled} />
+            </Field>
             <Field label="Outstanding amount (INR)">
               <input className={inputClassName} type="number" min="0" value={item.outstandingAmount ?? ""} onChange={(event) => onChange(index, "outstandingAmount", event.target.value)} disabled={disabled} />
             </Field>
@@ -198,6 +238,12 @@ export function LiabilitiesEditor({ rows, errors = {}, disabled = false, onAdd, 
             </Field>
             <Field label="Remaining tenure">
               <input className={inputClassName} value={item.remainingTenure || ""} onChange={(event) => onChange(index, "remainingTenure", event.target.value)} disabled={disabled} placeholder="Example: 7 years" />
+            </Field>
+            <Field label="Extra repayment / prepayment (INR)">
+              <input className={inputClassName} type="number" min="0" value={item.extraRepayment ?? ""} onChange={(event) => onChange(index, "extraRepayment", event.target.value)} disabled={disabled} />
+            </Field>
+            <Field label="Target closure date">
+              <input className={inputClassName} type="date" value={item.targetClosureDate || ""} onChange={(event) => onChange(index, "targetClosureDate", event.target.value)} disabled={disabled} />
             </Field>
             <div className="md:col-span-2">
               <Field label="Notes">

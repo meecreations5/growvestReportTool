@@ -435,6 +435,352 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "portfolioSnapshots",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "investorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "snapshotDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "tradingTransactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "investorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tradeDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "portfolioImports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "advisorUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "portfolioSnapshots",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "investorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "verificationStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "snapshotDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "investmentTransactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "investorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "transactionDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "portfolioPositions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "investorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "advisorUid",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "portfolioSnapshots",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "investorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "advisorUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "snapshotDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "portfolioSnapshots",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "investorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "advisorUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "verificationStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "snapshotDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "portfolioSnapshotPositions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "snapshotId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "advisorUid",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "investmentTransactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "investorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "advisorUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "transactionDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "tradingTransactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "investorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "advisorUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tradeDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "investmentTransactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "investorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "transactionDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "investmentTransactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "investorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "advisorUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "transactionDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "investorActions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "advisorUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "investorActions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "investorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "investorActions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "investorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "advisorUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "investorActions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "investorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "investorVisible",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "investorActionEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "actionId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "investorActionEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "actionId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "advisorUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "investorActionEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "actionId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "investorVisible",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "investorActionEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "actionId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "investorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "investorVisible",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

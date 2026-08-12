@@ -35,9 +35,18 @@ export const monthlyReportSchema = z.object({
 
 export function validateCompletedReport(payload) {
   const errors = [];
+  const verification = payload.portfolioVerification;
+  if (verification?.required) {
+    if (!payload.sourcePortfolioSnapshotId || !verification.snapshotId) {
+      errors.push("A verified Portfolio Master snapshot is required before completing this monthly report.");
+    } else if (["blocked", "pending"].includes(String(verification.status || ""))) {
+      errors.push("Portfolio verification is blocked. Resolve the Portfolio Master issues before completing the report.");
+    } else if (verification.status === "review_required" && !verification.acknowledged) {
+      errors.push("Review and confirm the portfolio verification warnings before completing the report.");
+    }
+  }
   if (Number(payload.summary?.totalCorpus || 0) <= 0) errors.push("Total corpus must be greater than zero.");
   if (!payload.holdings?.some((item) => Number(item.currentValue || 0) > 0)) errors.push("Add at least one holdings breakdown row with a current value.");
-  if (!payload.goals?.some((item) => item.name?.trim() && Number(item.targetAmount || 0) > 0)) errors.push("Add at least one Bucket List goal with a target amount.");
   if (!payload.advisorNote?.content?.trim()) errors.push("Advisor note is required before completion.");
   if (!payload.funds?.some((item) => item.instrumentName?.trim() && Number(item.currentValue || 0) > 0)) errors.push("Add at least one fund or instrument with a current value.");
   return errors;

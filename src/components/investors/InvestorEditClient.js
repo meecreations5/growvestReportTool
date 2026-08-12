@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { subscribeInvestor, updateInvestorProfile } from "@/services/assessmentService";
+import { updateInvestorKyc } from "@/services/investorKycService";
 import {
   MARITAL_STATUSES,
   OCCUPATIONS,
@@ -23,9 +24,13 @@ import {
   createEmptyInvestment,
   createEmptyInvestmentPreference,
   createEmptyLiability,
-  getInvestmentPreferenceRows
+  createEmptySurplusAllocation,
+  getInvestmentPreferenceRows,
+  recalculatePersonalProfile
 } from "@/lib/constants/assessment";
 import { investorProfileSchema } from "@/lib/validation/assessmentSchema";
+import { formatCurrency } from "@/lib/utils/format";
+import { BIRTHDAY_REMINDER_OPTIONS, DEFAULT_BIRTHDAY_REMINDER_OFFSETS } from "@/lib/utils/occasions";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import SegmentedTabs from "@/components/ui/SegmentedTabs";
@@ -33,13 +38,16 @@ import { Field, inputClassName } from "@/components/ui/Field";
 import {
   ExistingInvestmentsEditor,
   GoalBucketEditor,
-  LiabilitiesEditor
+  LiabilitiesEditor,
+  SurplusAllocationEditor
 } from "@/components/assessment/RepeatableFinancialRows";
 import InvestmentPreferencesEditor from "@/components/assessment/InvestmentPreferencesEditor";
 
+const today = new Date().toISOString().slice(0, 10);
+
 const EDIT_SECTIONS = [
   { value: "profile", label: "Profile", icon: UserRound },
-  { value: "goals", label: "Bucket List", icon: Target },
+  { value: "goals", label: "Goals & Bucket List", icon: Target },
   { value: "portfolio", label: "Portfolio", icon: WalletCards },
   { value: "preferences", label: "Preferences", icon: ClipboardList },
   { value: "notes", label: "Advisor Notes", icon: NotebookPen }
@@ -58,10 +66,25 @@ function makeValues(investor) {
     contactNo: investor.contactNo || "",
     email: investor.email || "",
     city: investor.city || "",
+    kyc: {
+      panNumber: investor.panNumber || investor.panNormalized || "",
+      aadhaarNumber: "",
+      aadhaarConfigured: Boolean(investor.aadhaarConfigured),
+      aadhaarLast4: investor.aadhaarLast4 || "",
+      removeAadhaar: false
+    },
     personalProfile: {
+      dateOfBirth: investor.personalProfile?.dateOfBirth || "",
       age: investor.personalProfile?.age ?? "",
+      birthdayReminderEnabled: investor.personalProfile?.birthdayReminderEnabled !== false,
+      birthdayReminderDaysBefore: investor.personalProfile?.birthdayReminderDaysBefore ?? 7,
+      birthdayReminderOffsets: investor.personalProfile?.birthdayReminderOffsets?.length
+        ? investor.personalProfile.birthdayReminderOffsets
+        : [investor.personalProfile?.birthdayReminderDaysBefore ?? 7],
       occupation: investor.personalProfile?.occupation || "",
       annualIncome: investor.personalProfile?.annualIncome ?? "",
+      monthlySurplusMode: investor.personalProfile?.monthlySurplusMode || "fixed",
+      monthlySurplusPercentage: investor.personalProfile?.monthlySurplusPercentage ?? "",
       monthlySurplus: investor.personalProfile?.monthlySurplus ?? "",
       numberOfDependants: investor.personalProfile?.numberOfDependants ?? "",
       maritalStatus: investor.personalProfile?.maritalStatus || "",
@@ -79,6 +102,7 @@ function makeValues(investor) {
       : investor.activeLiabilities
         ? [{ ...createEmptyLiability(), type: "Other", notes: investor.activeLiabilities }]
         : [],
+    surplusAllocations: investor.surplusAllocations?.length ? investor.surplusAllocations : [],
     investmentPreferences: getInvestmentPreferenceRows(investor.investmentPreferences).length
       ? getInvestmentPreferenceRows(investor.investmentPreferences)
       : [createEmptyInvestmentPreference()],
@@ -93,8 +117,10 @@ function makeValues(investor) {
 
 function sectionForIssue(path) {
   const key = path.join(".");
+  if (key.startsWith("kyc")) return "profile";
   if (key.startsWith("bucketList")) return "goals";
   if (key.startsWith("existingInvestments") || key.startsWith("liabilities")) return "portfolio";
+  if (key.startsWith("surplusAllocations")) return "profile";
   if (key.startsWith("investmentPreferences")) return "preferences";
   if (key.startsWith("advisorNotes")) return "notes";
   return "profile";
@@ -164,9 +190,29 @@ export default function InvestorEditClient({ investorId }) {
     markChanged();
   }
 
+  function updateKyc(field, value) {
+    setValues((current) => ({ ...current, kyc: { ...current.kyc, [field]: value } }));
+    setErrors((current) => ({ ...current, [`kyc.${field}`]: undefined }));
+    markChanged();
+  }
+
   function updateSection(sectionName, field, value) {
-    setValues((current) => ({ ...current, [sectionName]: { ...current[sectionName], [field]: value } }));
-    setErrors((current) => ({ ...current, [`${sectionName}.${field}`]: undefined }));
+    setValues((current) => {
+      const nextSection = sectionName === "personalProfile"
+        ? recalculatePersonalProfile({ ...current[sectionName], [field]: value })
+        : { ...current[sectionName], [field]: value };
+      return { ...current, [sectionName]: nextSection };
+    });
+    setErrors((current) => ({
+      ...current,
+      [`${sectionName}.${field}`]: undefined,
+      ...(sectionName === "personalProfile" ? {
+        "personalProfile.age": undefined,
+        "personalProfile.monthlySurplus": undefined,
+        "personalProfile.monthlySurplusPercentage": undefined,
+        "personalProfile.annualIncome": undefined
+      } : {})
+    }));
     markChanged();
   }
 
@@ -215,9 +261,16 @@ export default function InvestorEditClient({ investorId }) {
 
     setSaving(true);
     try {
+      const nextPan = String(result.data.kyc?.panNumber || "").replace(/\s+/g, "").toUpperCase();
+      const currentPan = String(investor.panNumber || investor.panNormalized || "").replace(/\s+/g, "").toUpperCase();
+      const kycChanged = nextPan !== currentPan || Boolean(result.data.kyc?.aadhaarNumber) || result.data.kyc?.removeAadhaar === true;
+      const kycResult = kycChanged
+        ? await updateInvestorKyc(investor.id, result.data.kyc)
+        : { panNumber: currentPan, aadhaarConfigured: Boolean(investor.aadhaarConfigured), aadhaarLast4: investor.aadhaarLast4 || "" };
       const updated = await updateInvestorProfile(investor, result.data, profile);
-      setInvestor(updated);
-      setValues(makeValues(updated));
+      const mergedInvestor = { ...updated, ...kycResult };
+      setInvestor(mergedInvestor);
+      setValues(makeValues(mergedInvestor));
       setDirty(false);
       setErrors({});
       setNotice("Investor profile updated successfully.");
@@ -261,19 +314,28 @@ export default function InvestorEditClient({ investorId }) {
             <Field label="Contact number" required error={errors.contactNo}><input className={inputClassName} inputMode="tel" value={values.contactNo} onChange={(event) => updateRoot("contactNo", event.target.value)} /></Field>
             <Field label="Email" error={errors.email}><input className={inputClassName} type="email" value={values.email} onChange={(event) => updateRoot("email", event.target.value)} /></Field>
             <Field label="City"><input className={inputClassName} value={values.city} onChange={(event) => updateRoot("city", event.target.value)} /></Field>
-            <Field label="Age" error={errors["personalProfile.age"]}><input className={inputClassName} type="number" min="18" max="120" value={values.personalProfile.age} onChange={(event) => updateSection("personalProfile", "age", event.target.value)} /></Field>
+            <Field label="PAN number" error={errors["kyc.panNumber"]} hint="Used for verified provider matching. Stored in uppercase."><input className={inputClassName} maxLength={10} autoCapitalize="characters" value={values.kyc.panNumber} onChange={(event) => updateKyc("panNumber", event.target.value.toUpperCase().replace(/\s+/g, ""))} placeholder="ABCDE1234F" /></Field>
+            <Field label="Aadhaar number" error={errors["kyc.aadhaarNumber"]} hint={values.kyc.aadhaarConfigured ? `Stored securely · XXXX XXXX ${values.kyc.aadhaarLast4 || "••••"}. Enter 12 digits only to replace.` : "Optional. Full Aadhaar is encrypted server-side and never shown after save."}><input className={inputClassName} inputMode="numeric" autoComplete="off" maxLength={12} value={values.kyc.aadhaarNumber} onChange={(event) => updateKyc("aadhaarNumber", event.target.value.replace(/\D+/g, "").slice(0, 12))} placeholder={values.kyc.aadhaarConfigured ? "Enter new Aadhaar to replace" : "12-digit Aadhaar"} /></Field>
+            {values.kyc.aadhaarConfigured ? <Field label="Stored Aadhaar"><label className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700"><input type="checkbox" checked={values.kyc.removeAadhaar} onChange={(event) => updateKyc("removeAadhaar", event.target.checked)} /> Remove stored Aadhaar on save</label></Field> : null}
+            <Field label="Date of birth" error={errors["personalProfile.dateOfBirth"]}><input className={inputClassName} type="date" max={today} value={values.personalProfile.dateOfBirth} onChange={(event) => updateSection("personalProfile", "dateOfBirth", event.target.value)} /></Field>
+            <Field label="Age" error={errors["personalProfile.age"]} hint={values.personalProfile.dateOfBirth ? "Calculated automatically from date of birth" : "Enter age when date of birth is unavailable"}><input className={`${inputClassName} ${values.personalProfile.dateOfBirth ? "bg-slate-50" : ""}`} type="number" min="18" max="120" value={values.personalProfile.age} readOnly={Boolean(values.personalProfile.dateOfBirth)} onChange={(event) => updateSection("personalProfile", "age", event.target.value)} /></Field>
+            <Field label="Birthday reminder"><select className={inputClassName} value={values.personalProfile.birthdayReminderEnabled ? "on" : "off"} onChange={(event) => updateSection("personalProfile", "birthdayReminderEnabled", event.target.value === "on")}><option value="on">Enabled</option><option value="off">Disabled</option></select></Field>
+            <div className="xl:col-span-2"><Field label="Birthday reminder schedule" hint="Choose one or more internal Advisor reminders. No birthday message is sent automatically."><div className="flex min-h-12 flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5">{BIRTHDAY_REMINDER_OPTIONS.map((days) => { const offsets = values.personalProfile.birthdayReminderOffsets?.length ? values.personalProfile.birthdayReminderOffsets : DEFAULT_BIRTHDAY_REMINDER_OFFSETS; const selected = offsets.includes(days); return <button key={days} type="button" disabled={!values.personalProfile.birthdayReminderEnabled} onClick={() => updateSection("personalProfile", "birthdayReminderOffsets", selected ? offsets.filter((item) => item !== days) : [...offsets, days].sort((a, b) => b - a))} className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${selected ? "border-blue-600 bg-blue-600 text-white" : "border-slate-200 bg-white text-slate-600"}`}>{days === 0 ? "On birthday" : `${days} day${days === 1 ? "" : "s"} before`}</button>; })}</div></Field></div>
             <Field label="Occupation" error={errors["personalProfile.occupation"]}><select className={inputClassName} value={values.personalProfile.occupation} onChange={(event) => updateSection("personalProfile", "occupation", event.target.value)}><option value="">Select occupation</option>{OCCUPATIONS.map((item) => <option key={item}>{item}</option>)}</select></Field>
-            <Field label="Annual income (INR)"><input className={inputClassName} type="number" min="0" value={values.personalProfile.annualIncome} onChange={(event) => updateSection("personalProfile", "annualIncome", event.target.value)} /></Field>
-            <Field label="Monthly surplus (INR)"><input className={inputClassName} type="number" min="0" value={values.personalProfile.monthlySurplus} onChange={(event) => updateSection("personalProfile", "monthlySurplus", event.target.value)} /></Field>
+            <Field label="Annual income (INR)" error={errors["personalProfile.annualIncome"]}><input className={inputClassName} type="number" min="0" value={values.personalProfile.annualIncome} onChange={(event) => updateSection("personalProfile", "annualIncome", event.target.value)} /></Field>
+            <Field label="Surplus method"><select className={inputClassName} value={values.personalProfile.monthlySurplusMode} onChange={(event) => updateSection("personalProfile", "monthlySurplusMode", event.target.value)}><option value="fixed">Fixed monthly amount</option><option value="percentage">Percentage of monthly income</option></select></Field>
+            {values.personalProfile.monthlySurplusMode === "percentage" ? <Field label="Surplus percentage" error={errors["personalProfile.monthlySurplusPercentage"]} hint="Calculated on annual income divided by 12"><div className="relative"><input className={`${inputClassName} pr-10`} type="number" min="0" max="100" step="0.1" value={values.personalProfile.monthlySurplusPercentage} onChange={(event) => updateSection("personalProfile", "monthlySurplusPercentage", event.target.value)} /><span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">%</span></div></Field> : <Field label="Monthly surplus (INR)" error={errors["personalProfile.monthlySurplus"]}><input className={inputClassName} type="number" min="0" value={values.personalProfile.monthlySurplus} onChange={(event) => updateSection("personalProfile", "monthlySurplus", event.target.value)} /></Field>}
+            {values.personalProfile.monthlySurplusMode === "percentage" ? <Field label="Calculated monthly surplus" hint="Auto-calculated and saved as the investable monthly amount"><input className={`${inputClassName} bg-emerald-50 font-bold text-emerald-800`} value={formatCurrency(values.personalProfile.monthlySurplus)} readOnly /></Field> : null}
             <Field label="Dependants"><input className={inputClassName} type="number" min="0" value={values.personalProfile.numberOfDependants} onChange={(event) => updateSection("personalProfile", "numberOfDependants", event.target.value)} /></Field>
             <Field label="Marital status"><select className={inputClassName} value={values.personalProfile.maritalStatus} onChange={(event) => updateSection("personalProfile", "maritalStatus", event.target.value)}><option value="">Select status</option>{MARITAL_STATUSES.map((item) => <option key={item}>{item}</option>)}</select></Field>
           </div>
+          <div className="mt-8 border-t border-slate-200 pt-7"><SectionIntro eyebrow="Cash flow" title="Monthly surplus allocation" description="Allocate available surplus as a fixed amount or percentage across investment, debt reduction, protection, goals and reserves." /><div className="mt-5"><SurplusAllocationEditor rows={values.surplusAllocations} monthlySurplus={values.personalProfile.monthlySurplus} errors={errors} onAdd={() => addRow("surplusAllocations", createEmptySurplusAllocation)} onRemove={(index) => removeRow("surplusAllocations", index)} onChange={(index, field, value) => updateArray("surplusAllocations", index, field, value)} /></div></div>
         </Card>
       ) : null}
 
       {section === "goals" ? (
         <Card className="p-5 sm:p-7">
-          <SectionIntro eyebrow="Bucket List" title="Financial goals and life milestones" description="Add multiple goals, select one primary goal and define target values, timelines and contribution plans." />
+          <SectionIntro eyebrow="Goals & Bucket List" title="Financial goals, corpus and life milestones" description="Goals are optional. Keep wealth under General Wealth Corpus or define one or more financial/Bucket List goals." />
           <div className="mt-6"><GoalBucketEditor goals={values.bucketList} errors={errors} onAdd={() => addRow("bucketList", createEmptyGoal)} onRemove={(index) => removeRow("bucketList", index)} onChange={(index, field, value) => updateArray("bucketList", index, field, value)} onSetPrimary={setPrimaryGoal} /></div>
         </Card>
       ) : null}

@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { isStaffRole } from "@/lib/constants/roles";
 import {
   ACCESS_LEVELS,
   DEFAULT_ROLE_PERMISSIONS,
@@ -24,6 +25,19 @@ export function PermissionProvider({ children }) {
   useEffect(() => {
     if (!isAuthenticated || !profile) {
       setRolePermissions(DEFAULT_ROLE_PERMISSIONS);
+      setError("");
+      setLoading(false);
+      return undefined;
+    }
+
+    // The role-permission matrix is an internal staff setting stored in
+    // reportSettings/global. Investor Portal users must not subscribe to that
+    // document because Firestore rules intentionally restrict reportSettings
+    // to staff. Investor permissions are already defined safely in
+    // DEFAULT_ROLE_PERMISSIONS (OWN access for their own portfolio/reports).
+    if (!isStaffRole(profile.role)) {
+      setRolePermissions(DEFAULT_ROLE_PERMISSIONS);
+      setError("");
       setLoading(false);
       return undefined;
     }
@@ -34,7 +48,7 @@ export function PermissionProvider({ children }) {
       setError("");
       setLoading(false);
     }, (nextError) => {
-      console.error(nextError);
+      console.error("Permission settings could not be loaded", nextError);
       setError("Permission settings could not be loaded. Default role access is being used.");
       setRolePermissions(DEFAULT_ROLE_PERMISSIONS);
       setLoading(false);
@@ -43,17 +57,21 @@ export function PermissionProvider({ children }) {
 
 
   useEffect(() => {
-    if (!isAuthenticated || !profile?.id) {
+    if (!isAuthenticated || !profile?.id || !isStaffRole(profile.role)) {
+      // Investor access is role-driven. Per-user permission overrides are a
+      // staff administration feature and do not need another Firestore listener
+      // in the Investor Portal.
       setUserOverrides({});
       return undefined;
     }
+
     setUserOverrides(profile.permissionOverrides || {});
     return onSnapshot(doc(db, "users", profile.id), (snapshot) => {
       setUserOverrides(snapshot.exists() ? (snapshot.data().permissionOverrides || {}) : {});
     }, (nextError) => {
       console.warn("Permission overrides could not be refreshed", nextError);
     });
-  }, [isAuthenticated, profile?.id, profile?.permissionOverrides]);
+  }, [isAuthenticated, profile?.id, profile?.permissionOverrides, profile?.role]);
 
   const effectivePermissions = useMemo(() => resolveEffectivePermissions(
     profile?.role,

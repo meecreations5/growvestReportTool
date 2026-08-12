@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Activity,
   AlertTriangle,
@@ -20,7 +21,9 @@ import {
   Files,
   FolderLock,
   History,
+  IdCard,
   LayoutDashboard,
+  ListChecks,
   Mail,
   MapPin,
   Phone,
@@ -38,6 +41,8 @@ import {
 import MeetingStatusBadge from "@/components/meetings/MeetingStatusBadge";
 import InvestorDocumentsPanel from "@/components/investors/InvestorDocumentsPanel";
 import InvestorPortalAccessCard from "@/components/investors/InvestorPortalAccessCard";
+import InvestorPortfolioPanel from "@/components/portfolio/InvestorPortfolioPanel";
+import ActionStatusBadge from "@/components/actions/ActionStatusBadge";
 import InvestorReportsPanel from "@/components/reports/InvestorReportsPanel";
 import ReportStatusBadge from "@/components/reports/ReportStatusBadge";
 import Card from "@/components/ui/Card";
@@ -51,9 +56,12 @@ import {
 import { getMonthLabel } from "@/lib/constants/report";
 import { formatDateTime } from "@/lib/utils/date";
 import { formatCurrency, formatDate } from "@/lib/utils/format";
+import { nextAnnualOccasion, turningAge } from "@/lib/utils/occasions";
 import { subscribeAssessmentVersions, subscribeInvestor } from "@/services/assessmentService";
 import { subscribeInvestorMeetings } from "@/services/meetingService";
 import { subscribeInvestorReports } from "@/services/reportService";
+import { subscribeInvestorActions } from "@/services/actionService";
+import { ACTION_TERMINAL_STATUSES } from "@/lib/constants/actions";
 
 function investorGoals(investor) {
   if (Array.isArray(investor?.bucketList) && investor.bucketList.length) return investor.bucketList;
@@ -125,6 +133,31 @@ function formatPercent(value, digits = 1) {
 function relationshipLabel(value) {
   if (!value) return "Date not added";
   return formatDate(value);
+}
+
+function birthdayReminderLabel(personal = {}) {
+  if (!personal.dateOfBirth) return "Add date of birth first";
+  if (personal.birthdayReminderEnabled === false) return "Disabled";
+  const offsets = Array.isArray(personal.birthdayReminderOffsets) && personal.birthdayReminderOffsets.length
+    ? personal.birthdayReminderOffsets
+    : [Number(personal.birthdayReminderDaysBefore ?? 7)];
+  return offsets.map((days) => Number(days) === 0 ? "On birthday" : `${days} day${Number(days) === 1 ? "" : "s"} before`).join(" · ");
+}
+
+function nextBirthdayLabel(personal = {}) {
+  if (!personal.dateOfBirth) return "Add date of birth first";
+  const next = nextAnnualOccasion(personal.dateOfBirth);
+  if (!next) return "Invalid date";
+  const age = turningAge(personal.dateOfBirth, next.eventYear);
+  const when = next.daysUntil === 0 ? "Today" : next.daysUntil === 1 ? "Tomorrow" : `In ${next.daysUntil} days`;
+  return `${formatDate(next.eventDate)} · ${when}${age !== null ? ` · Turning ${age}` : ""}`;
+}
+
+function monthlySurplusLabel(personal = {}) {
+  const amount = formatCurrency(personal.monthlySurplus);
+  if (personal.monthlySurplusMode !== "percentage") return amount;
+  const percentage = Number(personal.monthlySurplusPercentage || 0);
+  return `${amount} (${percentage}% of monthly income)`;
 }
 
 function portalStatus(investor) {
@@ -353,10 +386,12 @@ function LoadingProfile() {
 }
 
 export default function InvestorDetailClient({ investorId }) {
+  const { profile } = useAuth();
   const [investor, setInvestor] = useState(null);
   const [versions, setVersions] = useState([]);
   const [meetings, setMeetings] = useState([]);
   const [reports, setReports] = useState([]);
+  const [actions, setActions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("overview");
@@ -392,6 +427,16 @@ export default function InvestorDetailClient({ investorId }) {
       (nextError) => console.error("Unable to load investor reports", nextError)
     );
   }, [investor?.id]);
+
+  useEffect(() => {
+    if (!investor?.id || !profile) return undefined;
+    return subscribeInvestorActions(
+      investor.id,
+      profile,
+      setActions,
+      (nextError) => console.error("Unable to load investor actions", nextError)
+    );
+  }, [investor?.id, profile]);
 
   useEffect(() => {
     if (!investor?.leadId) return undefined;
@@ -443,7 +488,7 @@ export default function InvestorDetailClient({ investorId }) {
   const totalGoalCurrent = goals.reduce((sum, goal) => sum + Number(goal.currentAmount || 0), 0);
   const totalInvestments = investments.reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
   const totalLiabilities = liabilities.reduce((sum, item) => sum + Number(item.outstandingAmount || 0), 0);
-  const currentPortfolio = Number(latestReport?.summary?.totalCorpus || totalInvestments || 0);
+  const currentPortfolio = Number(investor.latestPortfolioValue || latestReport?.summary?.totalCorpus || totalInvestments || 0);
   const latestGain = Number(latestReport?.summary?.investmentGain || 0);
   const latestNewMoney = Number(latestReport?.summary?.newMoneyAdded || 0);
   const latestWithdrawals = Number(latestReport?.summary?.withdrawals || latestReport?.summary?.amountWithdrawn || 0);
@@ -459,9 +504,10 @@ export default function InvestorDetailClient({ investorId }) {
 
   const tabs = [
     { value: "overview", label: "Overview", icon: LayoutDashboard },
-    { value: "goals", label: "Bucket List", icon: Target, count: goals.length },
-    { value: "portfolio", label: "Portfolio", icon: WalletCards, count: investments.length },
+    { value: "goals", label: "Goals & Bucket List", icon: Target, count: goals.length },
+    { value: "portfolio", label: "Portfolio", icon: WalletCards },
     { value: "reports", label: "Monthly Reports", icon: FileBarChart, count: reports.length },
+    { value: "actions", label: "Actions", icon: ListChecks, count: actions.filter((item) => !ACTION_TERMINAL_STATUSES.includes(item.status)).length },
     { value: "meetings", label: "Meetings & MOM", icon: CalendarDays, count: meetings.length },
     { value: "assessment", label: "Assessment", icon: ClipboardCheck },
     { value: "access", label: "Access & Documents", icon: FolderLock },
@@ -600,7 +646,7 @@ export default function InvestorDetailClient({ investorId }) {
       </section>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-        <SummaryMetric label="Current portfolio" value={formatCurrency(currentPortfolio)} helper={latestReport ? `As of ${reportMonthText(latestReport)}` : "No monthly report available"} icon={WalletCards} tone="blue" />
+        <SummaryMetric label="Current portfolio" value={formatCurrency(currentPortfolio)} helper={Number(investor.latestPortfolioValue || 0) > 0 ? "Latest verified portfolio snapshot" : latestReport ? `As of ${reportMonthText(latestReport)}` : "No portfolio snapshot available"} icon={WalletCards} tone="blue" />
         <SummaryMetric label="Monthly gain / loss" value={formatCurrency(latestGain)} helper={latestReport ? reportMonthText(latestReport) : "Awaiting report data"} icon={latestGain < 0 ? TrendingDown : TrendingUp} tone={latestGain < 0 ? "red" : "green"} />
         <SummaryMetric label="Monthly return" value={formatPercent(latestMonthlyReturn)} helper="Calculated from latest report" icon={Activity} tone={latestMonthlyReturn < 0 ? "red" : "cyan"} trend={latestMonthlyReturn} />
         <SummaryMetric label="YTD return" value={formatPercent(ytdReturn)} helper={latestYear ? `Calendar year ${latestYear}` : "Awaiting report history"} icon={Sparkles} tone={ytdReturn < 0 ? "red" : "green"} trend={ytdReturn} />
@@ -627,7 +673,7 @@ export default function InvestorDetailClient({ investorId }) {
                 <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-5">
                   <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-blue-700">Primary Bucket List goal</p>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-blue-700">Primary financial goal</p>
                       <h3 className="mt-2 font-heading text-2xl font-bold text-slate-950">{primaryGoal?.name || "Primary goal not selected"}</h3>
                       <p className="mt-1 text-sm text-slate-500">{primaryGoal?.timeline || primaryGoal?.targetYear ? `Target ${primaryGoal.timeline || primaryGoal.targetYear}` : "Add the investor's priority goal and timeline."}</p>
                     </div>
@@ -641,7 +687,7 @@ export default function InvestorDetailClient({ investorId }) {
                     <div className="h-full rounded-full bg-[#1F4ED8]" style={{ width: `${primaryGoal?.targetAmount ? Math.min(100, (Number(primaryGoal.currentAmount || 0) / Number(primaryGoal.targetAmount || 1)) * 100) : 0}%` }} />
                   </div>
                   <button type="button" onClick={() => setTab("goals")} className="mt-5 inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:underline">
-                    View all Bucket List goals <ChevronRight size={15} />
+                    View all goals <ChevronRight size={15} />
                   </button>
                 </div>
 
@@ -670,10 +716,15 @@ export default function InvestorDetailClient({ investorId }) {
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 <InfoRow label="Email" value={investor.email} icon={Mail} href={investor.email ? `mailto:${investor.email}` : null} />
                 <InfoRow label="Mobile number" value={investor.contactNo} icon={Phone} href={investor.contactNo ? `tel:${investor.contactNo}` : null} />
+                <InfoRow label="PAN number" value={investor.panNumber || investor.panNormalized || "Not added"} icon={IdCard} />
+                <InfoRow label="Aadhaar" value={investor.aadhaarConfigured ? `XXXX XXXX ${investor.aadhaarLast4 || "••••"}` : "Not added"} icon={ShieldCheck} />
+                <InfoRow label="Date of birth" value={personal.dateOfBirth ? `${formatDate(personal.dateOfBirth)}${personal.age !== undefined && personal.age !== "" ? ` · ${personal.age} years` : ""}` : "Not added"} icon={CalendarDays} />
+                <InfoRow label="Birthday reminder" value={birthdayReminderLabel(personal)} icon={Clock3} />
+                <InfoRow label="Next birthday" value={nextBirthdayLabel(personal)} icon={CalendarPlus} />
                 <InfoRow label="Occupation" value={personal.occupation} icon={UserRound} />
                 <InfoRow label="Marital status" value={personal.maritalStatus} icon={UsersRound} />
                 <InfoRow label="Annual income" value={formatCurrency(personal.annualIncome)} icon={CircleDollarSign} />
-                <InfoRow label="Monthly surplus" value={formatCurrency(personal.monthlySurplus)} icon={BadgeIndianRupee} />
+                <InfoRow label="Monthly surplus" value={monthlySurplusLabel(personal)} icon={BadgeIndianRupee} />
                 <InfoRow label="City / location" value={personal.city || personal.location || investor.city} icon={MapPin} />
                 <InfoRow label="Risk profile" value={risk.finalProfile || "Assessment pending"} icon={ShieldCheck} />
               </div>
@@ -700,7 +751,7 @@ export default function InvestorDetailClient({ investorId }) {
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
                   <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Investable surplus</p>
                   <p className="mt-2 font-heading text-2xl font-bold text-emerald-950 tabular-nums">{formatCurrency(personal.monthlySurplus)}</p>
-                  <p className="mt-1 text-xs text-emerald-700">Available per month</p>
+                  <p className="mt-1 text-xs text-emerald-700">{personal.monthlySurplusMode === "percentage" ? `${Number(personal.monthlySurplusPercentage || 0)}% of monthly income · auto-calculated` : "Fixed amount available per month"}</p>
                 </div>
               </div>
             </Card>
@@ -785,31 +836,31 @@ export default function InvestorDetailClient({ investorId }) {
       {tab === "goals" ? (
         <Card className="p-5 sm:p-6">
           <SectionHeader
-            eyebrow="Bucket List"
-            title="Financial goals and life milestones"
-            description="Track target values, funding progress and monthly contributions for each priority."
+            eyebrow="Goals & Bucket List"
+            title="Financial goals, corpus and life milestones"
+            description="Track general wealth creation or specific goals. A Bucket List is optional."
             action={<Link href={`/investors/${investor.id}/edit`} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-800"><Edit3 size={16} /> Manage goals</Link>}
           />
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
             {goals.length
               ? goals.map((goal, index) => <GoalCard key={goal.id || `${goal.name}-${index}`} goal={goal} />)
-              : <div className="lg:col-span-2"><EmptyState title="No Bucket List goals" description="Add the investor's financial and life goals from Edit Profile." /></div>}
+              : <div className="lg:col-span-2"><EmptyState title="General Wealth Corpus" description="No specific goal is required. Portfolio holdings can remain under General Wealth and be allocated to goals later." /></div>}
           </div>
         </Card>
       ) : null}
 
       {tab === "portfolio" ? (
         <div className="grid gap-5">
-          <Card className="p-5 sm:p-6">
-            <SectionHeader eyebrow="Current portfolio" title="Existing investments" description="Profile-level holdings captured during the investor assessment." />
-            <div className="mt-5 flex items-center justify-between rounded-lg bg-blue-50 px-4 py-3">
-              <p className="text-sm font-semibold text-blue-800">Total profile investment value</p>
-              <p className="font-heading text-xl font-bold text-blue-950 tabular-nums">{formatCurrency(totalInvestments)}</p>
-            </div>
-            <div className="mt-5">
-              <DataTable columns={[{ key: "type", label: "Type", emphasis: true }, { key: "institution", label: "Fund / institution" }, { key: "currentValue", label: "Current value", align: "right", emphasis: true }, { key: "monthly", label: "Monthly", align: "right" }]} rows={investmentRows} emptyMessage="No investments recorded" />
-            </div>
-          </Card>
+          <InvestorPortfolioPanel investor={investor} editable />
+
+          {investments.length ? (
+            <Card className="p-5 sm:p-6">
+              <SectionHeader eyebrow="Assessment reference" title="Legacy profile investments" description="Holdings recorded during assessment are kept as reference until they are reconciled into the Portfolio Master." />
+              <div className="mt-5">
+                <DataTable columns={[{ key: "type", label: "Type", emphasis: true }, { key: "institution", label: "Fund / institution" }, { key: "currentValue", label: "Current value", align: "right", emphasis: true }, { key: "monthly", label: "Monthly", align: "right" }]} rows={investmentRows} emptyMessage="No assessment investments recorded" />
+              </div>
+            </Card>
+          ) : null}
 
           <Card className="p-5 sm:p-6">
             <SectionHeader eyebrow="Obligations" title="Liabilities and EMIs" description="Outstanding obligations considered during suitability and cash-flow planning." />
@@ -850,6 +901,15 @@ export default function InvestorDetailClient({ investorId }) {
       ) : null}
 
       {tab === "reports" ? <InvestorReportsPanel investorId={investor.id} /> : null}
+
+      {tab === "actions" ? (
+        <Card className="p-5 sm:p-6">
+          <SectionHeader eyebrow="Advisor workflow" title="Investor actions" description="Recommendations, investor requests, decisions and follow-up status for this investor." action={<Link href="/actions" className="inline-flex min-h-10 items-center rounded-lg bg-blue-700 px-4 text-sm font-bold text-white">Open Action Centre</Link>} />
+          <div className="mt-5 grid gap-3">
+            {actions.length ? actions.slice(0, 12).map((item) => <article key={item.id} className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="font-heading text-base font-bold text-slate-950">{item.title || "Investor action"}</h3><ActionStatusBadge status={item.status} /></div><p className="mt-1 text-xs font-semibold text-blue-700">{item.requestType || item.recommendationType || "Portfolio Review"}</p>{item.description ? <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p> : null}</div><div className="shrink-0 text-xs text-slate-500"><p>Priority: <strong className="text-slate-700">{item.priority || "Planned"}</strong></p><p className="mt-1">Decision: <strong className="text-slate-700">{item.investorDecision || "Pending Discussion"}</strong></p></div></div></article>) : <EmptyState title="No investor actions" description="Requests and report recommendations will appear here automatically." />}
+          </div>
+        </Card>
+      ) : null}
 
       {tab === "meetings" ? (
         <Card className="p-5 sm:p-6">

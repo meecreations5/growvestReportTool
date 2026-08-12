@@ -15,8 +15,58 @@ export const OCCUPATIONS = [
 ];
 
 export const MARITAL_STATUSES = ["Single", "Married", "Divorced", "Widowed", "Other"];
+export const MONTHLY_SURPLUS_MODES = ["fixed", "percentage"];
+
+export function calculateAgeFromDateOfBirth(dateOfBirth, referenceDate = new Date()) {
+  const match = String(dateOfBirth || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const birthDate = new Date(year, month - 1, day);
+  if (
+    birthDate.getFullYear() !== year
+    || birthDate.getMonth() !== month - 1
+    || birthDate.getDate() !== day
+    || birthDate > referenceDate
+  ) return "";
+
+  let age = referenceDate.getFullYear() - year;
+  const beforeBirthday = referenceDate.getMonth() < month - 1
+    || (referenceDate.getMonth() === month - 1 && referenceDate.getDate() < day);
+  if (beforeBirthday) age -= 1;
+  return age >= 0 ? age : "";
+}
+
+export function calculateMonthlySurplus({ annualIncome, mode = "fixed", fixedAmount, percentage } = {}) {
+  if (mode !== "percentage") {
+    const amount = Number(fixedAmount || 0);
+    return Number.isFinite(amount) && amount >= 0 ? amount : 0;
+  }
+
+  const annual = Number(annualIncome || 0);
+  const percent = Number(percentage || 0);
+  if (!Number.isFinite(annual) || annual < 0 || !Number.isFinite(percent) || percent < 0) return 0;
+  return Math.round((annual / 12) * (percent / 100));
+}
+
+export function recalculatePersonalProfile(profile = {}) {
+  const next = { ...profile };
+  if (next.dateOfBirth) next.age = calculateAgeFromDateOfBirth(next.dateOfBirth);
+  if (next.monthlySurplusMode === "percentage") {
+    next.monthlySurplus = calculateMonthlySurplus({
+      annualIncome: next.annualIncome,
+      mode: next.monthlySurplusMode,
+      fixedAmount: next.monthlySurplus,
+      percentage: next.monthlySurplusPercentage
+    });
+  }
+  return next;
+}
 
 export const GOAL_OPTIONS = [
+  "General Wealth / Corpus Creation",
   "Emergency Fund",
   "Children's Education",
   "Children's Marriage",
@@ -26,6 +76,8 @@ export const GOAL_OPTIONS = [
   "Vehicle",
   "Business Goal",
   "Wealth Creation",
+  "Loan / Debt Freedom",
+  "Bucket List / Lifestyle Goal",
   "Tax Planning",
   "Insurance",
   "Estate Planning",
@@ -76,6 +128,26 @@ export const EXISTING_INVESTMENT_TYPES = [
   "Real Estate",
   "Other"
 ];
+
+
+export const SURPLUS_ALLOCATION_TYPES = [
+  "SIP",
+  "Lump Sum Investment",
+  "Investment Top-up",
+  "Direct Equity Investment",
+  "Loan Repayment",
+  "Loan Prepayment",
+  "Credit Card Repayment",
+  "Emergency Fund",
+  "Insurance Premium",
+  "Goal / Bucket List",
+  "Tax Reserve",
+  "Cash / Liquidity Reserve",
+  "Trading Capital",
+  "Other / Custom"
+];
+
+export const SURPLUS_ALLOCATION_MODES = ["fixed", "percentage"];
 
 export const LIABILITY_TYPES = [
   "Home Loan",
@@ -175,10 +247,25 @@ export function createEmptyLiability() {
     id: globalThis.crypto?.randomUUID?.() || `liability-${Date.now()}-${Math.random()}`,
     type: "",
     lender: "",
+    originalLoanAmount: "",
     outstandingAmount: "",
     emiAmount: "",
     interestRate: "",
     remainingTenure: "",
+    extraRepayment: "",
+    targetClosureDate: "",
+    notes: ""
+  };
+}
+
+
+export function createEmptySurplusAllocation() {
+  return {
+    id: globalThis.crypto?.randomUUID?.() || `surplus-${Date.now()}-${Math.random()}`,
+    category: "",
+    mode: "fixed",
+    fixedAmount: "",
+    percentage: "",
     notes: ""
   };
 }

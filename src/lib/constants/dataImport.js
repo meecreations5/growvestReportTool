@@ -28,10 +28,58 @@ export const DATA_IMPORT_FIELDS = [
     aliases: ["instrument", "instrument name", "scheme", "scheme name", "fund", "fund name", "security", "security name"]
   },
   {
+    key: "investmentType",
+    label: "Investment Type",
+    required: false,
+    aliases: ["investment type", "product type", "portfolio type", "security type", "instrument type"]
+  },
+  {
+    key: "investmentMode",
+    label: "Investment Mode",
+    required: false,
+    aliases: ["investment mode", "mode", "sip lump sum", "sip/lump sum", "holding mode"]
+  },
+  {
+    key: "provider",
+    label: "Provider / Broker",
+    required: false,
+    aliases: ["provider", "broker", "platform", "insurer", "amc"]
+  },
+  {
+    key: "goalName",
+    label: "Goal / Bucket List",
+    required: false,
+    aliases: ["goal", "goal name", "bucket list", "bucket list goal", "goal corpus"]
+  },
+  {
+    key: "isin",
+    label: "ISIN",
+    required: false,
+    aliases: ["isin", "isin code"]
+  },
+  {
+    key: "folioNo",
+    label: "Folio / Account No",
+    required: false,
+    aliases: ["folio", "folio no", "folio number", "account no", "account number", "policy number"]
+  },
+  {
+    key: "currentNav",
+    label: "Current NAV / Rate",
+    required: false,
+    aliases: ["current nav", "curr nav", "nav", "current rate", "market rate", "price"]
+  },
+  {
+    key: "navDate",
+    label: "NAV / Valuation Date",
+    required: false,
+    aliases: ["nav date", "valuation date", "price date", "as of date"]
+  },
+  {
     key: "assetClass",
     label: "Asset Class",
     required: true,
-    aliases: ["asset class", "asset category", "category", "investment category", "type"]
+    aliases: ["asset class", "asset category", "category", "investment category", "asset type"]
   },
   {
     key: "openingValue",
@@ -103,12 +151,19 @@ export const DATA_IMPORT_NUMERIC_FIELDS = [
   "currentValue",
   "returnPercentage",
   "monthlySip",
-  "quantity"
+  "quantity",
+  "currentNav"
 ];
 
 export const DATA_IMPORT_SAMPLE_ROWS = [
   {
     "Instrument": "Parag Parikh Flexi Cap Fund",
+    "Investment Type": "Mutual Fund",
+    "Investment Mode": "SIP",
+    "Provider / Broker": "Fundbazaar",
+    "Goal / Bucket List": "Long-term Wealth",
+    "Current NAV / Rate": 82.45,
+    "NAV / Valuation Date": "2026-03-31",
     "Asset Class": "Equity",
     "Opening Value": 185000,
     "New Investment": 9000,
@@ -123,6 +178,12 @@ export const DATA_IMPORT_SAMPLE_ROWS = [
   },
   {
     "Instrument": "HDFC Short Term Debt Fund",
+    "Investment Type": "Mutual Fund",
+    "Investment Mode": "Lump Sum",
+    "Provider / Broker": "Fundbazaar",
+    "Goal / Bucket List": "General Wealth",
+    "Current NAV / Rate": 31.72,
+    "NAV / Valuation Date": "2026-03-31",
     "Asset Class": "Debt",
     "Opening Value": 120000,
     "New Investment": 5000,
@@ -137,6 +198,12 @@ export const DATA_IMPORT_SAMPLE_ROWS = [
   },
   {
     "Instrument": "Liquid Cash Reserve",
+    "Investment Type": "Other",
+    "Investment Mode": "Flexible",
+    "Provider / Broker": "Manual",
+    "Goal / Bucket List": "Emergency Fund",
+    "Current NAV / Rate": "",
+    "NAV / Valuation Date": "2026-03-31",
     "Asset Class": "Liquid",
     "Opening Value": 52000,
     "New Investment": 0,

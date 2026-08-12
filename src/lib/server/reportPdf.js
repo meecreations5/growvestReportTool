@@ -437,14 +437,17 @@ function drawGoalCard(page, fonts, theme, goal, { x, y, width, height }) {
 function addGoalsPages(doc, fonts, report, template, theme) {
   const goals = report.goals || [];
   if (!goals.length) {
-    const page = addPage(doc, fonts, report, template, theme, "Bucket List progress");
-    drawEmptyState(page, fonts, "No Bucket List goals were included in this report.");
+    const page = addPage(doc, fonts, report, template, theme, "General Wealth Corpus");
+    drawPanel(page, { x: PDF_MARGIN, y: 470, width: CONTENT_WIDTH, height: 210, fill: LIGHT, border: theme.primary });
+    page.drawText("GENERAL WEALTH CORPUS", { x: PDF_MARGIN + 18, y: 645, size: 8, font: fonts.bold, color: theme.primary });
+    page.drawText(compactMoney(report.summary?.generalWealthCorpus || report.summary?.totalCorpus || 0), { x: PDF_MARGIN + 18, y: 603, size: 24, font: fonts.bold, color: INK });
+    drawTextBlock(page, "No specific financial goal is currently assigned. The portfolio remains tracked as General Wealth and can be allocated to financial goals or Bucket List items later.", { x: PDF_MARGIN + 18, y: 565, width: CONTENT_WIDTH - 36, font: fonts.regular, size: 9.5, color: MUTED, lineHeight: 14, maxLines: 5 });
     return;
   }
   const pageSize = 6;
   for (let start = 0; start < goals.length; start += pageSize) {
-    const page = addPage(doc, fonts, report, template, theme, start === 0 ? "Bucket List progress" : "Bucket List progress - continued");
-    page.drawText("Every goal in your plan, its target and how close you are today.", { x: PDF_MARGIN, y: 712, size: 8.5, font: fonts.regular, color: MUTED });
+    const page = addPage(doc, fonts, report, template, theme, start === 0 ? "Goals & Bucket List progress" : "Goal progress - continued");
+    page.drawText("Every financial goal in your plan, its target and how close you are today.", { x: PDF_MARGIN, y: 712, size: 8.5, font: fonts.regular, color: MUTED });
     const rows = goals.slice(start, start + pageSize);
     const gapX = 14;
     const gapY = 14;
@@ -595,7 +598,7 @@ function addHoldingsPages(doc, fonts, report, template, theme) {
   ];
   if (!rows.length) {
     const page = addPage(doc, fonts, report, template, theme, "Detailed holdings");
-    drawEmptyState(page, fonts, "No fund-wise holdings were included in this report.");
+    drawEmptyState(page, fonts, "No investment holdings were included in this report.");
     return;
   }
   const total = Number(report.summary?.totalCorpus || 0);
@@ -607,7 +610,7 @@ function addHoldingsPages(doc, fonts, report, template, theme) {
     const values = [
       { text: item.instrumentName || "Investment", bold: true, maxLines: 2 },
       { text: item.assetClass || "Other" },
-      { text: item.goalName || "Flexible Pool", maxLines: 2 },
+      { text: item.goalName || "General Wealth", maxLines: 2 },
       { text: Number(item.monthlySip || 0) ? compactMoney(item.monthlySip) : "-", align: "right" },
       { text: compactMoney(item.currentValue), align: "right", bold: true },
       { text: `${weight.toFixed(1)}%`, align: "right" },
@@ -616,13 +619,39 @@ function addHoldingsPages(doc, fonts, report, template, theme) {
     const prepared = prepareTableRow(fonts, columns, values, 6.5, 2);
     if (!page || y - prepared.rowHeight < CONTENT_BOTTOM + 18) {
       page = addPage(doc, fonts, report, template, theme, index === 0 ? "Detailed holdings" : "Detailed holdings - continued");
-      page.drawText("Every instrument in your portfolio, the Bucket List goal it supports and its current value.", { x: PDF_MARGIN, y: 713, size: 8, font: fonts.regular, color: MUTED });
+      page.drawText("Every investment in your portfolio, its goal or General Wealth assignment, and its current value.", { x: PDF_MARGIN, y: 713, size: 8, font: fonts.regular, color: MUTED });
       y = drawTableHeader(page, fonts, theme, columns, 684);
       rowIndex = 0;
     }
     y = drawTableRow(page, columns, prepared, y, rowIndex);
     rowIndex += 1;
   });
+}
+
+function addTradingSummaryPage(doc, fonts, report, template, theme) {
+  const trading = report.tradingSummary || null;
+  if (!trading || Number(trading.totalTrades || 0) <= 0) return;
+  const page = addPage(doc, fonts, report, template, theme, "Stock Intraday Trading");
+  page.drawText("Monthly intraday performance is reported separately from the long-term investment portfolio and goal corpus.", { x: PDF_MARGIN, y: 713, size: 8, font: fonts.regular, color: MUTED });
+  const stats = [
+    ["TOTAL TRADES", String(Number(trading.totalTrades || 0)), `${Number(trading.winningTrades || 0)} winning | ${Number(trading.losingTrades || 0)} losing`],
+    ["GROSS P&L", compactMoney(trading.grossPnl || 0), "Before charges"],
+    ["TOTAL CHARGES", compactMoney(trading.totalCharges || 0), "Brokerage and recorded charges"],
+    ["NET REALISED P&L", compactMoney(trading.netPnl || 0), "Not automatically added to goal corpus"]
+  ];
+  const gap = 10;
+  const width = (CONTENT_WIDTH - gap * 3) / 4;
+  stats.forEach(([label, value, helper], index) => {
+    const x = PDF_MARGIN + index * (width + gap);
+    drawPanel(page, { x, y: 520, width, height: 150, fill: LIGHT, border: BORDER });
+    page.drawText(label, { x: x + 12, y: 640, size: 6.2, font: fonts.bold, color: MUTED });
+    const valueSize = fitSize(fonts.bold, pdfSafeText(value), 13, width - 24, 7);
+    page.drawText(pdfSafeText(value), { x: x + 12, y: 606, size: valueSize, font: fonts.bold, color: INK });
+    drawTextBlock(page, helper, { x: x + 12, y: 574, width: width - 24, font: fonts.regular, size: 6.7, color: MUTED, lineHeight: 9, maxLines: 3 });
+  });
+  drawPanel(page, { x: PDF_MARGIN, y: 330, width: CONTENT_WIDTH, height: 150, fill: WHITE, border: theme.primary });
+  page.drawText("TRADING TREATMENT", { x: PDF_MARGIN + 16, y: 448, size: 7.5, font: fonts.bold, color: theme.primary });
+  drawTextBlock(page, "Intraday realised profit or loss remains part of trading activity. It contributes to long-term wealth or a financial goal only when GrowVest records an actual transfer or investment allocation.", { x: PDF_MARGIN + 16, y: 416, width: CONTENT_WIDTH - 32, font: fonts.regular, size: 9, color: MUTED, lineHeight: 13, maxLines: 5 });
 }
 
 function addTransactionsPages(doc, fonts, report, template, theme) {
@@ -704,6 +733,38 @@ function addCommentaryPage(doc, fonts, report, template, theme) {
   });
 }
 
+function addFinancialPlanPage(doc, fonts, report, template, theme) {
+  const plan = report.financialPlan || {};
+  const allocations = plan.surplusAllocations || [];
+  const loans = plan.loans || [];
+  if (!Number(plan.monthlySurplus || 0) && !allocations.length && !loans.length) return;
+  const page = addPage(doc, fonts, report, template, theme, "Surplus Allocation & Loan Position");
+  page.drawText("CASH FLOW & DEBT", { x: PDF_MARGIN, y: 713, size: 8, font: fonts.bold, color: theme.primary });
+  drawPanel(page, { x: PDF_MARGIN, y: 425, width: 244, height: 250, fill: LIGHT, border: BORDER });
+  page.drawText("MONTHLY SURPLUS", { x: PDF_MARGIN + 14, y: 646, size: 6.8, font: fonts.bold, color: MUTED });
+  page.drawText(compactMoney(plan.monthlySurplus || 0), { x: PDF_MARGIN + 14, y: 616, size: 17, font: fonts.bold, color: theme.primary });
+  page.drawText(plan.surplusMode === "percentage" ? `${Number(plan.surplusPercentage || 0)}% of monthly income` : "Fixed monthly amount", { x: PDF_MARGIN + 14, y: 596, size: 6.8, font: fonts.regular, color: MUTED });
+  let y = 568;
+  allocations.slice(0, 8).forEach((item) => {
+    page.drawText(pdfSafeText(item.category || "Allocation"), { x: PDF_MARGIN + 14, y, size: 6.7, font: fonts.regular, color: INK });
+    drawRightText(page, compactMoney(item.calculatedAmount || 0), { right: PDF_MARGIN + 228, y, font: fonts.bold, size: 6.7, color: INK, maxWidth: 75 });
+    y -= 20;
+  });
+  if (!allocations.length) page.drawText("No surplus allocation plan recorded.", { x: PDF_MARGIN + 14, y: 558, size: 7.2, font: fonts.regular, color: MUTED });
+
+  drawPanel(page, { x: PDF_MARGIN + 260, y: 425, width: CONTENT_WIDTH - 260, height: 250, fill: WHITE, border: BORDER });
+  const totalOutstanding = loans.reduce((sum, item) => sum + Number(item.outstandingAmount || 0), 0);
+  page.drawText("ACTIVE LOANS / LIABILITIES", { x: PDF_MARGIN + 274, y: 646, size: 6.8, font: fonts.bold, color: MUTED });
+  page.drawText(compactMoney(totalOutstanding), { x: PDF_MARGIN + 274, y: 616, size: 17, font: fonts.bold, color: theme.danger });
+  y = 580;
+  loans.slice(0, 6).forEach((item) => {
+    drawTextBlock(page, `${item.type || "Loan"}${item.lender ? ` | ${item.lender}` : ""}`, { x: PDF_MARGIN + 274, y, width: CONTENT_WIDTH - 292, font: fonts.bold, size: 7.1, color: INK, lineHeight: 9, maxLines: 1 });
+    drawTextBlock(page, `${compactMoney(item.outstandingAmount || 0)} outstanding | EMI ${compactMoney(item.emiAmount || 0)}${Number(item.interestRate || 0) ? ` | ${Number(item.interestRate).toFixed(2)}%` : ""}${Number(item.extraRepayment || 0) ? ` | Extra ${compactMoney(item.extraRepayment)}` : ""}`, { x: PDF_MARGIN + 274, y: y - 14, width: CONTENT_WIDTH - 292, font: fonts.regular, size: 6.2, color: MUTED, lineHeight: 8, maxLines: 2 });
+    y -= 43;
+  });
+  if (!loans.length) page.drawText("No active liabilities recorded.", { x: PDF_MARGIN + 274, y: 558, size: 7.2, font: fonts.regular, color: MUTED });
+}
+
 function addActionsPages(doc, fonts, report, template, theme) {
   const actions = report.nextSteps || [];
   const chunks = [];
@@ -725,7 +786,7 @@ function addActionsPages(doc, fonts, report, template, theme) {
         page.drawText(number, { x: PDF_MARGIN + 20 - numberWidth / 2, y: itemY + 42, size: 7.5, font: fonts.bold, color: WHITE });
         drawTextBlock(page, item.title || item.description || "Action item", { x: PDF_MARGIN + 40, y: itemY + 50, width: 310, font: fonts.bold, size: 9.3, color: INK, lineHeight: 11, maxLines: 2 });
         drawTextBlock(page, item.description && item.description !== item.title ? item.description : "", { x: PDF_MARGIN + 40, y: itemY + 27, width: 310, font: fonts.regular, size: 7.2, color: MUTED, lineHeight: 9, maxLines: 2 });
-        const meta = [item.owner || "Advisor", item.priority || "Planned", item.status || "Pending", item.dueDate ? `Due ${dateText(item.dueDate)}` : ""].filter(Boolean).join(" | ");
+        const meta = [item.recommendationType || "Portfolio Review", item.owner || "Advisor", item.priority || "Planned", item.status || "Recommended", `Decision ${item.investorDecision || "Pending Discussion"}`, item.sourceReportMonthKey ? `From ${item.sourceReportMonthKey}` : "", item.dueDate ? `Due ${dateText(item.dueDate)}` : ""].filter(Boolean).join(" | ");
         drawTextBlock(page, meta, { x: 400, y: itemY + 46, width: 135, font: fonts.regular, size: 6.3, color: MUTED, align: "right", lineHeight: 8, maxLines: 3 });
         y -= 82;
       });
@@ -822,10 +883,16 @@ export async function generateMonthlyReportPdf(report, { history = [] } = {}) {
       addAllocationSummary(doc, fonts, normalizedReport, template, theme);
       addAllocationTablePages(doc, fonts, normalizedReport, template, theme);
     },
-    holdings: () => addHoldingsPages(doc, fonts, normalizedReport, template, theme),
+    holdings: () => {
+      addHoldingsPages(doc, fonts, normalizedReport, template, theme);
+      addTradingSummaryPage(doc, fonts, normalizedReport, template, theme);
+    },
     transactions: () => addTransactionsPages(doc, fonts, normalizedReport, template, theme),
     commentary: () => addCommentaryPage(doc, fonts, normalizedReport, template, theme),
-    actions: () => addActionsPages(doc, fonts, normalizedReport, template, theme),
+    actions: () => {
+      addFinancialPlanPage(doc, fonts, normalizedReport, template, theme);
+      addActionsPages(doc, fonts, normalizedReport, template, theme);
+    },
     disclaimer: () => addDisclaimerPages(doc, fonts, normalizedReport, template, theme)
   };
 

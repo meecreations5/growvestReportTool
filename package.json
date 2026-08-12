@@ -1,6 +1,6 @@
 {
   "name": "growvest-investor-report-tool",
-  "version": "0.30.3",
+  "version": "0.32.5",
   "private": true,
   "scripts": {
     "dev": "next dev",
