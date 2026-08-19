@@ -42,7 +42,6 @@ service firebase.storage {
             && (
               investorRecord(investorId).data.assignedAdvisorUid == request.auth.uid
               || investorRecord(investorId).data.advisorUid == request.auth.uid
-              || investorRecord(investorId).data.createdByUid == request.auth.uid
             )
           )
         );
@@ -93,11 +92,50 @@ service firebase.storage {
 
     match /investor-documents/{investorId}/{documentId}/{fileName} {
       allow read: if staffCanAccessInvestor(investorId) || isInvestorFor(investorId);
-      allow write: if (staffCanAccessInvestor(investorId) || isInvestorFor(investorId))
-        && request.resource != null
+
+      // Staff may upload for investors they are authorised to service. Investor
+      // uploads must carry server-verifiable ownership metadata and an Investor
+      // may update only an object that was already uploaded by that same UID.
+      allow create: if request.resource != null
         && request.resource.size <= 10 * 1024 * 1024
-        && request.resource.contentType in ['application/pdf', 'image/jpeg', 'image/png'];
-      allow delete: if staffCanAccessInvestor(investorId) || isInvestorFor(investorId);
+        && request.resource.contentType in ['application/pdf', 'image/jpeg', 'image/png']
+        && (
+          staffCanAccessInvestor(investorId)
+          || (
+            isInvestorFor(investorId)
+            && request.resource.metadata.investorId == investorId
+            && request.resource.metadata.documentId == documentId
+            && request.resource.metadata.uploadedByUid == request.auth.uid
+            && request.resource.metadata.uploadedByRole == 'investor'
+          )
+        );
+
+      allow update: if request.resource != null
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType in ['application/pdf', 'image/jpeg', 'image/png']
+        && (
+          staffCanAccessInvestor(investorId)
+          || (
+            isInvestorFor(investorId)
+            && resource.metadata.investorId == investorId
+            && resource.metadata.documentId == documentId
+            && resource.metadata.uploadedByUid == request.auth.uid
+            && resource.metadata.uploadedByRole == 'investor'
+            && request.resource.metadata.investorId == investorId
+            && request.resource.metadata.documentId == documentId
+            && request.resource.metadata.uploadedByUid == request.auth.uid
+            && request.resource.metadata.uploadedByRole == 'investor'
+          )
+        );
+
+      allow delete: if staffCanAccessInvestor(investorId)
+        || (
+          isInvestorFor(investorId)
+          && resource.metadata.investorId == investorId
+          && resource.metadata.documentId == documentId
+          && resource.metadata.uploadedByUid == request.auth.uid
+          && resource.metadata.uploadedByRole == 'investor'
+        );
     }
 
     // Monthly report PDFs are uploaded by Firebase Admin and downloaded only

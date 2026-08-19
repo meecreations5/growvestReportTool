@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { adminDb, canStaffAccessRecord, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, canStaffAccessRecord, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { createAndUploadReportPdf } from "@/lib/server/reportServer";
 
 
@@ -42,6 +44,6 @@ export async function POST(request, { params }) {
     return NextResponse.json({ success: true, ...pdf });
   } catch (error) {
     console.error("Report PDF generation failed", error);
-    return NextResponse.json({ error: error.message || "Unable to generate report PDF." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Unable to generate report PDF." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

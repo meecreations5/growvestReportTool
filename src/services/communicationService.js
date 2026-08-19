@@ -1,16 +1,14 @@
 import { auth } from "@/lib/firebase/client";
+import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
 
 async function postAuthenticated(url, body) {
   const user = auth.currentUser;
   if (!user) throw new Error("You must be signed in to send communication.");
 
-  const token = await user.getIdToken();
+  const headers = await authenticatedApiHeaders({ "Content-Type": "application/json" }, user);
   const response = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`
-    },
+    headers,
     body: JSON.stringify(body)
   });
 
@@ -26,10 +24,8 @@ async function getAuthenticated(url) {
   const user = auth.currentUser;
   if (!user) throw new Error("You must be signed in to check communication settings.");
 
-  const token = await user.getIdToken();
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
+  const headers = await authenticatedApiHeaders({}, user);
+  const response = await fetch(url, { headers });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || "Communication service check failed.");
   return result;
@@ -70,11 +66,9 @@ export function generateReportPdf(reportId) {
 export async function downloadReportPdf(reportId, versionId = "") {
   const user = auth.currentUser;
   if (!user) throw new Error("You must be signed in to download this report.");
-  const token = await user.getIdToken();
+  const headers = await authenticatedApiHeaders({}, user);
   const suffix = versionId ? `?versionId=${encodeURIComponent(versionId)}` : "";
-  const response = await fetch(`/api/reports/${reportId}/pdf${suffix}`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
+  const response = await fetch(`/api/reports/${reportId}/pdf${suffix}`, { headers });
   if (!response.ok) {
     const result = await response.json().catch(() => ({}));
     throw new Error(result.error || "Report PDF could not be downloaded.");
@@ -97,10 +91,8 @@ export async function downloadReportPdf(reportId, versionId = "") {
 export async function downloadMomPdf(momId) {
   const user = auth.currentUser;
   if (!user) throw new Error("You must be signed in to download this MOM.");
-  const token = await user.getIdToken();
-  const response = await fetch(`/api/mom/${momId}/pdf`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
+  const headers = await authenticatedApiHeaders({}, user);
+  const response = await fetch(`/api/mom/${momId}/pdf`, { headers });
   if (!response.ok) {
     const result = await response.json().catch(() => ({}));
     throw new Error(result.error || "MOM PDF could not be generated.");

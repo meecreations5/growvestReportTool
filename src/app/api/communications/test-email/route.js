@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { sendTransactionalEmail } from "@/lib/server/brevoMailer";
 import { getAdvisorEmailProfile, getServerBranding, getServerCommunicationSettings } from "@/lib/server/settingsServer";
 import { renderEmailSignatureHtml } from "@/lib/utils/emailSignature";
@@ -32,6 +34,6 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true, result });
   } catch (error) {
-    return NextResponse.json({ error: error.message || "Test email could not be sent." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Test email could not be sent." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

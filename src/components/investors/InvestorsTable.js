@@ -19,6 +19,8 @@ import { inputClassName } from "@/components/ui/Field";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 import MetricCard from "@/components/ui/MetricCard";
+import { getInvestorStatusSummaries } from "@/services/investorStatusService";
+import { investorProfileCompletion } from "@/lib/investor/profileStatus";
 
 
 function investorGoals(investor) {
@@ -36,7 +38,19 @@ function RiskBadge({ profile }) {
   return <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${styles[profile] || "border-slate-200 bg-slate-50 text-slate-700"}`}>{profile || "Not assessed"}</span>;
 }
 
-function InvestorCard({ investor }) {
+function StatusBadge({ value, helper = "" }) {
+  const normalized = String(value || "").toLowerCase();
+  const style = normalized === "verified" || normalized === "complete"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : normalized === "needs attention"
+      ? "border-red-200 bg-red-50 text-red-700"
+      : normalized === "in progress"
+        ? "border-amber-200 bg-amber-50 text-amber-700"
+        : "border-slate-200 bg-slate-50 text-slate-600";
+  return <div><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${style}`}>{value || "Not checked"}</span>{helper ? <p className="mt-1 text-[10px] text-slate-400">{helper}</p> : null}</div>;
+}
+
+function InvestorCard({ investor, summary }) {
   const primaryGoal = getPrimaryGoal(investorGoals(investor));
   return (
     <Link href={`/investors/${investor.id}`} className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[var(--gv-shadow-card)]">
@@ -47,7 +61,7 @@ function InvestorCard({ investor }) {
         </div>
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 text-slate-500 group-hover:border-blue-200 group-hover:bg-blue-50 group-hover:text-blue-700"><ArrowUpRight size={17} /></span>
       </div>
-      <div className="mt-4 flex flex-wrap items-center gap-2"><RiskBadge profile={investor.riskAssessment?.finalProfile} />{investor.portalEnabled ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Portal enabled</span> : <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">Portal disabled</span>}</div>
+      <div className="mt-4 flex flex-wrap items-center gap-2"><RiskBadge profile={investor.riskAssessment?.finalProfile} /><StatusBadge value={summary?.profile?.status || investor.profileStatus || investorProfileCompletion(investor).status} helper={`${summary?.profile?.percent ?? investor.profileCompletionPercent ?? investorProfileCompletion(investor).percent}% profile`} />{investor.portalEnabled ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Portal enabled</span> : <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">Portal disabled</span>}</div>
       <dl className="mt-4 grid grid-cols-2 gap-3">
         <div><dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Primary goal</dt><dd className="mt-1 truncate text-sm font-semibold text-slate-800">{primaryGoal?.name || "—"}</dd></div>
         <div><dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Target</dt><dd className="mt-1 text-sm font-semibold text-slate-800">{formatCurrency(primaryGoal?.targetAmount)}</dd></div>
@@ -66,6 +80,7 @@ export default function InvestorsTable() {
   const [search, setSearch] = useState("");
   const [risk, setRisk] = useState("ALL");
   const [portal, setPortal] = useState("ALL");
+  const [statusSummaries, setStatusSummaries] = useState({});
 
   useEffect(() => {
     if (!profile) return undefined;
@@ -82,6 +97,13 @@ export default function InvestorsTable() {
       }
     );
   }, [profile]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    let active = true;
+    getInvestorStatusSummaries().then((items) => { if (active) setStatusSummaries(items); }).catch((nextError) => console.warn("Unable to load profile/document status summaries", nextError));
+    return () => { active = false; };
+  }, [profile?.id, investors.length]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -128,21 +150,22 @@ export default function InvestorsTable() {
 
         {filtered.length ? (
           <>
-            <div className="grid gap-3 p-4 md:hidden">{filtered.map((investor) => <InvestorCard key={investor.id} investor={investor} />)}</div>
+            <div className="grid gap-3 p-4 md:hidden">{filtered.map((investor) => <InvestorCard key={investor.id} investor={investor} summary={statusSummaries[investor.id]} />)}</div>
             <div className="gv-scrollbar hidden overflow-x-auto md:block">
-              <table className="min-w-[1080px] w-full border-collapse text-left text-sm">
-                <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3 font-bold">Investor</th><th className="px-5 py-3 font-bold">Contact</th><th className="px-5 py-3 font-bold">Advisor</th><th className="px-5 py-3 font-bold">Risk profile</th><th className="px-5 py-3 font-bold">Primary goal</th><th className="px-5 py-3 text-right font-bold">Target</th><th className="px-5 py-3 font-bold">Portal</th><th className="px-5 py-3 text-right font-bold">Action</th></tr></thead>
+              <table className="min-w-[1280px] w-full border-collapse text-left text-sm">
+                <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3 font-bold">Investor</th><th className="px-5 py-3 font-bold">Advisor</th><th className="px-5 py-3 font-bold">Profile</th><th className="px-5 py-3 font-bold">KYC</th><th className="px-5 py-3 font-bold">Documents</th><th className="px-5 py-3 font-bold">Risk profile</th><th className="px-5 py-3 font-bold">Primary goal</th><th className="px-5 py-3 font-bold">Portal</th><th className="px-5 py-3 text-right font-bold">Action</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {filtered.map((investor) => {
                     const primaryGoal = getPrimaryGoal(investorGoals(investor));
                     return (
                       <tr key={investor.id} className="transition hover:bg-slate-50/80">
                         <td className="px-5 py-4"><Link href={`/investors/${investor.id}`} className="group block"><p className="font-semibold text-slate-950 group-hover:text-blue-700">{investor.fullName}</p><p className="mt-1 text-xs text-slate-500">{investor.clientCode}</p></Link></td>
-                        <td className="px-5 py-4"><p className="font-medium text-slate-700">{investor.contactNo || "—"}</p><p className="mt-1 text-xs text-slate-500">{investor.email || "—"}</p></td>
                         <td className="px-5 py-4 font-medium text-slate-700">{investor.assignedAdvisorName || "—"}</td>
+                        <td className="px-5 py-4"><StatusBadge value={statusSummaries[investor.id]?.profile?.status || investor.profileStatus || investorProfileCompletion(investor).status} helper={`${statusSummaries[investor.id]?.profile?.percent ?? investor.profileCompletionPercent ?? investorProfileCompletion(investor).percent}%`} /></td>
+                        <td className="px-5 py-4"><StatusBadge value={statusSummaries[investor.id]?.kyc?.status || investor.kycStatus || "Not checked"} /></td>
+                        <td className="px-5 py-4"><StatusBadge value={statusSummaries[investor.id]?.documents?.status || investor.documentStatusSummary?.status || "Not checked"} helper={statusSummaries[investor.id]?.documents ? `${statusSummaries[investor.id].documents.uploadedCount}/${statusSummaries[investor.id].documents.requiredCount} uploaded` : investor.documentStatusSummary ? `${investor.documentStatusSummary.uploadedCount || 0}/${investor.documentStatusSummary.requiredCount || 0} uploaded` : ""} /></td>
                         <td className="px-5 py-4"><RiskBadge profile={investor.riskAssessment?.finalProfile} /></td>
                         <td className="px-5 py-4 text-slate-700">{primaryGoal?.name || "—"}</td>
-                        <td className="px-5 py-4 text-right font-semibold text-slate-950">{formatCurrency(primaryGoal?.targetAmount)}</td>
                         <td className="px-5 py-4">{investor.portalEnabled ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Enabled</span> : <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">Disabled</span>}</td>
                         <td className="px-5 py-4 text-right"><Link href={`/investors/${investor.id}`} aria-label={`Open ${investor.fullName}`} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"><ChevronRight size={17} /></Link></td>
                       </tr>

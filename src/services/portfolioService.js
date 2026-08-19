@@ -10,6 +10,7 @@ import {
   where
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/client";
+import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
 
 function rows(snapshot) {
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
@@ -74,9 +75,7 @@ function subscribeWithIndexFallback(primaryQuery, fallbackQuery, onPrimarySnapsh
 async function authenticatedFetch(url, options = {}) {
   const user = auth.currentUser;
   if (!user) throw new Error("Your session has expired. Sign in again.");
-  const token = await user.getIdToken();
-  const headers = new Headers(options.headers || {});
-  headers.set("Authorization", `Bearer ${token}`);
+  const headers = await authenticatedApiHeaders(options.headers || {}, user);
   const response = await fetch(url, { ...options, headers });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error || "The portfolio request failed.");
@@ -433,6 +432,72 @@ export async function setDailyPortfolioTracking(investorId, enabled) {
   });
 }
 
+
+export async function getPortfolioAdministrationSummary() {
+  return authenticatedFetch("/api/portfolio/administration");
+}
+
 export async function getPortfolioReconciliation() {
   return authenticatedFetch("/api/portfolio/reconciliation");
+}
+
+export async function previewInvestorPortfolioCleanup(investorId, positionIds = [], transactionsMode = "imported") {
+  if (!investorId || !positionIds.length) return { investor: null, preview: null };
+  return authenticatedFetch(`/api/portfolio/investors/${encodeURIComponent(investorId)}/cleanup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "preview", positionIds, transactionsMode })
+  });
+}
+
+export async function deleteInvestorPortfolioHoldings(investorId, payload = {}) {
+  return authenticatedFetch(`/api/portfolio/investors/${encodeURIComponent(investorId)}/cleanup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "delete", ...payload })
+  });
+}
+
+export async function downloadManualPortfolioTemplate() {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Your session has expired. Sign in again.");
+  const headers = await authenticatedApiHeaders({}, user);
+  const response = await fetch("/api/portfolio/manual-template", { headers });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || "Unable to download the Manual Portfolio template.");
+  }
+  return response.blob();
+}
+
+export async function previewManualPortfolioExcel(investorId, file, mode = "merge") {
+  const formData = new FormData();
+  formData.append("action", "preview");
+  formData.append("mode", mode);
+  formData.append("file", file);
+  return authenticatedFetch(`/api/portfolio/investors/${encodeURIComponent(investorId)}/manual-import`, { method: "POST", body: formData });
+}
+
+export async function commitManualPortfolioExcel(investorId, file, mode = "merge") {
+  const formData = new FormData();
+  formData.append("action", "commit");
+  formData.append("mode", mode);
+  formData.append("file", file);
+  return authenticatedFetch(`/api/portfolio/investors/${encodeURIComponent(investorId)}/manual-import`, { method: "POST", body: formData });
+}
+
+export async function previewInvestorTradingCleanup(investorId) {
+  return authenticatedFetch(`/api/portfolio/investors/${encodeURIComponent(investorId)}/cleanup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "preview_trading" })
+  });
+}
+
+export async function deleteInvestorTrading(investorId, reason, confirmation = "", metadata = {}) {
+  return authenticatedFetch(`/api/portfolio/investors/${encodeURIComponent(investorId)}/cleanup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "delete_trading", reason, confirmation, ...metadata })
+  });
 }

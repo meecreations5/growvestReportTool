@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { adminDb, canStaffAccessRecord, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, canStaffAccessRecord, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { createAndUploadReportPdf, publishedSnapshotData } from "@/lib/server/reportServer";
 import { sendReportDelivery } from "@/lib/server/reportDelivery";
 
@@ -170,6 +172,6 @@ export async function POST(request, { params }) {
     return NextResponse.json({ success: true, publishedVersion: nextPublishedVersion, versionId, ...pdf, emailStatus, emailError });
   } catch (error) {
     console.error("Report publication failed", error);
-    return NextResponse.json({ error: error.message || "Unable to publish monthly report." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Unable to publish monthly report." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

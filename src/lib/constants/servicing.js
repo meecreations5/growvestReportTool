@@ -1,11 +1,11 @@
 export const SERVICING_TABS = [
   { key: "overview", label: "Overview" },
-  { key: "master", label: "Client Master" },
-  { key: "queries", label: "Query Log" },
-  { key: "monthly", label: "Monthly Updates" },
-  { key: "quarterly", label: "Quarterly Reviews" },
+  { key: "master", label: "Setup" },
+  { key: "queries", label: "Service Requests" },
+  { key: "monthly", label: "Communication" },
+  { key: "quarterly", label: "Reviews" },
   { key: "renewals", label: "Renewals" },
-  { key: "addendum", label: "Addendum A" },
+  { key: "addendum", label: "Escalations" },
   { key: "checklist", label: "Checklist" }
 ];
 

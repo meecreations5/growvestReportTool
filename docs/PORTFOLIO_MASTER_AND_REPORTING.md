@@ -1,3 +1,5 @@
+> **Current Fundbazaar rule (v0.32.7):** Daily Fundbazaar Portfolio Master updates use **Client Wise Valuation Report.xlsx only**. Portfolio Ledger is retained only as historical documentation/recovery context and is not applicable for new imports. Exact-content duplicates are skipped; newer/different files for the same investor are allowed.
+
 # GrowVest Daily Portfolio Master & Monthly Reporting
 
 ## Scope

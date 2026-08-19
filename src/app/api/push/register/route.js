@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, verifyAppRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, verifyAppRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 
 export const runtime = "nodejs";
 
@@ -58,6 +60,6 @@ export async function POST(request) {
     return Response.json({ ok: true, deviceId });
   } catch (error) {
     console.error("Push registration failed", error);
-    return Response.json({ error: error.message || "Push registration failed." }, { status: 401 });
+    return Response.json({ error: error.message || "Push registration failed." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

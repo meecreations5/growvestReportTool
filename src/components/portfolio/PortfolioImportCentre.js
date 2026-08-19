@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -13,6 +14,7 @@ import {
   Loader2,
   RefreshCcw,
   ShieldCheck,
+  Settings2,
   UploadCloud,
   X
 } from "lucide-react";
@@ -29,7 +31,6 @@ import MetricCard from "@/components/ui/MetricCard";
 import PortfolioImportRecoveryDialog from "@/components/portfolio/PortfolioImportRecoveryDialog";
 import GenericPortfolioMappingDialog from "@/components/portfolio/GenericPortfolioMappingDialog";
 import DailyPortfolioCoveragePanel from "@/components/portfolio/DailyPortfolioCoveragePanel";
-import PortfolioReconciliationPanel from "@/components/portfolio/PortfolioReconciliationPanel";
 import { inputClassName } from "@/components/ui/Field";
 import { formatCurrency } from "@/lib/utils/format";
 import {
@@ -112,7 +113,7 @@ function isIssue(item = {}, mapping = "") {
   return false;
 }
 
-function FileCard({ item, investors, mapping, onMappingChange, onOpenGenericMapping }) {
+function FileCard({ item, investors, mapping, onMappingChange, onOpenGenericMapping, onOpenRecovery }) {
   const requiresChoice = needsInvestorChoice(item);
   const suggestedIds = new Set((item.suggestions || []).map((candidate) => candidate.investorId));
   const orderedInvestors = [
@@ -143,7 +144,7 @@ function FileCard({ item, investors, mapping, onMappingChange, onOpenGenericMapp
           ) : null}
           {item.warnings?.length ? <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800">{item.warnings.slice(0, 2).join(" ")}</div> : null}
           {item.error ? <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-700">{item.error}</p> : null}
-          {item.duplicateOfImportId ? <p className="mt-2 text-xs text-slate-500">Exact duplicate detected. GrowVest will skip this file safely.</p> : null}
+          {item.duplicateOfImportId ? <div className="mt-3 flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs font-semibold text-slate-600">Exact file content was imported earlier. Newer/different files for the same investor are still allowed.</p><button type="button" onClick={() => onOpenRecovery?.(item.duplicateOfImportId)} className="inline-flex min-h-8 items-center gap-1.5 self-start rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100"><History size={13} /> Manage previous import</button></div> : null}
         </div>
 
         {item.summary ? (
@@ -324,9 +325,13 @@ export default function PortfolioImportCentre() {
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-blue-700">Portfolio Management</p>
           <h1 className="mt-1 font-heading text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">Daily Portfolio Update</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">Drop portfolio reports in one place. GrowVest detects the source and report type, applies saved investor mappings, skips exact duplicates and asks you to review only exceptions.</p>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">Drop portfolio reports in one place. GrowVest detects the source and report type, applies saved investor mappings, skips only exact-content duplicates and asks you to review only exceptions. <strong className="text-slate-700">Fundbazaar uses Client Wise Valuation Report.xlsx only; Portfolio Ledger is not applicable.</strong></p>
         </div>
-        <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()}><FileUp size={17} /> Select Portfolio Files</Button>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/portfolio" className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">Portfolio Overview</Link>
+          {profile?.role === "super_admin" || profile?.role === "admin" ? <Link href="/portfolio/administration" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Settings2 size={17} /> Portfolio Administration</Link> : null}
+          <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()}><FileUp size={17} /> Select Portfolio Files</Button>
+        </div>
       </header>
 
       {error ? <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div> : null}
@@ -346,8 +351,6 @@ export default function PortfolioImportCentre() {
 
 
       <DailyPortfolioCoveragePanel currentUser={profile} refreshKey={coverageRefreshKey} />
-
-      <PortfolioReconciliationPanel currentUser={profile} refreshKey={coverageRefreshKey} />
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <MetricCard label="Files" value={preview ? previewFiles.length : files.length} helper="Selected for today's update" icon={FileSpreadsheet} tone="blue" />
@@ -421,6 +424,7 @@ export default function PortfolioImportCentre() {
                   mapping={mappings[item.fileId]}
                   onMappingChange={(fileId, investorId) => setMappings((current) => ({ ...current, [fileId]: investorId }))}
                   onOpenGenericMapping={(fileId) => setGenericMappingFileId(fileId)}
+                  onOpenRecovery={(previousBatchId) => setRecoveryBatchId(previousBatchId)}
                 />
               )) : (
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-center text-sm font-semibold text-emerald-800">No exceptions. All eligible files are ready.</div>
@@ -453,6 +457,7 @@ export default function PortfolioImportCentre() {
         </div>
       </Card>
       {recoveryBatchId ? <PortfolioImportRecoveryDialog batchId={recoveryBatchId} investors={investors} onClose={() => setRecoveryBatchId("")} onCompleted={() => setCoverageRefreshKey((current) => current + 1)} /> : null}
+
       {genericMappingItem ? <GenericPortfolioMappingDialog
         open
         item={genericMappingItem}

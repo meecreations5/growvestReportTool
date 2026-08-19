@@ -7,6 +7,7 @@ import {
   ArrowRight,
   BellRing,
   CalendarClock,
+  CircleDollarSign,
   CheckCircle2,
   ChevronRight,
   FileBarChart2,
@@ -27,6 +28,8 @@ import { getPublishedInvestorReportsOnce } from "@/services/reportService";
 import { compactCurrency } from "@/lib/utils/reportPresentation";
 import InvestorGoalCard from "@/components/investor/InvestorGoalCard";
 import { useInvestorNotifications } from "@/contexts/InvestorNotificationContext";
+import { getSipFundingOverview } from "@/services/sipFundingService";
+import { sipFundingStatusLabel } from "@/lib/constants/sipFunding";
 
 function toDate(value) {
   if (!value) return null;
@@ -59,6 +62,7 @@ export default function InvestorDashboardPage() {
   const [reports, setReports] = useState([]);
   const [nextMeeting, setNextMeeting] = useState(null);
   const [latestMom, setLatestMom] = useState(null);
+  const [sipFunding, setSipFunding] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -72,16 +76,18 @@ export default function InvestorDashboardPage() {
       setError("");
       try {
         const now = Timestamp.now();
-        const [investorSnapshot, reportItems, meetingSnapshot, momSnapshot] = await Promise.all([
+        const [investorSnapshot, reportItems, meetingSnapshot, momSnapshot, sipPayload] = await Promise.all([
           getDoc(doc(db, "investors", profile.investorId)),
           getPublishedInvestorReportsOnce(profile.investorId, 2),
           getDocs(query(collection(db, "meetings"), where("investorId", "==", profile.investorId), where("investorVisible", "==", true), where("startAt", ">=", now), orderBy("startAt", "asc"), limit(1))),
-          getDocs(query(collection(db, "meetingMinutes"), where("investorId", "==", profile.investorId), where("investorVisible", "==", true), orderBy("meetingDate", "desc"), limit(1)))
+          getDocs(query(collection(db, "meetingMinutes"), where("investorId", "==", profile.investorId), where("investorVisible", "==", true), orderBy("meetingDate", "desc"), limit(1))),
+          getSipFundingOverview(profile.investorId)
         ]);
         setInvestor(investorSnapshot.exists() ? { id: investorSnapshot.id, ...investorSnapshot.data() } : null);
         setReports(reportItems || []);
         setNextMeeting(meetingSnapshot.docs[0] ? { id: meetingSnapshot.docs[0].id, ...meetingSnapshot.docs[0].data() } : null);
         setLatestMom(momSnapshot.docs[0] ? { id: momSnapshot.docs[0].id, ...momSnapshot.docs[0].data() } : null);
+        setSipFunding(sipPayload?.items || []);
       } catch (nextError) {
         console.error(nextError);
         setError("Some dashboard information could not be loaded. Pull down or refresh after a moment.");
@@ -107,6 +113,7 @@ export default function InvestorDashboardPage() {
   const advisorEmail = investor?.advisorEmail || investor?.assignedAdvisorEmail || "cwp@growvest.info";
   const advisorPhone = investor?.advisorPhone || investor?.assignedAdvisorPhone || "";
   const advisorWhatsApp = advisorPhone ? `https://wa.me/${String(advisorPhone).replace(/\D/g, "")}` : "";
+  const nextSip = sipFunding[0] || null;
 
   return (
     <div className="grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-5 overflow-x-clip sm:gap-6">
@@ -166,6 +173,7 @@ export default function InvestorDashboardPage() {
             ["Latest report", latestReport ? `/investor/reports/${latestReport.id}` : "/investor/reports", FileBarChart2, "View"],
             ["Bucket List", "/investor/goals", Target, `${activeGoals.length} active`],
             ["Documents", "/investor/documents", Files, "Secure files"],
+            ["SIP reminders", "/investor/sip-reminders", CircleDollarSign, nextSip ? `${nextSip.daysUntilDebit}d to debit` : "Funding checks"],
             ["Notifications", "/investor/notifications", BellRing, unreadCount ? `${unreadCount} new` : "All caught up"]
           ].map(([label, href, Icon, hint]) => (
             <Link key={label} href={href} className="w-[142px] min-w-[142px] max-w-[142px] snap-start rounded-2xl border border-[var(--gv-border)] bg-white p-3.5 shadow-[var(--gv-shadow-card)]">
@@ -176,6 +184,8 @@ export default function InvestorDashboardPage() {
           ))}
         </div>
       </section>
+
+      {nextSip ? <Link href="/investor/sip-reminders" className="flex min-w-0 items-center gap-4 rounded-[var(--gv-radius-lg)] border border-blue-200 bg-blue-50 p-4 shadow-[var(--gv-shadow-card)] sm:p-5"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[var(--gv-blue)] text-white"><CircleDollarSign size={20} /></span><span className="min-w-0 flex-1"><span className="block text-[10px] font-black uppercase tracking-[0.12em] text-blue-700">Upcoming SIP funding</span><span className="mt-1 block truncate text-sm font-bold text-slate-950">{nextSip.instrumentName} · {compactCurrency(nextSip.sipAmount)}</span><span className="mt-1 block text-xs text-slate-600">Debit {displayDate(nextSip.nextDebitDate)} · {sipFundingStatusLabel(nextSip.fundingStatus)}</span></span><ChevronRight className="shrink-0 text-blue-700" size={18} /></Link> : null}
 
       <section className="grid min-w-0 grid-cols-[repeat(2,minmax(0,1fr))] gap-3 sm:grid-cols-[repeat(4,minmax(0,1fr))]">
         {[

@@ -310,10 +310,10 @@ export default function MarketCommentaryEditor({ commentaryId = null }) {
         <div>
           <Link href="/market-commentary" className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-slate-500 hover:text-blue-700"><ArrowLeft size={17} /> Back to Library</Link>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <p className="gv-eyebrow">Market commentary</p>
+            <p className="gv-eyebrow">Monthly market note</p>
             <StatusBadge status={form.status || COMMENTARY_STATUS.DRAFT} />
           </div>
-          <h1 className="gv-page-title mt-2">{workingId ? form.title || "Edit Commentary" : "Create Market Commentary"}</h1>
+          <h1 className="gv-page-title mt-2">{workingId ? form.title || "Edit Commentary" : "Create Monthly Market Note"}</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">Create clear, approved report language while keeping internal review notes separate from Investor-visible content.</p>
         </div>
         <div className="flex flex-wrap gap-2">

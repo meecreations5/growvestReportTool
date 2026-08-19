@@ -1,11 +1,10 @@
 import { auth } from "@/lib/firebase/client";
+import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
 
 async function authenticatedFetch(url, options = {}) {
   const user = auth.currentUser;
   if (!user) throw new Error("Your session has expired. Sign in again.");
-  const token = await user.getIdToken();
-  const headers = new Headers(options.headers || {});
-  headers.set("Authorization", `Bearer ${token}`);
+  const headers = await authenticatedApiHeaders(options.headers || {}, user);
   if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   const response = await fetch(url, { ...options, headers, cache: "no-store" });
   const payload = await response.json().catch(() => ({}));

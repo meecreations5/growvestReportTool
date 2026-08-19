@@ -1,17 +1,11 @@
 import { auth } from "@/lib/firebase/client";
+import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
 
 async function authenticatedFetch(url, options = {}) {
   const user = auth.currentUser;
   if (!user) throw new Error("You must be signed in to manage report delivery.");
-  const token = await user.getIdToken();
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...(options.headers || {})
-    }
-  });
+  const headers = await authenticatedApiHeaders({ "Content-Type": "application/json", ...(options.headers || {}) }, user);
+  const response = await fetch(url, { ...options, headers });
   const result = await response.json().catch(() => ({}));
   if (!response.ok || result.success === false) {
     throw new Error(result.error || "The delivery request could not be completed.");

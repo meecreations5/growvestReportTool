@@ -1,5 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, canStaffAccessRecord, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, canStaffAccessRecord, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { actionActorName, actionCode, actionEventPayload, cleanActionText } from "@/lib/server/actionServer";
 
 export const runtime = "nodejs";
@@ -113,6 +115,6 @@ export async function POST(request) {
     return Response.json({ success: true, synced });
   } catch (error) {
     console.error("MOM action sync failed", error);
-    return Response.json({ error: error?.message || "Unable to sync MOM actions." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to sync MOM actions." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

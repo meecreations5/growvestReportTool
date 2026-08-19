@@ -1,5 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import {
   PORTFOLIO_IMPORT_STATUS,
   PORTFOLIO_MATCH_STATUS,
@@ -200,6 +202,6 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("Fundbazaar preview failed", error);
-    return Response.json({ error: error?.message || "Unable to preview Fundbazaar reports." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to preview Fundbazaar reports." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

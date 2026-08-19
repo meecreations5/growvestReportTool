@@ -1,6 +1,7 @@
 "use client";
 
 import { app, auth } from "@/lib/firebase/client";
+import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
 
 const PUSH_WORKER_SCOPE = "/firebase-cloud-messaging-push-scope/";
 const DEVICE_ID_KEY = "growvest-push-device-id";
@@ -40,15 +41,8 @@ function getDeviceId() {
 async function authorisedFetch(url, options = {}) {
   const user = auth.currentUser;
   if (!user) throw new Error("Sign in before changing push notification settings.");
-  const token = await user.getIdToken();
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...(options.headers || {})
-    }
-  });
+  const headers = await authenticatedApiHeaders({ "Content-Type": "application/json", ...(options.headers || {}) }, user);
+  const response = await fetch(url, { ...options, headers });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error || "Push notification request failed.");
   return payload;

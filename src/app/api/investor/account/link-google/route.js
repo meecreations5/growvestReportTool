@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { adminAuth, adminDb, verifyAppRequest } from "@/lib/server/firebaseAdmin";
+import { adminAuth, adminDb, verifyAppRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 
 export const runtime = "nodejs";
 
@@ -56,6 +58,6 @@ export async function POST(request) {
     return NextResponse.json({ success: true, googleEmail });
   } catch (error) {
     console.error("Google provider link sync failed", error);
-    return NextResponse.json({ error: error.message || "Google account could not be linked." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Google account could not be linked." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

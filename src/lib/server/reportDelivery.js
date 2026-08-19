@@ -14,6 +14,73 @@ function cleanList(value) {
   return [...new Set(rows.map(cleanEmail).filter(Boolean))];
 }
 
+
+function configuredApprovedRecipients() {
+  const emails = cleanList(process.env.REPORT_DELIVERY_ALLOWED_EMAILS || "");
+  const domains = String(process.env.REPORT_DELIVERY_ALLOWED_DOMAINS || "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase().replace(/^@/, ""))
+    .filter(Boolean);
+  return { emails: new Set(emails), domains };
+}
+
+function emailDomain(value = "") {
+  return cleanEmail(value).split("@")[1] || "";
+}
+
+function validEmail(value = "") {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail(value));
+}
+
+async function allowedReportRecipientSet(report = {}, actor = {}) {
+  const allowed = new Set();
+  [report.investorEmail, report.advisorEmail, actor.email, ...(report.approvedRecipientEmails || [])]
+    .map(cleanEmail)
+    .filter(Boolean)
+    .forEach((email) => allowed.add(email));
+
+  const configured = configuredApprovedRecipients();
+  configured.emails.forEach((email) => allowed.add(email));
+
+  const staffSnapshot = await adminDb.collection("users")
+    .where("role", "in", ["super_admin", "admin", "advisor"])
+    .get();
+  staffSnapshot.docs.forEach((item) => {
+    const data = item.data() || {};
+    if (data.status !== "active") return;
+    const email = cleanEmail(data.email || data.authEmail || "");
+    if (email) allowed.add(email);
+  });
+
+  return { allowed, allowedDomains: configured.domains };
+}
+
+async function validateReportRecipients({ report, actor, recipientEmail, cc = [], bcc = [], testMode = false }) {
+  const primary = cleanEmail(recipientEmail);
+  if (!validEmail(primary)) throw new Error(testMode ? "Your staff email address is invalid." : "Investor email address is invalid.");
+
+  if (!testMode) {
+    const investorEmail = cleanEmail(report.investorEmail);
+    if (!investorEmail) throw new Error("Investor email address is missing from the Investor profile/report.");
+    if (primary !== investorEmail) {
+      throw new Error("For investor privacy, Monthly Reports can only be sent to the verified Investor email stored on the report.");
+    }
+  }
+
+  const copies = [...cleanList(cc), ...cleanList(bcc)];
+  if (!copies.length) return;
+  const { allowed, allowedDomains } = await allowedReportRecipientSet(report, actor);
+  const invalid = copies.filter((email) => {
+    if (!validEmail(email)) return true;
+    if (allowed.has(email)) return false;
+    const domain = emailDomain(email);
+    return !allowedDomains.includes(domain);
+  });
+  if (invalid.length) {
+    throw new Error(`CC/BCC contains an unapproved recipient: ${invalid[0]}. Add staff recipients only, or configure an approved email/domain on the server.`);
+  }
+}
+
 function reportPeriod(report) {
   const month = Number(report.reportMonth || 0);
   const year = Number(report.reportYear || 0);
@@ -114,8 +181,10 @@ export async function createScheduledDelivery({ report, actor, payload }) {
   if (report.status !== "completed" || report.investorVisible !== true) {
     throw new Error("Publish the completed report before scheduling delivery.");
   }
-  const recipientEmail = cleanEmail(payload.recipientEmail || report.investorEmail);
-  if (!recipientEmail) throw new Error("Investor email address is required.");
+  const recipientEmail = cleanEmail(report.investorEmail);
+  const cc = cleanList(payload.cc);
+  const bcc = cleanList(payload.bcc);
+  await validateReportRecipients({ report, actor, recipientEmail, cc, bcc, testMode: false });
   const scheduledFor = new Date(payload.scheduledFor);
   if (Number.isNaN(scheduledFor.getTime()) || scheduledFor.getTime() <= Date.now()) {
     throw new Error("Choose a future date and time for scheduled delivery.");
@@ -137,8 +206,8 @@ export async function createScheduledDelivery({ report, actor, payload }) {
     investorName: report.investorName || "",
     clientCode: report.clientCode || "",
     recipientEmail,
-    cc: cleanList(payload.cc),
-    bcc: cleanList(payload.bcc),
+    cc,
+    bcc,
     subject: String(payload.subject || emailTemplate.content?.subject || `Your ${branding.companyName || "GrowVest"} Monthly Wealth Report — ${reportPeriod(report)}`).trim(),
     message: String(payload.message || emailTemplate.content?.body || defaultReportDeliveryMessage(report, branding)).trim(),
     emailTemplateId: emailTemplate.id,
@@ -185,6 +254,15 @@ export async function sendReportDelivery({ report, actor, payload = {}, delivery
     : adminDb.collection("emailDeliveries").doc();
   const snapshot = deliveryId ? await reference.get() : null;
   const existing = snapshot?.exists ? snapshot.data() : {};
+  if (deliveryId) {
+    if (!snapshot?.exists) throw new Error("The selected delivery record was not found.");
+    if (existing.reportId && existing.reportId !== report.id) {
+      throw new Error("The selected delivery record belongs to a different Monthly Report.");
+    }
+    if (actor.role === "advisor" && existing.advisorUid && existing.advisorUid !== actor.uid) {
+      throw new Error("You are not authorised to reuse this delivery record.");
+    }
+  }
   const reportConfig = reportDeliveryConfig(report);
   const emailTemplate = await resolveDeliveryEmailTemplate({ reportConfig, existing, payload });
   const loadedEmailTemplate = emailTemplate;
@@ -192,15 +270,19 @@ export async function sendReportDelivery({ report, actor, payload = {}, delivery
   emailTemplate.signature.source = payload.signatureSource || existing.signatureSource || reportConfig.signatureSource || emailTemplate.signature.source;
   emailTemplate.signature.enabled = reportConfig.includeSignature !== false && emailTemplate.signature.enabled !== false;
   emailTemplate.delivery.includeSecureLink = reportConfig.includeSecureLink !== false && emailTemplate.delivery.includeSecureLink !== false;
-  const recipientEmail = cleanEmail(testMode ? actor.email : (payload.recipientEmail || report.investorEmail));
-  if (!recipientEmail) throw new Error(testMode ? "Your staff email address is missing." : "Investor email address is missing.");
+  const recipientEmail = cleanEmail(testMode ? actor.email : report.investorEmail);
 
   const subject = String(payload.subject || existing.subject || "").trim();
   const message = String(payload.message || existing.message || "").trim();
   const cc = testMode ? [] : cleanList(payload.cc ?? existing.cc);
   const bcc = testMode ? [] : cleanList(payload.bcc ?? existing.bcc);
+  await validateReportRecipients({ report, actor, recipientEmail, cc, bcc, testMode });
   const attachPdf = payload.attachPdf ?? existing.attachPdf ?? reportConfig.attachPdf ?? emailTemplate.delivery.attachPdf ?? true;
-  const viewUrl = `${String(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "")}/investor/reports/${report.id}`;
+  const configuredAppUrl = String(process.env.NEXT_PUBLIC_APP_URL || "").trim();
+  if (process.env.NODE_ENV === "production" && !configuredAppUrl) {
+    throw new Error("NEXT_PUBLIC_APP_URL must be configured before sending production report emails.");
+  }
+  const viewUrl = `${String(configuredAppUrl || "http://localhost:3000").replace(/\/$/, "")}/investor/reports/${report.id}`;
   const advisor = await resolveSignatureProfile(report, actor, emailTemplate.signature.source);
   advisor.companyName = branding.companyName;
   advisor.defaultSenderName = communicationSettings.senderName;

@@ -118,12 +118,12 @@ export default function DataImportCentre() {
       <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-blue-700">Portfolio Management</p>
-          <h1 className="mt-1 font-heading text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">Data Import Centre</h1>
+          <h1 className="mt-1 font-heading text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">Bulk Data Upload</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">Upload monthly CSV or Excel data, map columns, resolve validation issues and use the verified values inside an Investor report.</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button type="button" variant="secondary" onClick={downloadSampleImportCsv}><Download size={17} /> Download Sample</Button>
-          <Button type="button" onClick={() => setWizardOpen(true)}><Plus size={17} /> New Data Import</Button>
+          <Button type="button" onClick={() => setWizardOpen(true)}><Plus size={17} /> New Bulk Upload</Button>
         </div>
       </header>
 
@@ -231,7 +231,7 @@ export default function DataImportCentre() {
       </section>
 
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white p-3 lg:hidden">
-        <Button type="button" className="w-full" size="lg" onClick={() => setWizardOpen(true)}><Plus size={18} /> New Data Import</Button>
+        <Button type="button" className="w-full" size="lg" onClick={() => setWizardOpen(true)}><Plus size={18} /> New Bulk Upload</Button>
       </div>
     </div>
   );

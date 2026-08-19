@@ -507,7 +507,7 @@ export default function InvestorDetailClient({ investorId }) {
     { value: "goals", label: "Goals & Bucket List", icon: Target, count: goals.length },
     { value: "portfolio", label: "Portfolio", icon: WalletCards },
     { value: "reports", label: "Monthly Reports", icon: FileBarChart, count: reports.length },
-    { value: "actions", label: "Actions", icon: ListChecks, count: actions.filter((item) => !ACTION_TERMINAL_STATUSES.includes(item.status)).length },
+    { value: "actions", label: "Advisor Follow-up", icon: ListChecks, count: actions.filter((item) => !ACTION_TERMINAL_STATUSES.includes(item.status)).length },
     { value: "meetings", label: "Meetings & MOM", icon: CalendarDays, count: meetings.length },
     { value: "assessment", label: "Assessment", icon: ClipboardCheck },
     { value: "access", label: "Access & Documents", icon: FolderLock },
@@ -904,9 +904,9 @@ export default function InvestorDetailClient({ investorId }) {
 
       {tab === "actions" ? (
         <Card className="p-5 sm:p-6">
-          <SectionHeader eyebrow="Advisor workflow" title="Investor actions" description="Recommendations, investor requests, decisions and follow-up status for this investor." action={<Link href="/actions" className="inline-flex min-h-10 items-center rounded-lg bg-blue-700 px-4 text-sm font-bold text-white">Open Action Centre</Link>} />
+          <SectionHeader eyebrow="Advisor workflow" title="Advisor Follow-up" description="Investment recommendations, investor decisions and advisory follow-up status for this investor." action={<Link href="/actions" className="inline-flex min-h-10 items-center rounded-lg bg-blue-700 px-4 text-sm font-bold text-white">Open Advisor Follow-up</Link>} />
           <div className="mt-5 grid gap-3">
-            {actions.length ? actions.slice(0, 12).map((item) => <article key={item.id} className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="font-heading text-base font-bold text-slate-950">{item.title || "Investor action"}</h3><ActionStatusBadge status={item.status} /></div><p className="mt-1 text-xs font-semibold text-blue-700">{item.requestType || item.recommendationType || "Portfolio Review"}</p>{item.description ? <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p> : null}</div><div className="shrink-0 text-xs text-slate-500"><p>Priority: <strong className="text-slate-700">{item.priority || "Planned"}</strong></p><p className="mt-1">Decision: <strong className="text-slate-700">{item.investorDecision || "Pending Discussion"}</strong></p></div></div></article>) : <EmptyState title="No investor actions" description="Requests and report recommendations will appear here automatically." />}
+            {actions.length ? actions.slice(0, 12).map((item) => <article key={item.id} className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="font-heading text-base font-bold text-slate-950">{item.title || "Advisor follow-up"}</h3><ActionStatusBadge status={item.status} /></div><p className="mt-1 text-xs font-semibold text-blue-700">{item.requestType || item.recommendationType || "Portfolio Review"}</p>{item.description ? <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p> : null}</div><div className="shrink-0 text-xs text-slate-500"><p>Priority: <strong className="text-slate-700">{item.priority || "Planned"}</strong></p><p className="mt-1">Decision: <strong className="text-slate-700">{item.investorDecision || "Pending Discussion"}</strong></p></div></div></article>) : <EmptyState title="No advisor follow-up" description="Investment requests and report recommendations will appear here automatically." />}
           </div>
         </Card>
       ) : null}

@@ -1,5 +1,5 @@
 import { adminDb } from "@/lib/server/firebaseAdmin";
-import { PORTFOLIO_SOURCES } from "@/lib/constants/portfolio";
+import { PORTFOLIO_REPORT_TYPES, PORTFOLIO_SOURCES } from "@/lib/constants/portfolio";
 import { indiaDateKey } from "@/lib/server/portfolioServer";
 
 function timestampMillis(value) {
@@ -107,6 +107,7 @@ async function dailyFileRecords({ start, end }) {
   [...createdSnapshot.docs, ...importedSnapshot.docs].forEach((item) => {
     const data = { id: item.id, ...item.data() };
     if (data.source !== PORTFOLIO_SOURCES.FUNDBAZAAR) return;
+    if (data.reportType !== PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_CLIENT_VALUATION) return;
     records.set(item.id, data);
   });
   return [...records.values()];
@@ -233,7 +234,7 @@ export async function buildDailyPortfolioCoverage(actor, { dateKey = indiaDateKe
   return {
     dateKey: range.dateKey,
     source: PORTFOLIO_SOURCES.FUNDBAZAAR,
-    primaryReportType: "fundbazaar_portfolio_ledger",
+    primaryReportType: PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_CLIENT_VALUATION,
     expectedCount,
     receivedCount,
     updatedCount,

@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { adminDb, canStaffAccessRecord, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, appRequestErrorStatus, canStaffAccessRecord, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
 import { customOccasionRow, investorBirthdayRow, mergeTouchpoint } from "@/lib/server/occasionEngine";
 import { indiaDateParts, normaliseReminderOffsets, OCCASION_RELATIONSHIPS, OCCASION_TYPES, parseOccasionDate } from "@/lib/utils/occasions";
 
 function errorResponse(error, fallback = "Birthday & occasion request failed.") {
   const message = error?.message || fallback;
-  const status = /authoris|authentication|inactive|session/i.test(message) ? 403 : 400;
-  return NextResponse.json({ error: message }, { status });
+  return NextResponse.json({ error: message }, { status: appRequestErrorStatus(error, 400) });
 }
 
 async function accessibleInvestors(actor) {

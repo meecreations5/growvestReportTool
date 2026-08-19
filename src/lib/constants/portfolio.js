@@ -7,6 +7,26 @@ export const PORTFOLIO_SOURCES = {
   MANUAL: "manual"
 };
 
+export const PORTFOLIO_ADMIN_SCOPES = {
+  FUNDBAZAAR: "fundbazaar",
+  BAJAJ_DELIVERY: "bajaj_delivery",
+  TRADING: "trading",
+  ULIP: "ulip",
+  MANUAL: "manual",
+  GENERIC_OTHER: "generic_other",
+  ENTIRE: "entire"
+};
+
+export const PORTFOLIO_ADMIN_SCOPE_LABELS = {
+  [PORTFOLIO_ADMIN_SCOPES.FUNDBAZAAR]: "Fundbazaar",
+  [PORTFOLIO_ADMIN_SCOPES.BAJAJ_DELIVERY]: "Bajaj Delivery",
+  [PORTFOLIO_ADMIN_SCOPES.TRADING]: "Trading / Intraday",
+  [PORTFOLIO_ADMIN_SCOPES.ULIP]: "ULIP",
+  [PORTFOLIO_ADMIN_SCOPES.MANUAL]: "Manual Portfolio",
+  [PORTFOLIO_ADMIN_SCOPES.GENERIC_OTHER]: "Generic / Other",
+  [PORTFOLIO_ADMIN_SCOPES.ENTIRE]: "Entire Portfolio"
+};
+
 export const PORTFOLIO_SOURCE_LABELS = {
   [PORTFOLIO_SOURCES.MIXED]: "Multiple Sources",
   [PORTFOLIO_SOURCES.FUNDBAZAAR]: "Fundbazaar",
@@ -30,8 +50,8 @@ export const PORTFOLIO_REPORT_TYPES = {
 };
 
 export const PORTFOLIO_REPORT_LABELS = {
-  [PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_CLIENT_VALUATION]: "Client Wise Valuation",
-  [PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_LEDGER]: "Portfolio Ledger",
+  [PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_CLIENT_VALUATION]: "Client Wise Valuation (.xlsx)",
+  [PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_LEDGER]: "Portfolio Ledger · Not Applicable",
   [PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_WEB_WRAPPER]: "Client Wise Valuation · Web Wrapper",
   [PORTFOLIO_REPORT_TYPES.BAJAJ_DELIVERY]: "Delivery Holdings",
   [PORTFOLIO_REPORT_TYPES.BAJAJ_INTRADAY]: "Intraday / Trade Book",
@@ -180,6 +200,24 @@ export const PORTFOLIO_IMPORT_STATUS = {
 
 export const PORTFOLIO_MAX_FILES_PER_BATCH = 100;
 export const PORTFOLIO_MAX_FILE_SIZE = 8 * 1024 * 1024;
+
+export function portfolioAdministrationScope(position = {}) {
+  const source = String(position.source || PORTFOLIO_SOURCES.MANUAL);
+  const productType = String(position.productType || PORTFOLIO_PRODUCT_TYPES.OTHER);
+
+  // Source-owned manual holdings stay in Manual Portfolio even when the
+  // investment type itself is ULIP/Mutual Fund/etc. This keeps cleanup scopes
+  // mutually exclusive and prevents one holding appearing in two delete groups.
+  if (source === PORTFOLIO_SOURCES.MANUAL) return PORTFOLIO_ADMIN_SCOPES.MANUAL;
+  if (source === PORTFOLIO_SOURCES.FUNDBAZAAR) return PORTFOLIO_ADMIN_SCOPES.FUNDBAZAAR;
+  if (source === PORTFOLIO_SOURCES.BAJAJ_BROKING && productType === PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY) {
+    return PORTFOLIO_ADMIN_SCOPES.BAJAJ_DELIVERY;
+  }
+  if (source === PORTFOLIO_SOURCES.ULIP || productType === PORTFOLIO_PRODUCT_TYPES.ULIP) {
+    return PORTFOLIO_ADMIN_SCOPES.ULIP;
+  }
+  return PORTFOLIO_ADMIN_SCOPES.GENERIC_OTHER;
+}
 
 export function portfolioAssetClass(productType, nature = "") {
   const text = String(nature || "").toLowerCase();

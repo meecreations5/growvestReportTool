@@ -132,7 +132,7 @@ export default function MarketCommentaryLibrary() {
       },
       (nextError) => {
         console.error(nextError);
-        setError("Unable to load the Market Commentary Library. Deploy the updated Firestore rules and try again.");
+        setError("Unable to load the Monthly Market Note Library. Deploy the updated Firestore rules and try again.");
         setLoading(false);
       }
     );
@@ -212,7 +212,7 @@ export default function MarketCommentaryLibrary() {
       <header className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <p className="gv-eyebrow">Report content</p>
-          <h1 className="gv-page-title mt-2">Market Commentary Library</h1>
+          <h1 className="gv-page-title mt-2">Monthly Market Note Library</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
             Prepare approved market summaries, risk notes, strategy observations, outlooks and reusable Advisor language for monthly Investor reports.
           </p>
@@ -277,9 +277,9 @@ export default function MarketCommentaryLibrary() {
           <div className="p-6">
             <EmptyState
               icon={BookOpenText}
-              title={items.length ? "No commentary matches the selected filters" : "No market commentary yet"}
+              title={items.length ? "No commentary matches the selected filters" : "No monthly market note yet"}
               description={items.length ? "Clear the search or adjust the category, status and reporting-month filters." : "Create the first monthly market summary or add the approved GrowVest examples."}
-              action={!items.length ? <Button type="button" onClick={() => router.push("/market-commentary/create")}><Plus size={17} /> Create Commentary</Button> : null}
+              action={!items.length ? <Button type="button" onClick={() => router.push("/market-commentary/create")}><Plus size={17} /> Create Monthly Note</Button> : null}
             />
           </div>
         ) : (

@@ -1,5 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { getAccessibleInvestor, indiaDateKey } from "@/lib/server/portfolioServer";
 import { stableHash } from "@/lib/server/portfolioImportParser";
 
@@ -127,6 +129,6 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("Manual intraday trade failed", error);
-    return Response.json({ error: error?.message || "Unable to save intraday trade." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to save intraday trade." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

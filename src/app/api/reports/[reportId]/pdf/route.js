@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminBucket, adminDb, verifyAppRequest } from "@/lib/server/firebaseAdmin";
+import {adminBucket, adminDb, verifyAppRequest, appRequestErrorStatus} from "@/lib/server/firebaseAdmin";
 import { assertReportAccess, loadReportAndVersion } from "@/lib/server/reportServer";
 
 
@@ -59,6 +59,6 @@ export async function GET(request, { params }) {
   } catch (error) {
     console.error("Report PDF download failed", error);
     const message = error.message || "Unable to download report PDF.";
-    return NextResponse.json({ error: message }, { status: message.includes("authorised") ? 403 : 500 });
+    return NextResponse.json({ error: message }, { status: appRequestErrorStatus(error, 500) });
   }
 }

@@ -13,6 +13,7 @@ import {
 import { deleteObject, getBlob, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "@/lib/firebase/client";
 import { notifyInvestorDocumentUploaded } from "@/services/communicationService";
+import { refreshInvestorStatusSummary } from "@/services/investorStatusService";
 
 const ALLOWED_TYPES = ["application/pdf", "image/jpeg", "image/png"];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -119,6 +120,7 @@ export async function requestInvestorDocument(investor, currentUser, { title, do
     });
   }
   await batch.commit();
+  try { await refreshInvestorStatusSummary(investor.id); } catch (error) { console.warn("Investor status summary could not be refreshed", error); }
   return documentRef.id;
 }
 
@@ -128,7 +130,15 @@ export async function uploadInvestorDocument(documentRecord, file, currentUser) 
   if (file.size > MAX_FILE_SIZE) throw new Error("File size must be 10 MB or less.");
   const storagePath = `investor-documents/${documentRecord.investorId}/${documentRecord.id}/${Date.now()}-${safeFileName(file.name)}`;
   const storageRef = ref(storage, storagePath);
-  await uploadBytes(storageRef, file, { contentType: file.type, customMetadata: { investorId: documentRecord.investorId, documentId: documentRecord.id } });
+  await uploadBytes(storageRef, file, {
+    contentType: file.type,
+    customMetadata: {
+      investorId: documentRecord.investorId,
+      documentId: documentRecord.id,
+      uploadedByUid: currentUser.id,
+      uploadedByRole: currentUser.role || "user"
+    }
+  });
 
   const batch = writeBatch(db);
   const documentRef = doc(db, "investorDocuments", documentRecord.id);
@@ -148,6 +158,7 @@ export async function uploadInvestorDocument(documentRecord, file, currentUser) 
     updatedAt: serverTimestamp()
   });
   await batch.commit();
+  try { await refreshInvestorStatusSummary(documentRecord.investorId); } catch (error) { console.warn("Investor status summary could not be refreshed", error); }
   try {
     await notifyInvestorDocumentUploaded(documentRecord.id);
   } catch (error) {
@@ -186,6 +197,7 @@ export async function updateInvestorDocumentStatus(documentRecord, currentUser, 
     });
   }
   await batch.commit();
+  try { await refreshInvestorStatusSummary(documentRecord.investorId); } catch (error) { console.warn("Investor status summary could not be refreshed", error); }
 }
 
 export async function downloadInvestorDocument(documentRecord) {
@@ -211,4 +223,5 @@ export async function deleteInvestorDocumentFile(documentRecord) {
     status: "requested",
     updatedAt: serverTimestamp()
   });
+  try { await refreshInvestorStatusSummary(documentRecord.investorId); } catch (error) { console.warn("Investor status summary could not be refreshed", error); }
 }

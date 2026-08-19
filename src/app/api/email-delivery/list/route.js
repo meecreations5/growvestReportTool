@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { adminDb, canStaffAccessRecord, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, canStaffAccessRecord, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 
 function serialise(value) {
   if (value === null || value === undefined) return value;
@@ -108,6 +110,6 @@ export async function GET(request) {
     });
   } catch (error) {
     console.error("Email delivery list failed", error);
-    return NextResponse.json({ error: error.message || "Unable to load report delivery records." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Unable to load report delivery records." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

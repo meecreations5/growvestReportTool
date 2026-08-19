@@ -1,15 +1,13 @@
 import { auth } from "@/lib/firebase/client";
+import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
 
 export async function updateInvestorKyc(investorId, payload = {}) {
   const user = auth.currentUser;
   if (!user) throw new Error("Your session has expired. Sign in again.");
-  const token = await user.getIdToken();
+  const headers = await authenticatedApiHeaders({ "Content-Type": "application/json" }, user);
   const response = await fetch(`/api/investors/${investorId}/kyc`, {
     method: "PATCH",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
+    headers,
     body: JSON.stringify(payload)
   });
   const result = await response.json().catch(() => ({}));

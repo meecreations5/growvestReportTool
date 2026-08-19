@@ -368,7 +368,7 @@ export default function DataImportWizard({ onClose, onSaved }) {
               <X size={19} />
             </button>
             <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-700">Data Import Centre</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-700">Bulk Data Upload</p>
               <h1 className="truncate font-heading text-xl font-bold text-slate-950 sm:text-2xl">Import monthly portfolio data</h1>
             </div>
           </div>

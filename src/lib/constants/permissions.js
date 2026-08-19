@@ -95,7 +95,7 @@ export const PERMISSION_GROUPS = [
       },
       {
         key: "actions",
-        label: "Investor Actions",
+        label: "Advisor Follow-up",
         description: "Track investor requests, Advisor recommendations, decisions and completion follow-up.",
         access: {
           [USER_ROLES.SUPER_ADMIN]: ACCESS_LEVELS.FULL,
@@ -128,7 +128,7 @@ export const PERMISSION_GROUPS = [
       },
       {
         key: "imports",
-        label: "Data Imports",
+        label: "Bulk Data Upload",
         description: "Upload and validate portfolio files for report preparation.",
         access: {
           [USER_ROLES.SUPER_ADMIN]: ACCESS_LEVELS.FULL,
@@ -139,7 +139,7 @@ export const PERMISSION_GROUPS = [
       },
       {
         key: "commentary",
-        label: "Market Commentary",
+        label: "Monthly Market Note",
         description: "Draft reusable commentary and approve Investor-visible content.",
         access: {
           [USER_ROLES.SUPER_ADMIN]: ACCESS_LEVELS.FULL,
@@ -172,7 +172,7 @@ export const PERMISSION_GROUPS = [
       },
       {
         key: "servicing",
-        label: "Client Servicing",
+        label: "Service Requests",
         description: "Manage client queries, monthly updates, reviews and renewal workflows.",
         access: {
           [USER_ROLES.SUPER_ADMIN]: ACCESS_LEVELS.FULL,

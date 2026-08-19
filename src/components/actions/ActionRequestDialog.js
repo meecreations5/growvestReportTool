@@ -64,7 +64,7 @@ export default function ActionRequestDialog({ open, onClose, onCreated, investor
       onCreated?.(result.action);
       onClose?.();
     } catch (nextError) {
-      setError(nextError.message || "Unable to create the action request.");
+      setError(nextError.message || "Unable to create the Advisor follow-up.");
     } finally {
       setBusy(false);
     }
@@ -77,7 +77,7 @@ export default function ActionRequestDialog({ open, onClose, onCreated, investor
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-700"><MessageSquarePlus size={19} /></span>
-            <div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-700">{staff ? "Advisor workflow" : "Request your Advisor"}</p><h2 className="mt-1 font-heading text-xl font-bold text-slate-950">Create action request</h2><p className="mt-1 text-sm text-slate-500">{investor?.fullName || "Investor"}</p></div>
+            <div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-700">{staff ? "Advisor workflow" : "Request your Advisor"}</p><h2 className="mt-1 font-heading text-xl font-bold text-slate-950">Create Advisor follow-up</h2><p className="mt-1 text-sm text-slate-500">{investor?.fullName || "Investor"}</p></div>
           </div>
           <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-slate-500"><X size={16} /></button>
         </div>
@@ -94,7 +94,7 @@ export default function ActionRequestDialog({ open, onClose, onCreated, investor
           <div className="sm:col-span-2"><Field label={staff ? "Action description" : "What would you like to discuss?"}><textarea rows={4} className={inputClassName} value={form.description || ""} onChange={(event) => set("description", event.target.value)} placeholder="Add the context your Advisor should know." /></Field></div>
         </div>
 
-        <div className="mt-6 flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={submit} disabled={busy}>{busy ? <Loader2 size={16} className="animate-spin" /> : <MessageSquarePlus size={16} />} {staff ? "Create Action" : "Send Request"}</Button></div>
+        <div className="mt-6 flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={submit} disabled={busy}>{busy ? <Loader2 size={16} className="animate-spin" /> : <MessageSquarePlus size={16} />} {staff ? "Create Follow-up" : "Send Request"}</Button></div>
       </section>
     </div>
   );

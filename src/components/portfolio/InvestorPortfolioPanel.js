@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   Activity,
   BadgeIndianRupee,
+  BellRing,
   CandlestickChart,
   ChevronDown,
   CircleAlert,
@@ -15,12 +16,16 @@ import {
   RefreshCcw,
   ShieldCheck,
   Target,
+  Trash2,
+  Settings2,
   TrendingDown,
   TrendingUp,
   WalletCards,
   X
 } from "lucide-react";
 import Button from "@/components/ui/Button";
+import InvestorPortfolioBulkCleanupDialog from "@/components/portfolio/InvestorPortfolioBulkCleanupDialog";
+import SipFundingScheduleDialog from "@/components/sip-funding/SipFundingScheduleDialog";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 import { Field, inputClassName } from "@/components/ui/Field";
@@ -157,7 +162,8 @@ function ReconciliationBadge({ status, portal = false }) {
 function UlipPolicyCard({ policy, funds = [] }) {
   const linkedGoals = [...new Set(funds.flatMap((item) => (item.goalAllocations || []).map((goal) => goal?.goalName).filter(Boolean)))];
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+    <article className={`rounded-xl border bg-white p-4 sm:p-5 ${selected ? "border-red-300 ring-2 ring-red-100" : "border-slate-200"}`}>
+      {selectionMode ? <label className="mb-3 flex cursor-pointer items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700"><input type="checkbox" checked={selected} onChange={() => onToggle?.(position.id)} className="h-4 w-4 accent-red-600" /> Select this investment for cleanup</label> : null}
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -186,7 +192,7 @@ function UlipPolicyCard({ policy, funds = [] }) {
   );
 }
 
-function PositionCard({ position, investor, editable, portal, busyId, onGoalChange, onSell }) {
+function PositionCard({ position, investor, editable, portal, busyId, onGoalChange, onSell, onSipReminder, selectionMode = false, selected = false, onToggle }) {
   const goal = positionGoal(position);
   const positive = Number(position.gainLoss || 0) >= 0;
   const goals = goalRows(investor);
@@ -195,7 +201,8 @@ function PositionCard({ position, investor, editable, portal, busyId, onGoalChan
   const sourceLabel = PORTFOLIO_SOURCE_LABELS[position.source] || position.provider || "GrowVest Portfolio";
 
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+    <article className={`rounded-xl border bg-white p-4 sm:p-5 ${selected ? "border-red-300 ring-2 ring-red-100" : "border-slate-200"}`}>
+      {selectionMode ? <label className="mb-3 flex cursor-pointer items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700"><input type="checkbox" checked={selected} onChange={() => onToggle?.(position.id)} className="h-4 w-4 accent-red-600" /> Select this investment for cleanup</label> : null}
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -278,7 +285,7 @@ function PositionCard({ position, investor, editable, portal, busyId, onGoalChan
               </div>
             </div>
             <p className="text-xs text-slate-500">This assignment is saved on the permanent holding and will carry forward to future portfolio uploads until staff changes it.</p>
-            {position.productType === PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY && Number(position.quantity || 0) > 0 ? <div className="flex justify-end"><Button type="button" variant="secondary" onClick={() => onSell?.(position)}>Record Delivery Sale</Button></div> : null}
+            <div className="flex flex-wrap justify-end gap-2">{position.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND && (Number(position.monthlySip || 0) > 0 || ["SIP", "Both"].includes(position.investmentMode)) ? <Button type="button" variant="secondary" onClick={() => onSipReminder?.(position)}><BellRing size={15} /> SIP Reminder</Button> : null}{position.productType === PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY && Number(position.quantity || 0) > 0 ? <Button type="button" variant="secondary" onClick={() => onSell?.(position)}>Record Delivery Sale</Button> : null}</div>
           </div>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -357,10 +364,15 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
   const [goalFilter, setGoalFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
   const [goalBusyId, setGoalBusyId] = useState("");
   const [addHolding, setAddHolding] = useState(false);
   const [addTrade, setAddTrade] = useState(false);
   const [salePosition, setSalePosition] = useState(null);
+  const [manageMode, setManageMode] = useState(false);
+  const [selectedPositionIds, setSelectedPositionIds] = useState([]);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [sipPosition, setSipPosition] = useState(null);
 
   useEffect(() => subscribeInvestorPortfolio(
     investor?.id,
@@ -424,6 +436,7 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
   }, [positions, ulipPolicies]);
 
   const goals = useMemo(() => goalRows(investor), [investor]);
+  const availableSources = useMemo(() => [...new Set(positions.map((item) => item.source || "manual"))].sort(), [positions]);
   const visible = useMemo(() => positions.filter((item) => {
     const productMatches = filter === "all"
       ? true
@@ -431,11 +444,43 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
         ? ![PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND, PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY, PORTFOLIO_PRODUCT_TYPES.ULIP].includes(item.productType)
         : item.productType === filter;
     if (!productMatches) return false;
+    if (sourceFilter !== "all" && String(item.source || "manual") !== sourceFilter) return false;
     const goal = positionGoal(item);
     if (goalFilter === "all") return true;
     if (goalFilter === "general") return !goal?.goalId;
     return String(goal?.goalId || "") === String(goalFilter);
-  }), [filter, goalFilter, positions]);
+  }), [filter, goalFilter, sourceFilter, positions]);
+
+  const canBulkClean = false;
+  const canAdministerPortfolio = editable && ["super_admin", "admin"].includes(profile?.role);
+  const selectedSet = useMemo(() => new Set(selectedPositionIds.map(String)), [selectedPositionIds]);
+  const selectedPositions = useMemo(() => positions.filter((item) => selectedSet.has(String(item.id))), [positions, selectedSet]);
+  const selectedValue = useMemo(() => selectedPositions.reduce((sum, item) => sum + Number(item.currentValue || 0), 0), [selectedPositions]);
+
+  useEffect(() => {
+    const currentIds = new Set(positions.map((item) => String(item.id)));
+    setSelectedPositionIds((current) => current.filter((id) => currentIds.has(String(id))));
+  }, [positions]);
+
+  function toggleSelection(positionId) {
+    setSelectedPositionIds((current) => current.includes(positionId)
+      ? current.filter((id) => id !== positionId)
+      : [...current, positionId]);
+  }
+
+  function selectVisible() {
+    setSelectedPositionIds((current) => [...new Set([...current, ...visible.map((item) => item.id)])]);
+  }
+
+  function selectAllPortfolio() {
+    setSelectedPositionIds(positions.map((item) => item.id));
+  }
+
+  function exitManageMode() {
+    setManageMode(false);
+    setSelectedPositionIds([]);
+    setCleanupOpen(false);
+  }
 
   const goalHealth = useMemo(() => {
     const allocatedValue = positions.reduce((sum, position) => {
@@ -667,20 +712,51 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
       <Card className="overflow-hidden">
         <div className="flex flex-col justify-between gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-center">
           <div><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">Investment Portfolio</p><h2 className="mt-1 font-heading text-2xl font-bold text-slate-950">Latest holdings</h2><p className="mt-1 text-sm text-slate-500">See investment type, SIP/Lump Sum mode, latest NAV or market rate, source freshness and the Goal / Bucket List linked to each holding.</p></div>
-          {editable ? <Button type="button" onClick={() => setAddHolding((value) => !value)}><Plus size={16} /> Add Holding</Button> : null}
+          {editable ? <div className="flex flex-wrap gap-2">
+            {canAdministerPortfolio ? <Link href={`/investors/${investor.id}/portfolio-admin`} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50"><Settings2 size={16} /> Portfolio Administration</Link> : null}
+            <Button type="button" onClick={() => setAddHolding((value) => !value)}><Plus size={16} /> Add Holding</Button>
+          </div> : null}
         </div>
         <div className="p-5">
-          <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-center">
+          <div className="mb-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px_220px] xl:items-center">
             <div className="flex flex-wrap gap-2">{FILTERS.map(([value, label]) => <button key={value} type="button" onClick={() => setFilter(value)} className={`min-h-9 rounded-full px-3 text-xs font-bold ${filter === value ? "bg-blue-700 text-white" : "border border-slate-200 bg-white text-slate-600"}`}>{label}</button>)}</div>
+            <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} className={inputClassName}>
+              <option value="all">All Sources</option>
+              {availableSources.map((source) => <option key={source} value={source}>{PORTFOLIO_SOURCE_LABELS[source] || source}</option>)}
+            </select>
             <select value={goalFilter} onChange={(event) => setGoalFilter(event.target.value)} className={inputClassName}>
               <option value="all">All Goals / Corpus</option>
               <option value="general">General Wealth / Unassigned</option>
               {goals.map((goal) => <option key={goal.id || goal.goalId} value={goal.id || goal.goalId}>{goal.name || goal.goalName || "Goal"}</option>)}
             </select>
           </div>
-          <div className="grid gap-3">{visible.length ? visible.map((position) => <PositionCard key={position.id} position={position} investor={investor} editable={editable} portal={portal} busyId={goalBusyId} onGoalChange={changeGoal} onSell={setSalePosition} />) : <EmptyState title="No portfolio holdings" description={portal ? "No holdings match this filter. Your verified portfolio appears here after GrowVest updates the Portfolio Master." : "Import portfolio data or add a holding manually."} />}</div>
+
+          {manageMode ? <div className="mb-4 rounded-xl border border-red-200 bg-red-50/50 p-4">
+            <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+              <div><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-red-700">Portfolio cleanup mode</p><p className="mt-1 text-sm font-semibold text-slate-900">{selectedPositionIds.length} selected · {formatCurrency(selectedValue)}</p><p className="mt-1 text-xs text-slate-600">Select individual holdings, all currently filtered holdings, or the entire current portfolio. Published reports and Goals/Bucket Lists are preserved.</p></div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" onClick={selectVisible} disabled={!visible.length}>Select Visible</Button>
+                <Button type="button" variant="secondary" onClick={selectAllPortfolio} disabled={!positions.length}>Select All Portfolio</Button>
+                {selectedPositionIds.length ? <Button type="button" variant="secondary" onClick={() => setSelectedPositionIds([])}>Clear Selection</Button> : null}
+                <Button type="button" variant="danger" onClick={() => setCleanupOpen(true)} disabled={!selectedPositionIds.length}><Trash2 size={16} /> Delete Selected</Button>
+              </div>
+            </div>
+          </div> : null}
+
+          <div className="grid gap-3">{visible.length ? visible.map((position) => <PositionCard key={position.id} position={position} investor={investor} editable={editable} portal={portal} busyId={goalBusyId} onGoalChange={changeGoal} onSell={setSalePosition} onSipReminder={setSipPosition} selectionMode={manageMode} selected={selectedSet.has(String(position.id))} onToggle={toggleSelection} />) : <EmptyState title="No portfolio holdings" description={portal ? "No holdings match this filter. Your verified portfolio appears here after GrowVest updates the Portfolio Master." : "Import portfolio data or add a holding manually."} />}</div>
         </div>
       </Card>
+
+      {sipPosition ? <SipFundingScheduleDialog open={Boolean(sipPosition)} onClose={() => setSipPosition(null)} investor={investor} position={sipPosition} /> : null}
+
+      {cleanupOpen ? <InvestorPortfolioBulkCleanupDialog
+        open={cleanupOpen}
+        onClose={() => setCleanupOpen(false)}
+        onCompleted={() => { setCleanupOpen(false); setManageMode(false); setSelectedPositionIds([]); }}
+        investor={investor}
+        positions={positions}
+        selectedIds={selectedPositionIds}
+      /> : null}
 
       {transactions.length ? <Card className="overflow-hidden">
         <div className="border-b border-slate-200 p-5"><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">Portfolio Activity</p><h2 className="mt-1 font-heading text-xl font-bold text-slate-950">Recent investment changes</h2><p className="mt-1 text-sm text-slate-500">Recent SIP, lump-sum, purchase, redemption and switch activity imported into the Portfolio Master.</p></div>

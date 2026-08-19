@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase/client";
+import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
 import {
   DEFAULT_EMAIL_SIGNATURE,
   EMAIL_SIGNATURE_STATUSES
@@ -249,13 +250,10 @@ export async function restoreSignatureVersion(userId, version, currentUser) {
 export async function sendSignatureTestEmail(userId, useDraft = true) {
   const user = auth.currentUser;
   if (!user) throw new Error("You must be signed in to send a signature test email.");
-  const token = await user.getIdToken();
+  const headers = await authenticatedApiHeaders({ "Content-Type": "application/json" }, user);
   const response = await fetch("/api/communications/signature-test", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`
-    },
+    headers,
     body: JSON.stringify({ userId, useDraft })
   });
   const result = await response.json().catch(() => ({}));

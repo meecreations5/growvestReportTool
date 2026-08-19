@@ -172,7 +172,7 @@ export default function DailyPortfolioCoveragePanel({ currentUser, refreshKey = 
         <div className="mt-5 flex flex-col justify-between gap-3 rounded-xl bg-slate-50 p-3 sm:flex-row sm:items-center">
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Primary daily source</p>
-            <p className="mt-1 text-sm font-semibold text-slate-800">Fundbazaar · Portfolio Ledger</p>
+            <p className="mt-1 text-sm font-semibold text-slate-800">Fundbazaar · Client Wise Valuation Report.xlsx</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {[

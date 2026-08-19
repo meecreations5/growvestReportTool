@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminDb, canStaffAccessRecord, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import {adminDb, canStaffAccessRecord, verifyStaffRequest, appRequestErrorStatus} from "@/lib/server/firebaseAdmin";
 import { getAdvisorEmailProfile, getServerBranding } from "@/lib/server/settingsServer";
 import { generateMomPdf } from "@/lib/server/momPdf";
 
@@ -58,6 +58,6 @@ export async function GET(request, { params }) {
   } catch (error) {
     console.error("MOM PDF download failed", error);
     const message = error.message || "Unable to generate the MOM PDF.";
-    return NextResponse.json({ error: message }, { status: message.includes("authorised") ? 403 : 500 });
+    return NextResponse.json({ error: message }, { status: appRequestErrorStatus(error, 500) });
   }
 }

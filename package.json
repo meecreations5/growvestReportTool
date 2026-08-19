@@ -1,6 +1,6 @@
 {
   "name": "growvest-investor-report-tool",
-  "version": "0.32.5",
+  "version": "0.33.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -8,7 +8,11 @@
     "start": "next start",
     "lint": "eslint .",
     "firebase:deploy": "firebase deploy --only firestore:rules,firestore:indexes,storage,functions",
-    "firebase:deploy:push": "firebase deploy --only functions:sendInvestorPushNotification"
+    "firebase:deploy:push": "firebase deploy --only functions:sendInvestorPushNotification",
+    "qa": "node scripts/qa/release-audit.mjs",
+    "qa:env": "node scripts/qa/environment-preflight.mjs",
+    "qa:env:strict": "node scripts/qa/environment-preflight.mjs --strict",
+    "release:check": "npm run qa && npm run qa:env:strict && npm run lint && npm run build"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.3.0",

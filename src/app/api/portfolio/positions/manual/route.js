@@ -1,5 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import {
   PORTFOLIO_PRODUCT_TYPES,
   PORTFOLIO_SOURCES,
@@ -175,6 +177,6 @@ export async function POST(request) {
     return Response.json({ positionId, snapshot });
   } catch (error) {
     console.error("Manual portfolio position failed", error);
-    return Response.json({ error: error?.message || "Unable to save the investment." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to save the investment." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

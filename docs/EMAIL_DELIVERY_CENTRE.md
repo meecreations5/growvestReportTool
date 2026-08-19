@@ -47,8 +47,8 @@ Add these to the deployed server environment:
 
 ```env
 NEXT_PUBLIC_APP_URL=https://your-growvest-domain.example
-CRON_SECRET=replace-with-a-long-random-secret
-BREVO_WEBHOOK_TOKEN=replace-with-a-different-long-random-secret
+CRON_SECRET=<32-plus-character-random-secret>
+BREVO_WEBHOOK_TOKEN=<different-32-plus-character-random-secret>
 ```
 
 Keep the existing Brevo SMTP and Firebase Admin variables configured. Never expose the webhook or cron secrets through `NEXT_PUBLIC_` variables.

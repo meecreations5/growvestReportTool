@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { createScheduledDelivery, loadDeliveryReport } from "@/lib/server/reportDelivery";
 
 export async function POST(request) {
@@ -12,6 +14,6 @@ export async function POST(request) {
     return NextResponse.json({ success: true, delivery: { ...result, scheduledFor: result.scheduledFor.toISOString() } });
   } catch (error) {
     console.error("Report scheduling failed", error);
-    return NextResponse.json({ error: error.message || "Unable to schedule the report email." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Unable to schedule the report email." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

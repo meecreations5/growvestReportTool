@@ -70,10 +70,13 @@ service cloud.firestore {
     }
 
     function ownsAdvisorRecord(data) {
+      // Collection/list queries must be provable from fields constrained by the
+      // query itself. Persisted Advisor ownership fields remain the read authority
+      // so existing advisorUid/assignedAdvisorUid queries stay rule-compatible.
+      // Historical createdByUid is intentionally NOT a read authority.
       return isAdvisor() && (
-        data.assignedAdvisorUid == request.auth.uid
-        || data.advisorUid == request.auth.uid
-        || data.createdByUid == request.auth.uid
+        data.get('assignedAdvisorUid', null) == request.auth.uid
+        || data.get('advisorUid', null) == request.auth.uid
       );
     }
 
@@ -86,6 +89,80 @@ service cloud.firestore {
           && data.investorId == userDoc().data.investorId
         )
       );
+    }
+
+    function preservesAdvisorScope() {
+      return request.resource.data.get('advisorUid', null) == resource.data.get('advisorUid', null)
+        && request.resource.data.get('assignedAdvisorUid', null) == resource.data.get('assignedAdvisorUid', null)
+        && request.resource.data.get('investorId', null) == resource.data.get('investorId', null)
+        && request.resource.data.get('leadId', null) == resource.data.get('leadId', null)
+        && request.resource.data.get('createdByUid', null) == resource.data.get('createdByUid', null);
+    }
+
+    function advisorOwnsInvestorAfter(investorId) {
+      // getAfter() also recognises a linked Investor created in the same atomic
+      // transaction/batch, while still returning current data for normal writes.
+      return isAdvisor()
+        && investorId is string
+        && (
+          getAfter(/databases/$(database)/documents/investors/$(investorId)).data.assignedAdvisorUid == request.auth.uid
+          || getAfter(/databases/$(database)/documents/investors/$(investorId)).data.advisorUid == request.auth.uid
+        );
+    }
+
+    function advisorOwnsLeadAfter(leadId) {
+      // Lead creation and its audit record can be committed in one batch.
+      return isAdvisor()
+        && leadId is string
+        && getAfter(/databases/$(database)/documents/leads/$(leadId)).data.assignedAdvisorUid == request.auth.uid;
+    }
+
+    function advisorCanReferenceScope(data) {
+      return isAdvisor()
+        && (
+          data.get('investorId', '') == ''
+          || advisorOwnsInvestorAfter(data.get('investorId', ''))
+        )
+        && (
+          data.get('leadId', '') == ''
+          || advisorOwnsLeadAfter(data.get('leadId', ''))
+        );
+    }
+
+    function isActiveStaffUid(uid) {
+      return uid is string
+        && exists(/databases/$(database)/documents/users/$(uid))
+        && get(/databases/$(database)/documents/users/$(uid)).data.status == 'active'
+        && get(/databases/$(database)/documents/users/$(uid)).data.role in ['super_admin', 'admin', 'advisor'];
+    }
+
+    function advisorCanCreateNotification(data) {
+      return isAdvisor()
+        && data.createdByUid == request.auth.uid
+        && (
+          data.recipientUid == request.auth.uid
+          || isActiveStaffUid(data.recipientUid)
+          || (
+            advisorOwnsInvestorAfter(data.investorId)
+            && (
+              data.recipientUid == get(/databases/$(database)/documents/investors/$(data.investorId)).data.portalUid
+              || data.recipientUid == get(/databases/$(database)/documents/investors/$(data.investorId)).data.investorPortalUid
+            )
+          )
+        );
+    }
+
+    function preservesInvestorSecurityFields() {
+      return request.resource.data.get('clientCode', null) == resource.data.get('clientCode', null)
+        && request.resource.data.get('createdByUid', null) == resource.data.get('createdByUid', null)
+        && request.resource.data.get('portalUid', null) == resource.data.get('portalUid', null)
+        && request.resource.data.get('investorPortalUid', null) == resource.data.get('investorPortalUid', null)
+        && request.resource.data.get('portalEnabled', false) == resource.data.get('portalEnabled', false)
+        && request.resource.data.get('panNumber', '') == resource.data.get('panNumber', '')
+        && request.resource.data.get('panNormalized', '') == resource.data.get('panNormalized', '')
+        && request.resource.data.get('aadhaarConfigured', false) == resource.data.get('aadhaarConfigured', false)
+        && request.resource.data.get('aadhaarLast4', '') == resource.data.get('aadhaarLast4', '')
+        && request.resource.data.get('isDeleted', false) == resource.data.get('isDeleted', false);
     }
 
     match /users/{uid} {
@@ -197,14 +274,16 @@ service cloud.firestore {
     match /leads/{leadId} {
       allow create: if isStaff()
         && request.resource.data.createdByUid == request.auth.uid
-        && (isAdmin() || request.resource.data.assignedAdvisorUid == request.auth.uid);
+        && (isAdmin() || (
+          request.resource.data.assignedAdvisorUid == request.auth.uid
+          && advisorCanReferenceScope(request.resource.data)
+        ));
 
       allow read: if isAdmin() || ownsAdvisorRecord(resource.data);
 
       allow update: if isAdmin() || (
         ownsAdvisorRecord(resource.data)
-        && request.resource.data.get('assignedAdvisorUid', null) == resource.data.get('assignedAdvisorUid', null)
-        && request.resource.data.get('createdByUid', null) == resource.data.get('createdByUid', null)
+        && preservesAdvisorScope()
       );
 
       allow delete: if isSuperAdmin();
@@ -213,16 +292,23 @@ service cloud.firestore {
     match /leadFollowUps/{followUpId} {
       allow create: if isStaff()
         && request.resource.data.createdByUid == request.auth.uid
-        && (isAdmin() || request.resource.data.assignedAdvisorUid == request.auth.uid);
+        && (isAdmin() || (
+          request.resource.data.assignedAdvisorUid == request.auth.uid
+          && advisorCanReferenceScope(request.resource.data)
+        ));
 
-      allow read, update: if isAdmin() || ownsAdvisorRecord(resource.data);
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data);
+      allow update: if isAdmin() || (ownsAdvisorRecord(resource.data) && preservesAdvisorScope());
       allow delete: if isSuperAdmin();
     }
 
     match /activityLogs/{activityId} {
       allow create: if isStaff()
         && request.resource.data.createdByUid == request.auth.uid
-        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
+        && (isAdmin() || (
+          request.resource.data.advisorUid == request.auth.uid
+          && advisorCanReferenceScope(request.resource.data)
+        ));
 
       allow read: if isAdmin() || ownsAdvisorRecord(resource.data);
       allow update, delete: if isSuperAdmin();
@@ -232,12 +318,15 @@ service cloud.firestore {
     match /clientAssessments/{assessmentId} {
       allow create: if isStaff()
         && request.resource.data.createdByUid == request.auth.uid
-        && (isAdmin() || request.resource.data.assignedAdvisorUid == request.auth.uid);
+        && (isAdmin() || (
+          request.resource.data.assignedAdvisorUid == request.auth.uid
+          && advisorCanReferenceScope(request.resource.data)
+        ));
 
       allow read: if isAdmin() || ownsAdvisorRecord(resource.data);
       allow update: if isAdmin() || (
         ownsAdvisorRecord(resource.data)
-        && request.resource.data.get('assignedAdvisorUid', null) == resource.data.get('assignedAdvisorUid', null)
+        && preservesAdvisorScope()
         && request.resource.data.get('leadId', null) == resource.data.get('leadId', null)
       );
       allow delete: if isSuperAdmin();
@@ -246,7 +335,10 @@ service cloud.firestore {
     match /assessmentVersions/{versionId} {
       allow create: if isStaff()
         && request.resource.data.savedByUid == request.auth.uid
-        && (isAdmin() || request.resource.data.assignedAdvisorUid == request.auth.uid);
+        && (isAdmin() || (
+          request.resource.data.assignedAdvisorUid == request.auth.uid
+          && advisorCanReferenceScope(request.resource.data)
+        ));
 
       allow read: if isAdmin() || ownsAdvisorRecord(resource.data);
       allow update, delete: if isSuperAdmin();
@@ -254,7 +346,12 @@ service cloud.firestore {
 
     match /investors/{investorId} {
       allow create: if isStaff()
-        && request.resource.data.createdByUid == request.auth.uid;
+        && request.resource.data.createdByUid == request.auth.uid
+        && (
+          isAdmin()
+          || request.resource.data.get('assignedAdvisorUid', null) == request.auth.uid
+          || request.resource.data.get('advisorUid', null) == request.auth.uid
+        );
 
       allow read: if isAdmin()
         || ownsAdvisorRecord(resource.data)
@@ -268,8 +365,8 @@ service cloud.firestore {
 
       allow update: if isAdmin() || (
         ownsAdvisorRecord(resource.data)
-        && request.resource.data.get('assignedAdvisorUid', null) == resource.data.get('assignedAdvisorUid', null)
-        && request.resource.data.get('advisorUid', null) == resource.data.get('advisorUid', null)
+        && preservesAdvisorScope()
+        && preservesInvestorSecurityFields()
       );
       allow delete: if isSuperAdmin();
     }
@@ -279,7 +376,10 @@ service cloud.firestore {
     match /meetings/{meetingId} {
       allow create: if isStaff()
         && request.resource.data.createdByUid == request.auth.uid
-        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
+        && (isAdmin() || (
+          request.resource.data.advisorUid == request.auth.uid
+          && advisorCanReferenceScope(request.resource.data)
+        ));
 
       allow read: if isAdmin()
         || ownsAdvisorRecord(resource.data)
@@ -290,8 +390,7 @@ service cloud.firestore {
 
       allow update: if isAdmin() || (
         ownsAdvisorRecord(resource.data)
-        && request.resource.data.get('advisorUid', null) == resource.data.get('advisorUid', null)
-        && request.resource.data.get('createdByUid', null) == resource.data.get('createdByUid', null)
+        && preservesAdvisorScope()
       );
 
       allow delete: if isSuperAdmin();
@@ -300,24 +399,27 @@ service cloud.firestore {
     match /followUps/{followUpId} {
       allow create: if isStaff()
         && request.resource.data.createdByUid == request.auth.uid
-        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
-      allow read, update: if isAdmin() || ownsAdvisorRecord(resource.data);
+        && (isAdmin() || (
+          request.resource.data.advisorUid == request.auth.uid
+          && advisorCanReferenceScope(request.resource.data)
+        ));
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data);
+      allow update: if isAdmin() || (ownsAdvisorRecord(resource.data) && preservesAdvisorScope());
       allow delete: if isSuperAdmin();
     }
 
     match /notifications/{notificationId} {
-      allow create: if isStaff()
-        && request.resource.data.createdByUid == request.auth.uid;
-      allow read: if activeUser()
-        && (
-          resource.data.recipientUid == request.auth.uid
-          || (isInvestor() && resource.data.investorId == userDoc().data.investorId)
-        );
+      // Admins may create operational notifications. Advisors can notify
+      // themselves, active staff, or the portal account of an Investor they
+      // currently service. This prevents arbitrary cross-Investor messaging.
+      allow create: if (isAdmin() && request.resource.data.createdByUid == request.auth.uid)
+        || advisorCanCreateNotification(request.resource.data);
+
+      // Notifications are private to the explicit recipient UID. InvestorId is
+      // context/metadata only and must never be an alternative read authority.
+      allow read: if activeUser() && resource.data.recipientUid == request.auth.uid;
       allow update: if activeUser()
-        && (
-          resource.data.recipientUid == request.auth.uid
-          || (isInvestor() && resource.data.investorId == userDoc().data.investorId)
-        )
+        && resource.data.recipientUid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['status', 'readAt']);
       allow delete: if isSuperAdmin();
@@ -345,7 +447,11 @@ service cloud.firestore {
 
     match /meetingMinutes/{momId} {
       allow create: if isStaff()
-        && request.resource.data.createdByUid == request.auth.uid;
+        && request.resource.data.createdByUid == request.auth.uid
+        && (isAdmin() || (
+          request.resource.data.advisorUid == request.auth.uid
+          && advisorCanReferenceScope(request.resource.data)
+        ));
 
       allow read: if isAdmin()
         || ownsAdvisorRecord(resource.data)
@@ -386,7 +492,11 @@ service cloud.firestore {
 
     match /monthlyReports/{reportId} {
       allow create: if isStaff()
-        && request.resource.data.createdByUid == request.auth.uid;
+        && request.resource.data.createdByUid == request.auth.uid
+        && (isAdmin() || (
+          request.resource.data.advisorUid == request.auth.uid
+          && advisorCanReferenceScope(request.resource.data)
+        ));
 
       allow read: if isAdmin()
         || ownsAdvisorRecord(resource.data)
@@ -398,11 +508,8 @@ service cloud.firestore {
 
       allow update: if isAdmin() || (
         ownsAdvisorRecord(resource.data)
-        && request.resource.data.get('advisorUid', null) == resource.data.get('advisorUid', null)
-        && request.resource.data.get('assignedAdvisorUid', null) == resource.data.get('assignedAdvisorUid', null)
-        && request.resource.data.get('investorId', null) == resource.data.get('investorId', null)
+        && preservesAdvisorScope()
         && request.resource.data.get('investorPortalUid', null) == resource.data.get('investorPortalUid', null)
-        && request.resource.data.get('createdByUid', null) == resource.data.get('createdByUid', null)
         && request.resource.data.get('reportCode', null) == resource.data.get('reportCode', null)
       );
       allow delete: if isSuperAdmin();
@@ -445,12 +552,22 @@ service cloud.firestore {
     match /investorDocuments/{documentId} {
       allow create: if isStaff()
         && request.resource.data.requestedByUid == request.auth.uid
-        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
+        && (isAdmin() || (
+          request.resource.data.advisorUid == request.auth.uid
+          && advisorCanReferenceScope(request.resource.data)
+        ));
       allow read: if isAdmin()
         || (isAdvisor() && resource.data.advisorUid == request.auth.uid)
         || (isInvestor() && resource.data.investorId == userDoc().data.investorId && resource.data.investorVisible == true);
       allow update: if isAdmin()
-        || (isAdvisor() && resource.data.advisorUid == request.auth.uid)
+        || (
+          isAdvisor()
+          && resource.data.advisorUid == request.auth.uid
+          && request.resource.data.get('investorId', null) == resource.data.get('investorId', null)
+          && request.resource.data.get('advisorUid', null) == resource.data.get('advisorUid', null)
+          && request.resource.data.get('requestedByUid', null) == resource.data.get('requestedByUid', null)
+          && request.resource.data.get('investorUid', null) == resource.data.get('investorUid', null)
+        )
         || (
           isInvestor()
           && resource.data.investorId == userDoc().data.investorId
@@ -458,60 +575,70 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'storagePath', 'fileName', 'mimeType', 'sizeBytes', 'status',
             'uploadedByUid', 'uploadedByRole', 'uploadedByName', 'uploadedAt',
-            'updatedAt'
+            'verificationNote', 'verifiedAt', 'verifiedByUid', 'updatedAt'
           ])
           && request.resource.data.status == 'uploaded'
           && request.resource.data.uploadedByUid == request.auth.uid
+          && request.resource.data.uploadedByRole == 'investor'
+          && request.resource.data.storagePath is string
+          && request.resource.data.storagePath.matches('^investor-documents/' + resource.data.investorId + '/' + documentId + '/[^/]+$')
         );
       allow delete: if isSuperAdmin();
     }
 
     match /clientServicingMaster/{documentId} {
       allow create: if isStaff() && request.resource.data.createdByUid == request.auth.uid
-        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
-      allow read, update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+        && (isAdmin() || (request.resource.data.advisorUid == request.auth.uid && advisorCanReferenceScope(request.resource.data)));
+      allow read: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid && preservesAdvisorScope());
       allow delete: if isSuperAdmin();
     }
 
     match /clientQueries/{documentId} {
       allow create: if isStaff() && request.resource.data.createdByUid == request.auth.uid
-        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
-      allow read, update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+        && (isAdmin() || (request.resource.data.advisorUid == request.auth.uid && advisorCanReferenceScope(request.resource.data)));
+      allow read: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid && preservesAdvisorScope());
       allow delete: if isSuperAdmin();
     }
 
     match /monthlyUpdateLogs/{documentId} {
       allow create: if isStaff() && request.resource.data.createdByUid == request.auth.uid
-        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
-      allow read, update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+        && (isAdmin() || (request.resource.data.advisorUid == request.auth.uid && advisorCanReferenceScope(request.resource.data)));
+      allow read: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid && preservesAdvisorScope());
       allow delete: if isSuperAdmin();
     }
 
     match /quarterlyReviewLogs/{documentId} {
       allow create: if isStaff() && request.resource.data.createdByUid == request.auth.uid
-        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
-      allow read, update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+        && (isAdmin() || (request.resource.data.advisorUid == request.auth.uid && advisorCanReferenceScope(request.resource.data)));
+      allow read: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid && preservesAdvisorScope());
       allow delete: if isSuperAdmin();
     }
 
     match /renewalTrackers/{documentId} {
       allow create: if isStaff() && request.resource.data.createdByUid == request.auth.uid
-        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
-      allow read, update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+        && (isAdmin() || (request.resource.data.advisorUid == request.auth.uid && advisorCanReferenceScope(request.resource.data)));
+      allow read: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid && preservesAdvisorScope());
       allow delete: if isSuperAdmin();
     }
 
     match /deadlineMissLogs/{documentId} {
       allow create: if isStaff() && request.resource.data.createdByUid == request.auth.uid
-        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
-      allow read, update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+        && (isAdmin() || (request.resource.data.advisorUid == request.auth.uid && advisorCanReferenceScope(request.resource.data)));
+      allow read: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid && preservesAdvisorScope());
       allow delete: if isSuperAdmin();
     }
 
     match /servicingChecklists/{documentId} {
       allow create: if isStaff() && request.resource.data.createdByUid == request.auth.uid
-        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
-      allow read, update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+        && (isAdmin() || (request.resource.data.advisorUid == request.auth.uid && advisorCanReferenceScope(request.resource.data)));
+      allow read: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
+      allow update: if isAdmin() || (isAdvisor() && resource.data.advisorUid == request.auth.uid && preservesAdvisorScope());
       allow delete: if isSuperAdmin();
     }
 
@@ -522,6 +649,17 @@ service cloud.firestore {
     }
 
     match /occasionTouchpoints/{touchpointId} {
+      allow read, create, update, delete: if false;
+    }
+
+    // SIP funding schedules/cycles are server-managed. Investor and staff UI
+    // access them through authenticated API routes so routing/audit fields cannot
+    // be forged directly from the browser.
+    match /sipFundingSchedules/{scheduleId} {
+      allow read, create, update, delete: if false;
+    }
+
+    match /sipFundingCycles/{cycleId} {
       allow read, create, update, delete: if false;
     }
 
@@ -605,7 +743,10 @@ service cloud.firestore {
     match /dataImports/{importId} {
       allow create: if isStaff()
         && request.resource.data.createdByUid == request.auth.uid
-        && (isAdmin() || request.resource.data.advisorUid == request.auth.uid);
+        && (isAdmin() || (
+          request.resource.data.advisorUid == request.auth.uid
+          && advisorCanReferenceScope(request.resource.data)
+        ));
 
       allow read: if isAdmin()
         || (isAdvisor() && resource.data.advisorUid == request.auth.uid);
@@ -699,9 +840,16 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
-    match /publicSettings/{documentId} {
+    // Only the branding document is intentionally public. Keep all future
+    // publicSettings documents private-by-default so configuration cannot be
+    // accidentally exposed simply by adding a new document to this collection.
+    match /publicSettings/branding {
       allow read: if true;
       allow create, update, delete: if isAdmin();
+    }
+
+    match /publicSettings/{documentId} {
+      allow read, create, update, delete: if false;
     }
 
     match /investorPortalAccounts/{documentId} {

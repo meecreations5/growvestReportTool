@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { fetchSafeRemoteImage } from "@/lib/server/safeRemoteAsset";
 import {
   drawPdfDocumentChrome,
   pdfHexColor,
@@ -22,15 +23,12 @@ const AMBER = rgb(0.76, 0.43, 0.04);
 async function embedRemoteImage(doc, url) {
   if (!url) return null;
   try {
-    const response = await fetch(url);
-    if (!response.ok) return null;
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    const contentType = response.headers.get("content-type") || "";
-    if (contentType.includes("png") || /\.png(?:\?|$)/i.test(String(url))) return doc.embedPng(bytes);
-    if (contentType.includes("jpeg") || contentType.includes("jpg") || /\.jpe?g(?:\?|$)/i.test(String(url))) return doc.embedJpg(bytes);
+    const { bytes, contentType } = await fetchSafeRemoteImage(url);
+    if (contentType === "image/png") return await doc.embedPng(bytes);
+    if (contentType === "image/jpeg") return await doc.embedJpg(bytes);
     return null;
   } catch (error) {
-    console.warn("Unable to embed MOM branding image", error);
+    console.warn("Remote branding image was blocked or could not be embedded", error?.message || error);
     return null;
   }
 }

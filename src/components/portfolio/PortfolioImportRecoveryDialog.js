@@ -9,7 +9,7 @@ import { formatCurrency } from "@/lib/utils/format";
 
 function reportTypeLabel(value = "") {
   const labels = {
-    fundbazaar_portfolio_ledger: "Portfolio Ledger",
+    fundbazaar_portfolio_ledger: "Portfolio Ledger · Not Applicable",
     fundbazaar_client_valuation: "Client Wise Valuation",
     bajaj_delivery: "Bajaj Delivery Holdings",
     bajaj_intraday: "Bajaj Intraday / Trade Book",
@@ -82,7 +82,7 @@ export default function PortfolioImportRecoveryDialog({ batchId, investors = [],
           ? `Import corrected and applied to ${selectedInvestor?.fullName || "the selected investor"}.`
           : "Import rolled back and reprocessed successfully.");
       } else {
-        setNotice("Import rollback completed successfully.");
+        setNotice(recovery.status === "legacy_cleaned" ? "Legacy wrong import cleaned successfully. You can now upload the correct Client Wise Valuation Report.xlsx." : "Import rollback completed successfully.");
       }
       setSelectedFile(null);
       setAction("");
@@ -134,12 +134,17 @@ export default function PortfolioImportRecoveryDialog({ batchId, investors = [],
                     </div>
                     {file.recovery?.reversible ? (
                       <div className="flex flex-wrap gap-2">
-                        <Button type="button" variant="secondary" onClick={() => begin(file, "reprocess")}><RefreshCcw size={15} /> Reprocess</Button>
-                        <Button type="button" variant="secondary" onClick={() => begin(file, "correct_investor")}><UserRoundCog size={15} /> Correct investor</Button>
-                        <Button type="button" variant="secondary" onClick={() => begin(file, "rollback")}><RotateCcw size={15} /> Rollback</Button>
+                        {file.reportType !== "fundbazaar_portfolio_ledger" ? <Button type="button" variant="secondary" onClick={() => begin(file, "reprocess")}><RefreshCcw size={15} /> Reprocess</Button> : null}
+                        {file.reportType !== "fundbazaar_portfolio_ledger" ? <Button type="button" variant="secondary" onClick={() => begin(file, "correct_investor")}><UserRoundCog size={15} /> Correct investor</Button> : null}
+                        <Button type="button" variant="secondary" onClick={() => begin(file, "rollback")}><RotateCcw size={15} /> {file.reportType === "fundbazaar_portfolio_ledger" ? "Remove Ledger Import" : "Rollback"}</Button>
+                      </div>
+                    ) : file.recovery?.legacyCleanupAvailable ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700"><History size={13} /> Legacy import</span>
+                        <Button type="button" variant="secondary" onClick={() => begin(file, "clean_legacy")}><RotateCcw size={15} /> Clean wrong import</Button>
                       </div>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600"><History size={13} /> {file.recovery?.status === "legacy" ? "Legacy import · journal unavailable" : `Recovery ${file.recovery?.status || "unavailable"}`}</span>
+                      <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600"><History size={13} /> {file.recovery?.status === "legacy" ? "Legacy import · cleanup unavailable" : `Recovery ${file.recovery?.status || "unavailable"}`}</span>
                     )}
                   </div>
                 </div>
@@ -149,9 +154,9 @@ export default function PortfolioImportRecoveryDialog({ batchId, investors = [],
                 <div className="rounded-xl border-2 border-blue-200 bg-blue-50/40 p-4 sm:p-5">
                   <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Confirm correction</p>
                   <h3 className="mt-1 font-heading text-xl font-bold text-slate-950">
-                    {action === "rollback" ? "Rollback this import" : action === "correct_investor" ? "Move this import to the correct investor" : "Rollback and reprocess this import"}
+                    {action === "rollback" ? "Rollback this import" : action === "clean_legacy" ? "Clean this legacy wrong import" : action === "correct_investor" ? "Move this import to the correct investor" : "Rollback and reprocess this import"}
                   </h3>
-                  <p className="mt-2 text-sm text-slate-600">Affected journal: {selectedFile.recovery?.positionCount || 0} holding record(s){selectedFile.recovery?.policyCount ? `, ${selectedFile.recovery.policyCount} policy record(s)` : ""} and {selectedFile.recovery?.transactionCount || 0} transaction record(s). Published monthly reports are not edited by this recovery.</p>
+                  <p className="mt-2 text-sm text-slate-600">{action === "clean_legacy" ? "Legacy cleanup removes only records that still point to this old import, releases its exact-file duplicate lock, removes its stale external mapping when safe, and rebuilds the current portfolio snapshot. Published monthly reports are not edited." : <>Affected journal: {selectedFile.recovery?.positionCount || 0} holding record(s){selectedFile.recovery?.policyCount ? `, ${selectedFile.recovery.policyCount} policy record(s)` : ""} and {selectedFile.recovery?.transactionCount || 0} transaction record(s). Published monthly reports are not edited by this recovery.</>}</p>
 
                   {action === "correct_investor" ? (
                     <div className="mt-4">
@@ -170,7 +175,7 @@ export default function PortfolioImportRecoveryDialog({ batchId, investors = [],
 
                   <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                     <Button type="button" variant="secondary" disabled={busy} onClick={() => { setSelectedFile(null); setAction(""); setReason(""); setTargetInvestorId(""); }}>Cancel</Button>
-                    <Button type="button" disabled={busy} onClick={confirm}>{busy ? <Loader2 className="animate-spin" size={16} /> : action === "rollback" ? <RotateCcw size={16} /> : <RefreshCcw size={16} />} Confirm {action === "rollback" ? "Rollback" : action === "correct_investor" ? "Correction" : "Reprocess"}</Button>
+                    <Button type="button" disabled={busy} onClick={confirm}>{busy ? <Loader2 className="animate-spin" size={16} /> : ["rollback", "clean_legacy"].includes(action) ? <RotateCcw size={16} /> : <RefreshCcw size={16} />} Confirm {action === "rollback" ? "Rollback" : action === "clean_legacy" ? "Cleanup" : action === "correct_investor" ? "Correction" : "Reprocess"}</Button>
                   </div>
                 </div>
               ) : null}

@@ -60,19 +60,9 @@ export function subscribeNotifications(profileOrUid, callback, onError) {
   const profile = typeof profileOrUid === "string" ? { id: profileOrUid } : profileOrUid;
   if (!profile?.id) return () => {};
 
-  if (profile.role === "investor" && profile.investorId) {
-    return onSnapshot(
-      query(
-        collection(db, "notifications"),
-        where("investorId", "==", profile.investorId),
-        orderBy("createdAt", "desc"),
-        limit(50)
-      ),
-      (snapshot) => callback(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))),
-      onError
-    );
-  }
-
+  // Notifications are always addressed to an explicit Firebase UID. Do not
+  // query by investorId: internal Advisor notifications may carry investorId as
+  // context and must never become visible to the Investor Portal.
   return onSnapshot(
     query(collection(db, "notifications"), where("recipientUid", "==", profile.id), orderBy("createdAt", "desc"), limit(50)),
     (snapshot) => callback(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))),

@@ -13,6 +13,7 @@ import {
 } from "firebase/auth";
 import { doc, getDoc, runTransaction, serverTimestamp, updateDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/client";
+import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
 import { STAFF_ROLES, USER_ROLES } from "@/lib/constants/roles";
 import { investorUsernameToEmail } from "@/lib/auth/investorIdentity";
 import { validateApplicationProfile } from "@/lib/auth/session";
@@ -241,10 +242,10 @@ export async function linkInvestorGoogleAccount(expectedEmail = "") {
     throw new Error(`Select the authorised Google account: ${requiredEmail}`);
   }
 
-  const token = await result.user.getIdToken();
+  const headers = await authenticatedApiHeaders({ "Content-Type": "application/json" }, result.user);
   const response = await fetch("/api/investor/account/link-google", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    headers,
     body: JSON.stringify({ googleEmail: linkedEmail })
   });
   const data = await response.json();

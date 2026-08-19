@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { adminDb, verifyAppRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, verifyAppRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 
 export const runtime = "nodejs";
 
@@ -34,6 +36,6 @@ export async function POST(request, { params }) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Document upload notification failed", error);
-    return NextResponse.json({ error: error.message || "Unable to notify the Advisor." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Unable to notify the Advisor." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

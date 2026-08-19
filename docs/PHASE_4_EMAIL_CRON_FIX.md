@@ -39,7 +39,7 @@ BREVO_DEFAULT_SENDER_EMAIL=cwp@growvest.info
 BREVO_REPLY_TO_EMAIL=cwp@growvest.info
 BREVO_ALLOW_ADVISOR_SENDERS=false
 
-CRON_SECRET=your-random-secret
+CRON_SECRET=<32-plus-character-random-secret>
 ```
 
 `BREVO_SMTP_USER` must be the SMTP login displayed by Brevo. It is often different from the sender email.

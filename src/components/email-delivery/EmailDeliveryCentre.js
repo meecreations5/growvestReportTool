@@ -189,14 +189,15 @@ function DeliveryComposer({ row, profile, templates, mode, onClose, onComplete }
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-2 text-sm font-semibold text-slate-700 sm:col-span-2">
               Investor email
-              <input className={inputClassName} type="email" value={form.recipientEmail} onChange={(event) => update("recipientEmail", event.target.value)} placeholder="investor@example.com" />
+              <input className={`${inputClassName} cursor-not-allowed bg-slate-50 text-slate-600`} type="email" value={row.investorEmail || form.recipientEmail || ""} readOnly aria-readonly="true" />
+              <span className="text-xs font-normal leading-5 text-slate-500">For privacy, Monthly Reports are sent only to the verified Investor email stored on the report. Update the Investor profile before generating/publishing a new report if the email is incorrect.</span>
             </label>
             <label className="grid gap-2 text-sm font-semibold text-slate-700">
-              CC <span className="text-xs font-normal text-slate-400">Comma separated</span>
+              CC <span className="text-xs font-normal text-slate-400">Approved staff / configured recipients only</span>
               <input className={inputClassName} value={form.cc} onChange={(event) => update("cc", event.target.value)} placeholder="advisor@growvest.info" />
             </label>
             <label className="grid gap-2 text-sm font-semibold text-slate-700">
-              BCC <span className="text-xs font-normal text-slate-400">Comma separated</span>
+              BCC <span className="text-xs font-normal text-slate-400">Approved staff / configured recipients only</span>
               <input className={inputClassName} value={form.bcc} onChange={(event) => update("bcc", event.target.value)} placeholder="archive@growvest.info" />
             </label>
           </div>

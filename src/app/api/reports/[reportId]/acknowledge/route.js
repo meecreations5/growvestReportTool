@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { adminDb, canInvestorAccessReport, verifyAppRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, canInvestorAccessReport, verifyAppRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { actionCode, actionEventPayload, normaliseCreateAction } from "@/lib/server/actionServer";
 
 export const runtime = "nodejs";
@@ -126,6 +128,6 @@ export async function POST(request, { params }) {
     return NextResponse.json({ success: true, requestDiscussion, actionId: discussionActionId });
   } catch (error) {
     console.error("Report acknowledgement failed", error);
-    return NextResponse.json({ error: error.message || "Unable to acknowledge report." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Unable to acknowledge report." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

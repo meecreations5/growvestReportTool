@@ -1,5 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { buildDailyPortfolioCoverage } from "@/lib/server/portfolioCoverage";
 import { getAccessibleInvestor, indiaDateKey } from "@/lib/server/portfolioServer";
 import { PORTFOLIO_SOURCES } from "@/lib/constants/portfolio";
@@ -19,7 +21,7 @@ export async function GET(request) {
     return Response.json(coverage);
   } catch (error) {
     console.error("Portfolio coverage load failed", error);
-    return Response.json({ error: error?.message || "Unable to load daily portfolio coverage." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to load daily portfolio coverage." }, { status: appRequestErrorStatus(error, 500) });
   }
 }
 
@@ -74,6 +76,6 @@ export async function PATCH(request) {
     return Response.json({ investorId, enabled });
   } catch (error) {
     console.error("Portfolio coverage tracking update failed", error);
-    return Response.json({ error: error?.message || "Unable to update daily portfolio tracking." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to update daily portfolio tracking." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

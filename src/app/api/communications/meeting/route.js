@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { adminDb, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { sendTransactionalEmail } from "@/lib/server/brevoMailer";
 import { createMeetingIcs } from "@/lib/server/ics";
 import { meetingEmailContent } from "@/lib/server/emailTemplates";
@@ -253,7 +255,7 @@ export async function POST(request) {
     console.error("Meeting communication failed", error);
     return NextResponse.json(
       { error: error.message || "Unable to send meeting communication." },
-      { status: 500 }
+      { status: appRequestErrorStatus(error, 500) }
     );
   }
 }

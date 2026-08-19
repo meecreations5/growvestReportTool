@@ -1,5 +1,5 @@
-import PortfolioImportCentre from "@/components/portfolio/PortfolioImportCentre";
+import PortfolioOverview from "@/components/portfolio/PortfolioOverview";
 
 export default function PortfolioPage() {
-  return <PortfolioImportCentre />;
+  return <PortfolioOverview />;
 }

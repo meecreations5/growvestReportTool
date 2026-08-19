@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { adminAuth, adminDb, canStaffAccessRecord, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminAuth, adminDb, canStaffAccessRecord, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { investorUsernameToEmail, isValidInvestorUsername, normalizeInvestorUsername } from "@/lib/auth/investorIdentity";
 
 export const runtime = "nodejs";
@@ -298,6 +300,6 @@ export async function POST(request, { params }) {
     });
   } catch (error) {
     console.error("Investor Portal access update failed", error);
-    return NextResponse.json({ error: friendlyAuthError(error) }, { status: 500 });
+    return NextResponse.json({ error: friendlyAuthError(error) }, { status: appRequestErrorStatus(error, 500) });
   }
 }

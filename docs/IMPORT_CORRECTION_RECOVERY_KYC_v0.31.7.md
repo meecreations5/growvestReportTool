@@ -45,7 +45,7 @@ Investor Profile → Edit → Profile now includes PAN and Aadhaar.
 Configure a long, random server-only secret. Do not use a `NEXT_PUBLIC_` variable.
 
 ```bash
-KYC_FIELD_ENCRYPTION_KEY=<strong-random-secret>
+KYC_FIELD_ENCRYPTION_KEY=<32-plus-character-strong-random-secret>
 ```
 
 After adding/changing this server environment value, restart/redeploy the Next.js server.

@@ -17,6 +17,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { subscribeInvestor, updateInvestorProfile } from "@/services/assessmentService";
 import { updateInvestorKyc } from "@/services/investorKycService";
+import { refreshInvestorStatusSummary } from "@/services/investorStatusService";
 import {
   MARITAL_STATUSES,
   OCCUPATIONS,
@@ -269,6 +270,7 @@ export default function InvestorEditClient({ investorId }) {
         : { panNumber: currentPan, aadhaarConfigured: Boolean(investor.aadhaarConfigured), aadhaarLast4: investor.aadhaarLast4 || "" };
       const updated = await updateInvestorProfile(investor, result.data, profile);
       const mergedInvestor = { ...updated, ...kycResult };
+      try { await refreshInvestorStatusSummary(investor.id); } catch (statusError) { console.warn("Investor status summary could not be refreshed", statusError); }
       setInvestor(mergedInvestor);
       setValues(makeValues(mergedInvestor));
       setDirty(false);

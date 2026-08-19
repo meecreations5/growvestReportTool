@@ -1,5 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import {
   PORTFOLIO_ADAPTER_STATUS,
   PORTFOLIO_IMPORT_STATUS,
@@ -362,6 +364,6 @@ export async function POST(request) {
     return Response.json({ batchId: batchRef.id, files: fileResults, counts, sourceCounts, readyCount, issueCount, investorCount: investors.length });
   } catch (error) {
     console.error("Unified portfolio preview failed", error);
-    return Response.json({ error: error?.message || "Unable to analyse portfolio reports." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to analyse portfolio reports." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

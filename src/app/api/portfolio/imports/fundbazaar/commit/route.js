@@ -1,5 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import {
   PORTFOLIO_IMPORT_STATUS,
   PORTFOLIO_MATCH_STATUS,
@@ -1351,6 +1353,9 @@ export async function POST(request) {
         if (file.source !== PORTFOLIO_SOURCES.FUNDBAZAAR) {
           throw new Error("This portfolio source is not enabled for automatic commit yet.");
         }
+        if (file.reportType !== PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_CLIENT_VALUATION || !/\.xlsx$/i.test(file.fileName || "")) {
+          throw new Error("Fundbazaar portfolio updates only accept Client Wise Valuation Report.xlsx. Portfolio Ledger is not applicable.");
+        }
         const mappingId = mappingDocumentId(file.normalizedExternalClientName);
         const panMappingId = panMappingDocumentId(file.externalPan);
         const mappingRef = adminDb.collection("externalInvestorMappings").doc(mappingId);
@@ -1818,6 +1823,6 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("Portfolio commit failed", error);
-    return Response.json({ error: error?.message || "Unable to process portfolio import." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to process portfolio import." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

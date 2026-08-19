@@ -1,5 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, adminMessaging, verifyAppRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, adminMessaging, verifyAppRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 
 export const runtime = "nodejs";
 
@@ -45,6 +47,6 @@ export async function POST(request) {
     return Response.json({ ok: true, successCount: result.successCount, failureCount: result.failureCount });
   } catch (error) {
     console.error("Push test failed", error);
-    return Response.json({ error: error.message || "Test push could not be sent." }, { status: 500 });
+    return Response.json({ error: error.message || "Test push could not be sent." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { adminDb, canStaffAccessRecord, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, canStaffAccessRecord, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { sendTransactionalEmail } from "@/lib/server/brevoMailer";
 import { momEmailContent } from "@/lib/server/emailTemplates";
 import { getAdvisorEmailProfile, getServerBranding, getServerCommunicationSettings } from "@/lib/server/settingsServer";
@@ -86,6 +88,6 @@ export async function POST(request) {
     }
   } catch (error) {
     console.error("MOM communication failed", error);
-    return NextResponse.json({ error: error.message || "Unable to send MOM communication." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Unable to send MOM communication." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

@@ -28,6 +28,8 @@ export const INVESTOR_DECISIONS = [
 export const INVESTOR_REQUEST_TYPES = [
   "Discuss Investment",
   "Increase SIP",
+  "SIP Funding / Withdrawal",
+  "SIP Funding Discussion",
   "Start Lump Sum Investment",
   "Redemption Discussion",
   "Switch Fund Discussion",
@@ -47,6 +49,7 @@ export const ACTION_SOURCE_LABELS = {
   portfolio: "Portfolio",
   goal: "Goal / Bucket List",
   meeting: "Meeting / MOM",
+  sip_funding: "SIP Funding",
   system: "GrowVest"
 };
 

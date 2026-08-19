@@ -1,4 +1,4 @@
-import { createCipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createHash, createHmac, randomBytes } from "node:crypto";
 
 const VERHOEFF_D = [
   [0,1,2,3,4,5,6,7,8,9],[1,2,3,4,0,6,7,8,9,5],[2,3,4,0,1,7,8,9,5,6],[3,4,0,1,2,8,9,5,6,7],[4,0,1,2,3,9,5,6,7,8],
@@ -33,10 +33,40 @@ export function isValidAadhaar(value = "") {
   return checksum === 0;
 }
 
-function encryptionKey() {
+function encryptionSecret() {
   const secret = String(process.env.KYC_FIELD_ENCRYPTION_KEY || "").trim();
-  if (!secret) return null;
-  return createHash("sha256").update(secret, "utf8").digest();
+  if (!secret) return "";
+  const lowered = secret.toLowerCase();
+  if (secret.length < 32 || ["changeme", "change-me", "example", "test", "password", "secret"].includes(lowered)) {
+    throw new Error("KYC_FIELD_ENCRYPTION_KEY must be a strong server-only secret of at least 32 characters.");
+  }
+  return secret;
+}
+
+function encryptionKey() {
+  const secret = encryptionSecret();
+  return secret ? createHash("sha256").update(secret, "utf8").digest() : null;
+}
+
+export function aadhaarLookupHash(value) {
+  const aadhaar = normaliseAadhaar(value);
+  if (!isValidAadhaar(aadhaar)) throw new Error("Enter a valid Aadhaar number.");
+  const secret = encryptionSecret();
+  if (!secret) throw new Error("Aadhaar encryption is not configured. Add KYC_FIELD_ENCRYPTION_KEY to the server environment before saving Aadhaar numbers.");
+  return createHmac("sha256", secret).update(`aadhaar:${aadhaar}`, "utf8").digest("hex");
+}
+
+export function kycEncryptionConfiguration() {
+  try {
+    const secret = encryptionSecret();
+    return {
+      configured: Boolean(secret),
+      strong: Boolean(secret),
+      keyVersion: String(process.env.KYC_FIELD_ENCRYPTION_KEY_VERSION || "1")
+    };
+  } catch (error) {
+    return { configured: true, strong: false, keyVersion: String(process.env.KYC_FIELD_ENCRYPTION_KEY_VERSION || "1"), error: error.message };
+  }
 }
 
 export function encryptAadhaar(value) {
@@ -55,7 +85,9 @@ export function encryptAadhaar(value) {
     ciphertext: encrypted.toString("base64"),
     iv: iv.toString("base64"),
     authTag: tag.toString("base64"),
+    aadhaarLookupHash: aadhaarLookupHash(aadhaar),
     last4: aadhaar.slice(-4),
-    version: 1
+    version: 1,
+    keyVersion: String(process.env.KYC_FIELD_ENCRYPTION_KEY_VERSION || "1")
   };
 }

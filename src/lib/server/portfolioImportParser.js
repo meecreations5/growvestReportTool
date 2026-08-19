@@ -2033,7 +2033,7 @@ function detectMatrixReport(matrix = [], sheetName = "") {
 
   if (hasTerms(terms, ["scheme name", "folio no", "net investment", "current value", "xirr"], 4)
     || hasTerms(terms, ["transaction date", "transaction type", "nav rate", "balance units", "scheme name"], 4)) {
-    return { source: PORTFOLIO_SOURCES.FUNDBAZAAR, reportType: PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_LEDGER, adapterStatus: PORTFOLIO_ADAPTER_STATUS.READY, confidence: 0.98, sheetName };
+    return { source: PORTFOLIO_SOURCES.FUNDBAZAAR, reportType: PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_LEDGER, adapterStatus: PORTFOLIO_ADAPTER_STATUS.UNSUPPORTED, confidence: 0.98, sheetName, error: "Fundbazaar Portfolio Ledger is not applicable for GrowVest daily portfolio updates. Upload Client Wise Valuation Report.xlsx instead." };
   }
 
   const bajajDeliveryCandidate = findStructuredTable(
@@ -2195,7 +2195,13 @@ export async function detectPortfolioImportFile(file) {
     if (detection?.reportType === PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_CLIENT_VALUATION) {
       const table = detection.fundbazaarTable;
       const parsed = parseFundbazaarRows(makeRows(matrix, table.headerIndex, table.headers));
-      return { ...base, ...detection, ...parsed };
+      return {
+        ...base,
+        ...detection,
+        ...parsed,
+        adapterStatus: PORTFOLIO_ADAPTER_STATUS.UNSUPPORTED,
+        error: "Fundbazaar daily import now requires Client Wise Valuation Report.xlsx. Open/download the Fundbazaar report as a real .xlsx workbook and upload that file."
+      };
     }
     return { ...base, error: "The HTML/XLS file was read, but its portfolio report structure is not recognised yet." };
   }
@@ -2230,11 +2236,24 @@ export async function detectPortfolioImportFile(file) {
         if (detection.reportType === PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_CLIENT_VALUATION) {
           const table = detection.fundbazaarTable;
           const parsed = parseFundbazaarRows(makeRows(sheet.matrix, table.headerIndex, table.headers));
+          if (!/\.xlsx$/i.test(file.name)) {
+            return {
+              ...base,
+              ...detection,
+              ...parsed,
+              adapterStatus: PORTFOLIO_ADAPTER_STATUS.UNSUPPORTED,
+              error: "Fundbazaar daily import requires Client Wise Valuation Report.xlsx. The selected report is readable, but it is not an .xlsx workbook."
+            };
+          }
           return { ...base, ...detection, ...parsed };
         }
         if (detection.reportType === PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_LEDGER) {
-          const parsed = parseFundbazaarLedger(sheet.matrix);
-          return { ...base, ...detection, ...parsed };
+          return {
+            ...base,
+            ...detection,
+            adapterStatus: PORTFOLIO_ADAPTER_STATUS.UNSUPPORTED,
+            error: "Fundbazaar Portfolio Ledger is not applicable. Upload Client Wise Valuation Report.xlsx instead."
+          };
         }
         if (detection.reportType === PORTFOLIO_REPORT_TYPES.GROWVEST_STANDARD
           && detection.adapterStatus === PORTFOLIO_ADAPTER_STATUS.READY) {

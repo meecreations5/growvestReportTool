@@ -1,5 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, verifyAppRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, verifyAppRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import {
   actionCode,
   actionEventPayload,
@@ -72,7 +74,7 @@ export async function POST(request) {
     return Response.json({ success: true, action: { id: actionRef.id, ...action, actionCode: actionCode(actionRef.id) } });
   } catch (error) {
     console.error("Investor action creation failed", error);
-    return Response.json({ error: error?.message || "Unable to create the action request." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to create the action request." }, { status: appRequestErrorStatus(error, 500) });
   }
 }
 

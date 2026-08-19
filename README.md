@@ -1,8 +1,73 @@
 # GrowVest Investor & Monthly Report Tool
 
-Standalone Next.js application for GrowVest lead management, investor onboarding, MOMs and manual monthly portfolio reporting.
+Standalone Next.js application for GrowVest investor operations, portfolio management, daily imports, goals/bucket lists, MOMs, investor actions and monthly portfolio reporting.
 
 ## Current implementation
+
+## Version 0.33.1 - Reconciled Portfolio Administration
+
+- Reconciled Portfolio navigation into **Portfolio Overview**, **Daily Portfolio Update**, and Admin-only **Portfolio Administration** so monitoring, importing and destructive cleanup are separate.
+- Added a central Admin-only **Portfolio → Portfolio Administration** page for selecting multiple investors and bulk-cleaning Fundbazaar, Bajaj Delivery, Trading/Intraday, ULIP, Manual, Generic/Other, or the entire portfolio.
+- Bulk deletion always builds a fresh per-investor preview before confirmation and uses the existing audited investor cleanup engine rather than bypassing recovery/fingerprint protections.
+- Multi-investor operations share a cleanup batch ID in audit metadata so related per-investor deletions can be traced together.
+- Kept the separate **Investor → Portfolio → Portfolio Administration** page and expanded it with holding-level multi-select, category filters, Delete All by category, and Delete Entire Portfolio (holdings + trading).
+- Portfolio cleanup categories are now mutually exclusive: Manual ULIP/MF/Equity holdings remain under Manual Portfolio instead of appearing in both Manual and provider/type groups.
+- Manual Portfolio Excel, Daily Portfolio Update, Advisor Follow-up, Service Requests, Bulk Data Upload and Monthly Market Note remain separate workflows with no navigation overlap.
+- No new Firestore collections, composite indexes, or browser write permissions were introduced.
+- See `docs/RECONCILED_PORTFOLIO_ADMINISTRATION_v0.33.1.md` for scope, safeguards and UAT.
+
+## Version 0.33.0 - SIP Funding, Portfolio Administration & Manual Portfolio Excel
+
+- Simplified module language: **Advisor Follow-up** for investment/advisory decisions, **Service Requests** for operational account servicing, **Bulk Data Upload** for Admin migration, and **Monthly Market Note** for reusable report commentary.
+- Added configurable SIP pre-debit reminders (30/14/7/5/3/1 days and debit day) linked to Mutual Fund SIP holdings.
+- Investor responses route automatically: withdrawal/transfer or investment discussion → Advisor Follow-up; bank/mandate issue → Service Request; funds available/added → Ready for SIP.
+- Added Investor Portal **SIP Reminders**, Investor Dashboard upcoming-SIP visibility, and staff **SIP Funding** queue. No money movement or investment execution is automated.
+- Added a daily `CRON_SECRET`-protected `/api/cron/sip-funding-reminders` job for deterministic in-app reminders.
+- Added separate Admin-only **Investor Portfolio Administration** with Fundbazaar, Bajaj Delivery, Bajaj Trading, ULIP, Manual, and Other/Generic sections.
+- Added authenticated Manual Portfolio Excel template, preview, **Merge / Update**, and **Replace Manual Portfolio** modes for accounts maintained manually.
+- Manual Excel updates source=`manual` current holdings only and preserves provider-specific portfolios and existing Goal/Bucket allocations unless explicitly changed.
+- See `docs/SIP_FUNDING_PORTFOLIO_ADMIN_v0.33.0.md` for workflow, security and UAT.
+
+## Version 0.32.9 - Investor Portfolio Bulk Cleanup
+
+- Replaced vendor/source cleanup with Investor-level portfolio management inside **Investor → Portfolio**.
+- Admin/Super Admin can select one, multiple, all filtered, or all current holdings and delete them after impact preview and explicit `DELETE` confirmation.
+- Default cleanup removes selected holdings plus their related imported transactions; manually created transactions require an explicit stronger option.
+- Goal/Bucket List records, Investor Profile/KYC, documents, meetings, actions and published Monthly Reports are preserved.
+- ULIP policy summaries recalculate when only some underlying funds are removed and are deleted only when no current underlying funds remain.
+- A corrected current portfolio snapshot is rebuilt after cleanup.
+- Import recovery journals affected by cleanup are invalidated to prevent old rollback from restoring removed holdings.
+- Exact-file duplicate locks are released safely when the affected import is fully removed; cleaning the entire current Investor Portfolio releases all Investor portfolio fingerprints so the correct source files can be uploaded again.
+- Source/vendor is now only a Portfolio filter, not the cleanup concept.
+- See `docs/INVESTOR_PORTFOLIO_BULK_CLEANUP_v0.32.9.md` for safeguards and UAT.
+
+## Version 0.32.6 - Production Hardening, Security Audit & Final QA
+
+- Added release-audit and production-environment preflight scripts (`npm run qa`, `npm run qa:env:strict`, `npm run release:check`).
+- Server API authentication now verifies revoked Firebase ID tokens; optional Firebase App Check enforcement is available after client rollout.
+- Hardened Firestore Advisor access by removing historical `createdByUid` as a read authority, preserving query-compatible `advisorUid` / `assignedAdvisorUid` ownership, and constraining cross-Investor client writes against current assignment.
+- Notifications are now explicit-recipient scoped so internal Advisor notifications cannot leak into the Investor Portal merely because they contain an `investorId`.
+- Hardened Investor document Storage writes with path/uploader metadata ownership and prevents Investors deleting staff-uploaded documents.
+- Monthly Report delivery is locked to the verified Investor email; CC/BCC is restricted to active staff/configured approved recipients; supplied delivery IDs are bound to the same report.
+- Remote branding images embedded in PDFs are now HTTPS-only, DNS/network validated, redirect-limited, content-type checked and size-limited to reduce SSRF/resource-exhaustion risk.
+- Aadhaar encryption now requires a strong server secret and uses an HMAC lookup hash for duplicate detection without storing searchable plaintext Aadhaar.
+- Cron/webhook secrets require at least 32 characters; meeting reminders use a transactional claim to reduce concurrent duplicate sends.
+- Brevo webhook payload storage is bounded and sanitised.
+- Added stricter security/no-cache response headers and a production-safe `.env.example`.
+- See `docs/PRODUCTION_HARDENING_SECURITY_QA_v0.32.6.md` for deployment requirements, residual risks and the release-candidate UAT matrix.
+
+## Version 0.32.5 - Birthday & Occasion Management
+
+- Added Investor birthdays plus spouse/family birthday, anniversary and other occasion tracking.
+- Supports 30/14/7/3/1-day and same-day Advisor reminders with Asia/Kolkata date handling and duplicate prevention.
+- Added Advisor touchpoint tracking (Called, WhatsApp, Email, Wish Completed, Skip/Reopen) with activity history.
+- Birthday/occasion reminders are internal only; the system does not automatically message Investors.
+
+## Version 0.32.4 - Portfolio Intelligence & Reconciliation
+
+- Added new/exited/partial-exit holding intelligence, valuation reconciliation, duplicate-position checks and source freshness states.
+- Added opening/fresh-investment/withdrawal/internal-transfer/market-movement/closing-value decomposition.
+- Added Admin exception review plus simplified Investor portfolio verification status and month-on-month intelligence.
 
 ## Version 0.32.3 - GrowVest Standard / Generic Portfolio Importer
 

@@ -520,7 +520,7 @@ export default function ReportForm({ reportId = null }) {
             importedDataSummary: {
               sourceRowCount: Number(imported.sourceRowCount || 0),
               importedAt: new Date().toISOString(),
-              sourceLabel: importJob.sourceLabel || "Data Import Centre"
+              sourceLabel: importJob.sourceLabel || "Bulk Data Upload"
             }
           };
         });
@@ -1330,7 +1330,7 @@ export default function ReportForm({ reportId = null }) {
                 {form.sourceImportId ? (
                   <div className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p className="text-sm font-bold text-blue-900">Portfolio values imported from {form.sourceImportFileName || "Data Import Centre"}</p>
+                      <p className="text-sm font-bold text-blue-900">Portfolio values imported from {form.sourceImportFileName || "Bulk Data Upload"}</p>
                       <p className="mt-1 text-xs leading-5 text-blue-700">{form.importedDataSummary?.sourceRowCount || form.funds?.length || 0} validated holdings were mapped to the summary, asset allocation and fund-wise details. Review before saving.</p>
                     </div>
                     <span className="inline-flex w-fit rounded-full bg-white px-3 py-1.5 text-xs font-bold text-blue-700 ring-1 ring-blue-200">Imported data</span>

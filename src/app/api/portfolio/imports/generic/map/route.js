@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import {
   PORTFOLIO_ADAPTER_STATUS,
   PORTFOLIO_MATCH_STATUS,
@@ -289,6 +291,6 @@ export async function POST(request) {
     }));
   } catch (error) {
     console.error("Generic portfolio column mapping failed", error);
-    return Response.json({ error: error?.message || "Unable to apply the portfolio column mapping." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to apply the portfolio column mapping." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

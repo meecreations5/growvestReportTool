@@ -72,7 +72,7 @@ export default function ActionCentre() {
 
   useEffect(() => {
     if (!profile) return undefined;
-    return subscribeActionCentre(profile, setActions, (nextError) => { console.error(nextError); setError("Investor actions could not be loaded."); });
+    return subscribeActionCentre(profile, setActions, (nextError) => { console.error(nextError); setError("Advisor follow-up could not be loaded."); });
   }, [profile]);
 
   useEffect(() => {
@@ -101,7 +101,7 @@ export default function ActionCentre() {
 
   return (
     <div className="grid gap-5">
-      <PageHeader eyebrow="Advisor workflow" title="Investor Actions" description="Turn portfolio recommendations and investor requests into accountable follow-up work with decisions, due dates and completion tracking." action={<div className="flex flex-wrap items-center gap-2"><select className="min-h-10 max-w-[240px] rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600" value={createInvestorId} onChange={(event) => setCreateInvestorId(event.target.value)}>{investors.map((item) => <option key={item.id} value={item.id}>{item.fullName || item.clientCode || "Investor"}</option>)}</select><Button type="button" disabled={!createInvestor} onClick={() => setDialogOpen(true)}><Plus size={16} /> Create Action</Button></div>} />
+      <PageHeader eyebrow="Advisor workflow" title="Advisor Follow-up" description="Turn portfolio recommendations and investor requests into accountable follow-up work with decisions, due dates and completion tracking." action={<div className="flex flex-wrap items-center gap-2"><select className="min-h-10 max-w-[240px] rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600" value={createInvestorId} onChange={(event) => setCreateInvestorId(event.target.value)}>{investors.map((item) => <option key={item.id} value={item.id}>{item.fullName || item.clientCode || "Investor"}</option>)}</select><Button type="button" disabled={!createInvestor} onClick={() => setDialogOpen(true)}><Plus size={16} /> Create Follow-up</Button></div>} />
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[["Open actions", openCount, ListChecks, "text-blue-700 bg-blue-50"], ["Overdue", overdueCount, AlertTriangle, "text-red-700 bg-red-50"], ["Awaiting decision", decisionCount, UserRoundCheck, "text-amber-700 bg-amber-50"], ["Completed", completedCount, CheckCircle2, "text-emerald-700 bg-emerald-50"]].map(([label, value, Icon, tone]) => <article key={label} className="rounded-xl border border-slate-200 bg-white p-4"><span className={`grid h-9 w-9 place-items-center rounded-lg ${tone}`}><Icon size={17} /></span><p className="mt-4 font-heading text-2xl font-bold text-slate-950">{value}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">{label}</p></article>)}

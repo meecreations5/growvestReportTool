@@ -1,5 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, canStaffAccessRecord, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, canStaffAccessRecord, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { ACTION_STATUSES, INVESTOR_DECISIONS } from "@/lib/constants/actions";
 import { actionCode, actionEventPayload, actionNotification, actionActorName, cleanActionText } from "@/lib/server/actionServer";
 
@@ -137,6 +139,6 @@ export async function POST(request) {
     return Response.json({ success: true, synced: nextStepsWithIds.length, created: createdCount });
   } catch (error) {
     console.error("Monthly report action sync failed", error);
-    return Response.json({ error: error?.message || "Unable to sync monthly report actions." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to sync monthly report actions." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

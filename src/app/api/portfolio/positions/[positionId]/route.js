@@ -1,5 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { createPortfolioSnapshot, getAccessibleInvestor, indiaDateKey } from "@/lib/server/portfolioServer";
 
 export const runtime = "nodejs";
@@ -79,6 +81,6 @@ export async function PATCH(request, { params }) {
     return Response.json({ positionId, goalAllocations, snapshot });
   } catch (error) {
     console.error("Portfolio goal allocation failed", error);
-    return Response.json({ error: error?.message || "Unable to update goal allocation." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to update goal allocation." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

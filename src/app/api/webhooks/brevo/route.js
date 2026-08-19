@@ -28,6 +28,24 @@ function authorised(request) {
   return secureSecretMatch(supplied, configured);
 }
 
+function cleanWebhookText(value, max = 1000) {
+  return String(value || "").trim().slice(0, max);
+}
+
+function safeProviderPayload(payload = {}) {
+  return {
+    id: cleanWebhookText(payload.id, 240),
+    event: cleanWebhookText(payload.event, 80),
+    email: cleanWebhookText(payload.email, 320).toLowerCase(),
+    messageId: cleanWebhookText(payload["message-id"] || payload.messageId || payload.message_id, 500),
+    reason: cleanWebhookText(payload.reason || payload.message, 1000),
+    link: cleanWebhookText(payload.link || payload.URL, 2000),
+    ts: Number(payload.ts_event || payload.ts || 0) || null,
+    date: cleanWebhookText(payload.date_event || payload.date || payload.date_sent, 120),
+    custom: cleanWebhookText(payload["X-Mailin-custom"] || payload["x-mailin-custom"] || payload.custom, 1000)
+  };
+}
+
 function customValue(payload) {
   return String(payload?.["X-Mailin-custom"] || payload?.["x-mailin-custom"] || payload?.custom || "");
 }
@@ -88,14 +106,16 @@ function statusFields(status, occurredAt, payload) {
   if (status === "clicked") fields.clickedAt = occurredAt;
   if (["failed", "bounced", "blocked"].includes(status)) {
     fields.failedAt = occurredAt;
-    fields.failureReason = String(payload?.reason || payload?.message || status);
+    fields.failureReason = cleanWebhookText(payload?.reason || payload?.message || status, 1000);
   }
-  if (payload?.link || payload?.URL) fields.lastClickedUrl = payload.link || payload.URL;
+  if (payload?.link || payload?.URL) fields.lastClickedUrl = cleanWebhookText(payload.link || payload.URL, 2000);
   return fields;
 }
 
 export async function POST(request) {
   if (!authorised(request)) return NextResponse.json({ error: "Unauthorised." }, { status: 401 });
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (contentLength > 1024 * 1024) return NextResponse.json({ error: "Webhook payload is too large." }, { status: 413 });
   try {
     const body = await request.json();
     const events = Array.isArray(body) ? body : [body];
@@ -117,10 +137,10 @@ export async function POST(request) {
         status,
         recipientEmail: String(payload?.email || "").trim().toLowerCase(),
         providerMessageId: messageId(payload) || null,
-        reason: payload?.reason || payload?.message || null,
-        link: payload?.link || payload?.URL || null,
+        reason: cleanWebhookText(payload?.reason || payload?.message, 1000) || null,
+        link: cleanWebhookText(payload?.link || payload?.URL, 2000) || null,
         occurredAt,
-        providerPayload: payload,
+        providerPayload: safeProviderPayload(payload),
         createdAt: new Date()
       };
       if (!match) {

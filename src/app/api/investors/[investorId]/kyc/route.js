@@ -1,5 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, canStaffAccessRecord, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, canStaffAccessRecord, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { encryptAadhaar, isValidPan, normaliseAadhaar, normalisePan } from "@/lib/server/kycSecurity";
 
 export const runtime = "nodejs";
@@ -43,6 +45,14 @@ export async function PATCH(request, { params }) {
       aadhaarChanged = true;
     } else if (aadhaarNumber) {
       const protectedValue = encryptAadhaar(aadhaarNumber);
+      const aadhaarMatches = await adminDb.collection("investorKycSecure")
+        .where("aadhaarLookupHash", "==", protectedValue.aadhaarLookupHash)
+        .limit(2)
+        .get();
+      const duplicateAadhaar = aadhaarMatches.docs.find((item) => item.id !== investor.id);
+      if (duplicateAadhaar) {
+        return Response.json({ error: "This Aadhaar number is already linked to another GrowVest investor." }, { status: 409 });
+      }
       batch.set(secureRef, {
         investorId: investor.id,
         ...protectedValue,
@@ -84,6 +94,6 @@ export async function PATCH(request, { params }) {
     });
   } catch (error) {
     console.error("Investor KYC update failed", error);
-    return Response.json({ error: error?.message || "Unable to update investor KYC details." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to update investor KYC details." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

@@ -1,5 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { PORTFOLIO_IMPORT_STATUS, PORTFOLIO_MATCH_STATUS, PORTFOLIO_SOURCES } from "@/lib/constants/portfolio";
 import { stableHash } from "@/lib/server/portfolioImportParser";
 import { createPortfolioSnapshot, getAccessibleInvestor, indiaDateKey } from "@/lib/server/portfolioServer";
@@ -51,7 +53,8 @@ function publicFile(file = {}, recovery = null) {
       policyCount: Number(recovery.policyCount || 0),
       transactionCount: Number(recovery.transactionCount || 0),
       replacementBatchId: recovery.replacementBatchId || "",
-      recoveryReason: recovery.recoveryReason || ""
+      recoveryReason: recovery.recoveryReason || "",
+      legacyCleanupAvailable: false
     } : {
       status: "legacy",
       reversible: false,
@@ -59,7 +62,8 @@ function publicFile(file = {}, recovery = null) {
       policyCount: 0,
       transactionCount: 0,
       replacementBatchId: "",
-      recoveryReason: ""
+      recoveryReason: "",
+      legacyCleanupAvailable: file.status === "imported" && Boolean(file.matchedInvestorId)
     }
   };
 }
@@ -204,6 +208,98 @@ async function rollbackFile({ actor, batchRef, batch, file, recovery, reason, re
   return { investorId, snapshot };
 }
 
+async function legacyCleanupFile({ actor, batchRef, batch, file, reason, resetMapping = true }) {
+  const investorId = String(file.matchedInvestorId || "");
+  if (!investorId) throw new Error("The legacy import is not linked to an investor.");
+  if (file.status !== "imported") throw new Error("Only an imported legacy file can be cleaned.");
+
+  const [positions, transactions, trades, policies, monthlySummaries, investorSnapshots] = await Promise.all([
+    adminDb.collection("portfolioPositions").where("sourceImportFileId", "==", file.id).get(),
+    adminDb.collection("investmentTransactions").where("sourceImportFileId", "==", file.id).get(),
+    adminDb.collection("tradingTransactions").where("sourceImportFileId", "==", file.id).get(),
+    adminDb.collection("ulipPolicies").where("sourceImportFileId", "==", file.id).get(),
+    adminDb.collection("tradingMonthlySummaries").where("sourceImportFileId", "==", file.id).get(),
+    adminDb.collection("portfolioSnapshots").where("investorId", "==", investorId).get()
+  ]);
+
+  const snapshotsToDelete = investorSnapshots.docs.filter((item) => item.data()?.sourceImportId === batch.id || item.data()?.sourceImportFileId === file.id);
+  const snapshotPositionDocs = [];
+  for (const snapshot of snapshotsToDelete) {
+    const rows = await adminDb.collection("portfolioSnapshotPositions").where("snapshotId", "==", snapshot.id).get();
+    snapshotPositionDocs.push(...rows.docs);
+  }
+
+  const mappingIds = resetMapping ? externalMappingDocumentIds(file) : [];
+  const mappingSnapshots = mappingIds.length
+    ? await adminDb.getAll(...mappingIds.map((id) => adminDb.collection("externalInvestorMappings").doc(id)))
+    : [];
+  const fingerprintRef = file.fileFingerprint ? adminDb.collection("portfolioFileFingerprints").doc(file.fileFingerprint) : null;
+  const fingerprintSnapshot = fingerprintRef ? await fingerprintRef.get() : null;
+
+  const writer = adminDb.bulkWriter();
+  [...positions.docs, ...transactions.docs, ...trades.docs, ...policies.docs, ...monthlySummaries.docs, ...snapshotPositionDocs, ...snapshotsToDelete].forEach((item) => writer.delete(item.ref));
+  mappingSnapshots.forEach((snapshot) => {
+    if (!snapshot.exists) return;
+    const data = snapshot.data();
+    if (data.investorId === investorId && (!data.lastSuccessfulImportId || data.lastSuccessfulImportId === batch.id)) writer.delete(snapshot.ref);
+  });
+  if (fingerprintSnapshot?.exists && fingerprintSnapshot.data()?.batchId === batch.id) writer.delete(fingerprintRef);
+  writer.set(adminDb.collection("portfolioImportFiles").doc(file.id), {
+    status: "legacy_cleaned",
+    recoveryStatus: "legacy_cleaned",
+    recoveryReason: reason,
+    rolledBackAt: FieldValue.serverTimestamp(),
+    rolledBackByUid: actor.uid,
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true });
+  writer.set(batchRef, {
+    recoveryStatus: "legacy_cleaned",
+    lastRecoveryAt: FieldValue.serverTimestamp(),
+    lastRecoveryByUid: actor.uid,
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true });
+  await writer.close();
+
+  const snapshot = await createPortfolioSnapshot(investorId, actor, {
+    snapshotDate: indiaDateKey(),
+    verificationStatus: "corrected",
+    sourceImportId: `legacy_cleanup_${file.id}`
+  });
+  await adminDb.collection("activityLogs").add({
+    recordType: "portfolio_import",
+    recordId: batch.id,
+    investorId,
+    advisorUid: actor.uid,
+    assignedAdvisorUid: actor.uid,
+    action: "portfolio_legacy_import_cleaned",
+    title: "Legacy portfolio import cleaned",
+    description: `${file.fileName || "Legacy portfolio import"} was cleaned by ${actor.fullName || actor.email || "GrowVest User"}.`,
+    metadata: {
+      batchId: batch.id,
+      fileId: file.id,
+      reason,
+      positionsRemoved: positions.size,
+      transactionsRemoved: transactions.size,
+      tradesRemoved: trades.size,
+      policiesRemoved: policies.size,
+      fingerprintReleased: Boolean(fingerprintSnapshot?.exists && fingerprintSnapshot.data()?.batchId === batch.id)
+    },
+    createdByUid: actor.uid,
+    createdByName: actor.fullName || actor.email || "GrowVest User",
+    createdAt: FieldValue.serverTimestamp()
+  });
+  return {
+    investorId,
+    snapshot,
+    removed: {
+      positions: positions.size,
+      transactions: transactions.size,
+      trades: trades.size,
+      policies: policies.size
+    }
+  };
+}
+
 async function captureGoalAllocations(file, investorId) {
   if (!investorId) return [];
   const snapshot = await adminDb.collection("portfolioPositions").where("investorId", "==", investorId).get();
@@ -326,7 +422,7 @@ export async function GET(request, { params }) {
     });
   } catch (error) {
     console.error("Portfolio recovery details failed", error);
-    return Response.json({ error: error?.message || "Unable to load import recovery details." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to load import recovery details." }, { status: appRequestErrorStatus(error, 500) });
   }
 }
 
@@ -352,7 +448,16 @@ export async function POST(request, { params }) {
       return Response.json({ action, status: "rolled_back", ...rolledBack });
     }
 
+    if (action === "clean_legacy") {
+      if (recovery) return Response.json({ error: "This import has a recovery journal. Use Rollback instead of legacy cleanup." }, { status: 409 });
+      const cleaned = await legacyCleanupFile({ actor, batchRef, batch, file, reason, resetMapping: true });
+      return Response.json({ action, status: "legacy_cleaned", ...cleaned });
+    }
+
     if (["reprocess", "correct_investor"].includes(action)) {
+      if (file.reportType === "fundbazaar_portfolio_ledger") {
+        return Response.json({ error: "Fundbazaar Portfolio Ledger is no longer applicable. Roll back/remove this import, then upload Client Wise Valuation Report.xlsx." }, { status: 409 });
+      }
       const targetInvestorId = action === "correct_investor"
         ? String(payload?.targetInvestorId || "")
         : String(recovery?.investorId || file.matchedInvestorId || "");
@@ -390,6 +495,6 @@ export async function POST(request, { params }) {
     return Response.json({ error: "Unsupported recovery action." }, { status: 400 });
   } catch (error) {
     console.error("Portfolio recovery action failed", error);
-    return Response.json({ error: error?.message || "Unable to complete import recovery." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to complete import recovery." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

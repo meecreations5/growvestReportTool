@@ -94,7 +94,7 @@ BREVO_DEFAULT_SENDER_EMAIL=cwp@growvest.info
 BREVO_REPLY_TO_EMAIL=cwp@growvest.info
 BREVO_ALLOW_ADVISOR_SENDERS=false
 
-CRON_SECRET=use-a-long-random-value
+CRON_SECRET=<32-plus-character-random-secret>
 ```
 
 Do not use `NEXT_PUBLIC_` for SMTP, Firebase Admin or cron secrets.

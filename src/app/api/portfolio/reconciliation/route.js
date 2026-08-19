@@ -1,4 +1,4 @@
-import { adminDb, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import {adminDb, verifyStaffRequest, appRequestErrorStatus} from "@/lib/server/firebaseAdmin";
 import {
   PORTFOLIO_RECONCILIATION_STATUS,
   PORTFOLIO_RECONCILIATION_THRESHOLDS
@@ -187,6 +187,6 @@ export async function GET(request) {
     return Response.json({ dateKey: today, summary, rows });
   } catch (error) {
     console.error("Portfolio reconciliation load failed", error);
-    return Response.json({ error: error?.message || "Unable to load portfolio reconciliation." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to load portfolio reconciliation." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

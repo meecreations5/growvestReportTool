@@ -150,7 +150,7 @@ export default function ClientServicingWorkspace() {
       const form = forms[type];
       await createServicingRecord(type, { ...form, ...investorPayload(form.investorId) }, profile);
       setForms((current) => ({ ...current, [type]: { ...initialForms[type] } }));
-      setNotice("Servicing record saved successfully.");
+      setNotice("Service record saved successfully.");
     } catch (nextError) {
       setError(nextError.message);
     } finally {
@@ -177,13 +177,13 @@ export default function ClientServicingWorkspace() {
   return (
     <div className="grid gap-6">
       <PageHeader
-        eyebrow="SOP 3 · Client experience"
-        title="Client servicing"
-        description="An operational workspace for query TAT, monthly communication, quarterly reviews, renewals, escalations and servicing-cycle completion."
+        eyebrow="Investor operations"
+        title="Service Requests"
+        description="Operational help for bank, KYC, mandate, document, renewal and other investor service needs. Investment decisions stay in Advisor Follow-up."
       />
 
       <SegmentedTabs
-        ariaLabel="Client servicing sections"
+        ariaLabel="Service request sections"
         value={activeTab}
         onChange={setActiveTab}
         items={SERVICING_TABS.map((tab) => ({
@@ -242,7 +242,7 @@ function ClientMasterTab({ investors, form, setField, submit, working, records }
   return (
     <div className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
       <Card className="p-5">
-        <h2 className="text-lg font-black text-slate-950">Client servicing master</h2>
+        <h2 className="text-lg font-black text-slate-950">Service setup</h2>
         <p className="mt-1 text-sm text-slate-500">Create the servicing baseline used for monthly updates, reviews, renewals and escalation tracking.</p>
         <form onSubmit={(event) => submit("master", event)} className="mt-5 grid gap-3">
           <InvestorSelect investors={investors} value={form.investorId} onChange={(value) => setField("master", "investorId", value)} />
@@ -266,7 +266,7 @@ function ClientMasterTab({ investors, form, setField, submit, working, records }
         </form>
       </Card>
       <Card className="overflow-hidden">
-        <div className="border-b border-slate-200 p-5"><h2 className="text-lg font-black text-slate-950">Client servicing portfolio</h2><p className="mt-1 text-sm text-slate-500">One baseline record per client servicing cycle.</p></div>
+        <div className="border-b border-slate-200 p-5"><h2 className="text-lg font-black text-slate-950">Service request portfolio</h2><p className="mt-1 text-sm text-slate-500">Baseline servicing setup for operational requests and review cycles.</p></div>
         {records.length ? <div className="divide-y divide-slate-100">{records.map((item) => <div key={item.id} className="grid gap-3 p-5 md:grid-cols-[1.25fr_0.8fr_1fr_1fr]">
           <div><p className="font-bold text-slate-950">{item.investorName}</p><p className="text-xs text-slate-400">{item.clientCode || "—"} · {item.advisorName || "Unassigned"}</p></div>
           <div><p className="text-xs text-slate-400">Status</p><StatusPill tone={item.serviceStatus === "ACTIVE" ? "green" : item.serviceStatus === "AT RISK" ? "red" : "amber"}>{item.serviceStatus || "PENDING"}</StatusPill></div>

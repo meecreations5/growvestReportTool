@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { loadDeliveryReport, sendReportDelivery } from "@/lib/server/reportDelivery";
 
 export const runtime = "nodejs";
@@ -20,6 +22,6 @@ export async function POST(request) {
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
     console.error("Report delivery failed", error);
-    return NextResponse.json({ error: error.message || "Unable to send the report email." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Unable to send the report email." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

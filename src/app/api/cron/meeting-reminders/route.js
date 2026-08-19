@@ -1,3 +1,4 @@
+import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { secureSecretMatch } from "@/lib/server/secureCompare";
 import { adminDb } from "@/lib/server/firebaseAdmin";
@@ -164,6 +165,24 @@ async function createReminderNotifications(meeting, reminderLabel) {
   return count;
 }
 
+async function claimReminder(reference, reminder, now, forcedReminder = "") {
+  if (forcedReminder) return true;
+  const claimKey = reminder.reminderKey;
+  const claimField = `reminderClaims.${claimKey}`;
+  const maxClaimAgeMs = 15 * 60 * 1000;
+
+  return adminDb.runTransaction(async (transaction) => {
+    const fresh = await transaction.get(reference);
+    if (!fresh.exists) return false;
+    const data = fresh.data() || {};
+    if (data.reminders?.[reminder.field]) return false;
+    const claimedAt = data.reminderClaims?.[claimKey]?.toDate?.() || (data.reminderClaims?.[claimKey] ? new Date(data.reminderClaims[claimKey]) : null);
+    if (claimedAt && !Number.isNaN(claimedAt.getTime()) && now.getTime() - claimedAt.getTime() < maxClaimAgeMs) return false;
+    transaction.update(reference, { [claimField]: now, lastReminderClaimAt: now, updatedAt: now });
+    return true;
+  });
+}
+
 function resolveReminder(meeting, minutes, forcedReminder) {
   if (forcedReminder === "24_hours") {
     return { reminderKey: "24_hours", reminderLabel: "tomorrow", field: "sent24HoursAt" };
@@ -214,6 +233,11 @@ async function processMeeting(snapshot, now, forcedReminder = "") {
     };
   }
 
+  const claimed = await claimReminder(snapshot.ref, reminder, now, forcedReminder);
+  if (!claimed) {
+    return { meetingId: meeting.id, status: "already_claimed", reminderKey: reminder.reminderKey, minutesUntilMeeting: Math.round(minutes) };
+  }
+
   const results = [];
   const clientRecipient = primaryClientRecipient(meeting);
 
@@ -240,6 +264,7 @@ async function processMeeting(snapshot, now, forcedReminder = "") {
 
   const update = {
     [`reminders.${reminder.field}`]: new Date(),
+    ...(forcedReminder ? {} : { [`reminderClaims.${reminder.reminderKey}`]: FieldValue.delete() }),
     lastReminderAttemptAt: new Date(),
     lastReminderStatus: failed.length ? "partial_or_failed" : "sent",
     lastReminderError: failed.map((item) => item.error).filter(Boolean).join(" | ") || null,

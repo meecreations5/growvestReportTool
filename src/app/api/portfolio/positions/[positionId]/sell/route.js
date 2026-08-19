@@ -1,5 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, verifyStaffRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, verifyStaffRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { PORTFOLIO_PRODUCT_TYPES } from "@/lib/constants/portfolio";
 import { createPortfolioSnapshot, getAccessibleInvestor, indiaDateKey } from "@/lib/server/portfolioServer";
 import { stableHash } from "@/lib/server/portfolioImportParser";
@@ -120,6 +122,6 @@ export async function POST(request, { params }) {
     return Response.json({ ...result, snapshot });
   } catch (error) {
     console.error("Delivery stock sale failed", error);
-    return Response.json({ error: error?.message || "Unable to record the stock sale." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to record the stock sale." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

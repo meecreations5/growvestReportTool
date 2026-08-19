@@ -1,5 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, verifyAppRequest } from "@/lib/server/firebaseAdmin";
+import { adminDb, verifyAppRequest,
+  appRequestErrorStatus
+} from "@/lib/server/firebaseAdmin";
 import { ACTION_PRIORITIES, ACTION_STATUSES, INVESTOR_DECISIONS } from "@/lib/constants/actions";
 import { actionActorName, actionEventPayload, actionNotification, cleanActionText } from "@/lib/server/actionServer";
 
@@ -133,6 +135,6 @@ export async function PATCH(request, { params }) {
     return Response.json({ success: true, actionId, status: nextStatus });
   } catch (error) {
     console.error("Investor action update failed", error);
-    return Response.json({ error: error?.message || "Unable to update the action." }, { status: 500 });
+    return Response.json({ error: error?.message || "Unable to update the action." }, { status: appRequestErrorStatus(error, 500) });
   }
 }

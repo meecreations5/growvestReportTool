@@ -19,12 +19,11 @@ import {
   updateInvestorDocumentStatus,
   uploadInvestorDocument
 } from "@/services/documentService";
+import { INVESTOR_REQUIRED_DOCUMENTS, documentChecklist } from "@/lib/investor/profileStatus";
 
 const documentTypes = [
+  ...INVESTOR_REQUIRED_DOCUMENTS,
   "Portfolio Statement",
-  "PAN Card",
-  "Aadhaar Card",
-  "Cancelled Cheque",
   "Income Proof",
   "Insurance Policy",
   "Signed Proposal",
@@ -36,7 +35,8 @@ const statusStyles = {
   uploaded: "border-blue-200 bg-blue-50 text-blue-700",
   verified: "border-emerald-200 bg-emerald-50 text-emerald-700",
   rejected: "border-red-200 bg-red-50 text-red-700",
-  expired: "border-slate-200 bg-slate-100 text-slate-600"
+  expired: "border-slate-200 bg-slate-100 text-slate-600",
+  missing: "border-slate-200 bg-white text-slate-500"
 };
 
 function formatFileSize(value) {
@@ -72,6 +72,8 @@ export default function InvestorDocumentsPanel({ investor }) {
       }
     );
   }, [investor?.id]);
+
+  const checklist = useMemo(() => documentChecklist(documents), [documents]);
 
   const counts = useMemo(
     () => ({
@@ -174,6 +176,27 @@ export default function InvestorDocumentsPanel({ investor }) {
         <p>
           <strong>Upload location:</strong> Staff use this tab under <strong>Investors → Investor Profile → Access &amp; Documents</strong>. Investors use <strong>Investor Portal → Documents</strong> after a request is created.
         </p>
+      </div>
+
+      <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-blue-700">Profile document status</p>
+            <h3 className="mt-1 font-heading text-lg font-bold text-slate-950">Required KYC &amp; profile documents</h3>
+          </div>
+          <p className="text-xs font-semibold text-slate-500">{checklist.filter((item) => ["uploaded", "verified"].includes(item.status)).length}/{checklist.length} uploaded</p>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {checklist.map((item) => (
+            <div key={item.documentType} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-800">{item.documentType}</p>
+                <p className="mt-0.5 truncate text-[11px] text-slate-500">{item.fileName || (item.status === "missing" ? "No file uploaded" : "Request exists")}</p>
+              </div>
+              <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold capitalize ${statusStyles[item.status] || statusStyles.missing}`}>{item.status === "missing" ? "Missing" : item.status}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {error ? (
