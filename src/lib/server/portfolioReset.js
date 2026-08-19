@@ -229,6 +229,37 @@ export async function loadPortfolioResetContext(investor) {
   };
 }
 
+export function portfolioContextHasResettableState(context, { excludeImportBatchIds = [] } = {}) {
+  const excludedBatches = new Set((excludeImportBatchIds || []).map(clean).filter(Boolean));
+  const importFiles = (context.importFiles || []).filter((item) => !excludedBatches.has(clean(item.batchId)));
+  const batchPlans = (context.batchPlans || []).filter((item) => !excludedBatches.has(clean(item?.batch?.id)));
+  const groups = [
+    context.positions,
+    context.transactions,
+    context.policies,
+    context.trades,
+    context.tradingSummaries,
+    context.snapshots,
+    context.snapshotPositions,
+    context.recoveryJournals,
+    context.recoveryItems,
+    context.fingerprints,
+    context.mappings,
+    importFiles,
+    context.sipSchedules,
+    context.sipCycles,
+    context.portfolioActivity,
+    context.portfolioActions,
+    context.portfolioActionEvents,
+    context.portfolioClientQueries,
+    context.portfolioNotifications
+  ];
+
+  return groups.some((rows) => Array.isArray(rows) && rows.length > 0)
+    || batchPlans.length > 0
+    || (context.portfolioMetaFields || []).length > 0;
+}
+
 export function portfolioResetPreview(context) {
   const currentValue = positionValue(context.positions);
   const deletableCount = [

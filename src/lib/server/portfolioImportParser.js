@@ -2199,8 +2199,13 @@ export async function detectPortfolioImportFile(file) {
         ...base,
         ...detection,
         ...parsed,
-        adapterStatus: PORTFOLIO_ADAPTER_STATUS.UNSUPPORTED,
-        error: "Fundbazaar daily import now requires Client Wise Valuation Report.xlsx. Open/download the Fundbazaar report as a real .xlsx workbook and upload that file."
+        adapterStatus: PORTFOLIO_ADAPTER_STATUS.READY,
+        fundbazaarBootstrapOnly: true,
+        warnings: [
+          ...(parsed.warnings || []),
+          "Legacy Fundbazaar HTML-XLS is accepted only to establish a completely blank/newly reset portfolio. After the first successful import, use Client Wise Valuation Report.xlsx for normal daily updates."
+        ],
+        error: ""
       };
     }
     return { ...base, error: "The HTML/XLS file was read, but its portfolio report structure is not recognised yet." };
@@ -2237,6 +2242,20 @@ export async function detectPortfolioImportFile(file) {
           const table = detection.fundbazaarTable;
           const parsed = parseFundbazaarRows(makeRows(sheet.matrix, table.headerIndex, table.headers));
           if (!/\.xlsx$/i.test(file.name)) {
+            if (/\.xls$/i.test(file.name)) {
+              return {
+                ...base,
+                ...detection,
+                ...parsed,
+                adapterStatus: PORTFOLIO_ADAPTER_STATUS.READY,
+                fundbazaarBootstrapOnly: true,
+                warnings: [
+                  ...(parsed.warnings || []),
+                  "Legacy Fundbazaar XLS is accepted only to establish a completely blank/newly reset portfolio. After the first successful import, use Client Wise Valuation Report.xlsx for normal daily updates."
+                ],
+                error: ""
+              };
+            }
             return {
               ...base,
               ...detection,

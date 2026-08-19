@@ -11,6 +11,10 @@ import {
 import { normaliseExternalName, stableHash } from "@/lib/server/portfolioImportParser";
 import { buildDailyPortfolioCoverage } from "@/lib/server/portfolioCoverage";
 import {
+  loadPortfolioResetContext,
+  portfolioContextHasResettableState
+} from "@/lib/server/portfolioReset";
+import {
   createPortfolioSnapshot,
   getAccessibleInvestor,
   indiaDateKey,
@@ -26,6 +30,28 @@ function mappingDocumentId(normalizedExternalClientName) {
 
 function panMappingDocumentId(pan = "") {
   return pan ? `${PORTFOLIO_SOURCES.FUNDBAZAAR}_pan_${stableHash(String(pan).toUpperCase(), 32)}` : "";
+}
+
+async function assertFundbazaarValuationFormat({ file, investor, batchId }) {
+  if (file.reportType !== PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_CLIENT_VALUATION) {
+    throw new Error("Fundbazaar Portfolio Ledger is not applicable. Upload Client Wise Valuation Report.xlsx instead.");
+  }
+
+  if (/\.xlsx$/i.test(file.fileName || "")) return;
+
+  const legacyBootstrap = file.fundbazaarBootstrapOnly === true
+    && ["HTML-XLS", "XLS"].includes(String(file.fileFormat || "").toUpperCase());
+  if (!legacyBootstrap) {
+    throw new Error("Fundbazaar portfolio updates require Client Wise Valuation Report.xlsx.");
+  }
+
+  const context = await loadPortfolioResetContext(investor);
+  const hasPreviousPortfolioState = portfolioContextHasResettableState(context, {
+    excludeImportBatchIds: [batchId]
+  });
+  if (hasPreviousPortfolioState) {
+    throw new Error("This Fundbazaar XLS/HTML-XLS file is allowed only for the first upload of a completely blank or newly reset portfolio. This investor already has portfolio data/history, so use Client Wise Valuation Report.xlsx for the ongoing update.");
+  }
 }
 
 function transactionKind(value = "") {
@@ -1353,9 +1379,7 @@ export async function POST(request) {
         if (file.source !== PORTFOLIO_SOURCES.FUNDBAZAAR) {
           throw new Error("This portfolio source is not enabled for automatic commit yet.");
         }
-        if (file.reportType !== PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_CLIENT_VALUATION || !/\.xlsx$/i.test(file.fileName || "")) {
-          throw new Error("Fundbazaar portfolio updates only accept Client Wise Valuation Report.xlsx. Portfolio Ledger is not applicable.");
-        }
+        await assertFundbazaarValuationFormat({ file, investor, batchId });
         const mappingId = mappingDocumentId(file.normalizedExternalClientName);
         const panMappingId = panMappingDocumentId(file.externalPan);
         const mappingRef = adminDb.collection("externalInvestorMappings").doc(mappingId);

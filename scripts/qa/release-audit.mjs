@@ -93,7 +93,8 @@ const portfolioCommit = read("src/app/api/portfolio/imports/fundbazaar/commit/ro
 const portfolioRecovery = read("src/app/api/portfolio/imports/[batchId]/recovery/route.js");
 assert(portfolioParser.includes('createHash("sha256")') && portfolioParser.includes("fileFingerprint"), "portfolio files use SHA-256 fingerprints for duplicate protection");
 assert(portfolioParser.includes("Fundbazaar Portfolio Ledger is not applicable") && portfolioParser.includes("Client Wise Valuation Report.xlsx"), "Fundbazaar daily import is standardized on Client Wise Valuation Report.xlsx and Ledger is disabled");
-assert(portfolioCommit.includes("Fundbazaar portfolio updates only accept Client Wise Valuation Report.xlsx"), "Fundbazaar commit rejects Ledger and non-XLSX valuation files");
+assert(portfolioParser.includes("fundbazaarBootstrapOnly: true") && portfolioParser.includes("completely blank/newly reset portfolio"), "readable legacy Fundbazaar XLS/HTML-XLS is exposed only as a blank/reset portfolio bootstrap format");
+assert(portfolioCommit.includes("assertFundbazaarValuationFormat") && portfolioCommit.includes("excludeImportBatchIds: [batchId]") && portfolioCommit.includes("first upload of a completely blank or newly reset portfolio"), "Fundbazaar commit permits legacy XLS/HTML-XLS only when the selected investor has no prior portfolio state");
 assert(portfolioCommit.includes("journalVersion: 1") && portfolioCommit.includes("portfolioFileFingerprints"), "portfolio commits retain recovery journals and duplicate fingerprints");
 assert(portfolioRecovery.includes("newer import") && portfolioRecovery.includes("Recovery journals are available"), "portfolio recovery blocks unsafe rollback after newer mutations");
 

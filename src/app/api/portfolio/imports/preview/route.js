@@ -118,6 +118,7 @@ function publicFileResult(fileRef, detected, extra = {}) {
     genericMapping: detected.genericMapping || null,
     mappingProfileId: detected.mappingProfileId || "",
     completeSnapshot: detected.completeSnapshot === true,
+    fundbazaarBootstrapOnly: detected.fundbazaarBootstrapOnly === true,
     error: detected.error || "",
     ...extra
   };
@@ -213,6 +214,7 @@ export async function POST(request) {
           genericMapping: detected.genericMapping || null,
           mappingProfileId: detected.mappingProfileId || "",
           completeSnapshot: detected.completeSnapshot === true,
+          fundbazaarBootstrapOnly: detected.fundbazaarBootstrapOnly === true,
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp()
         };
@@ -319,6 +321,7 @@ export async function POST(request) {
         genericMapping: detected.genericMapping || null,
         mappingProfileId: detected.mappingProfileId || "",
         completeSnapshot: detected.completeSnapshot === true,
+        fundbazaarBootstrapOnly: detected.fundbazaarBootstrapOnly === true,
         trades: detected.trades || [],
         duplicateOfImportId: fingerprintSnapshot.exists ? fingerprintSnapshot.data()?.batchId || "" : "",
         duplicateImportedAt: fingerprintSnapshot.exists ? fingerprintSnapshot.data()?.importedAt || null : null,
