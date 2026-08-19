@@ -501,3 +501,35 @@ export async function deleteInvestorTrading(investorId, reason, confirmation = "
     body: JSON.stringify({ action: "delete_trading", reason, confirmation, ...metadata })
   });
 }
+
+export async function previewFullPortfolioReset(investorId) {
+  return authenticatedFetch(`/api/portfolio/investors/${encodeURIComponent(investorId)}/reset`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "preview" })
+  });
+}
+
+export async function fullPortfolioReset(investorId, reason, confirmation) {
+  return authenticatedFetch(`/api/portfolio/investors/${encodeURIComponent(investorId)}/reset`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "reset", reason, confirmation })
+  });
+}
+
+export async function previewBulkFullPortfolioReset(investorIds = []) {
+  return authenticatedFetch("/api/portfolio/administration/reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "preview", investorIds })
+  });
+}
+
+export async function bulkFullPortfolioReset(investorIds = [], reason, confirmation) {
+  return authenticatedFetch("/api/portfolio/administration/reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "reset", investorIds, reason, confirmation })
+  });
+}

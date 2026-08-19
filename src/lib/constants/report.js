@@ -331,20 +331,6 @@ export function createEmptyHighlight(index = 0) {
   };
 }
 
-
-function inferAssetClass(value = "") {
-  const text = String(value).toLowerCase();
-  if (text.includes("liquid")) return "Liquid";
-  if (text.includes("cash")) return "Cash";
-  if (text.includes("insurance") || text.includes("lic")) return "Insurance";
-  if (text.includes("gold")) return "Gold";
-  if (text.includes("trading") || text.includes("f&o") || text.includes("stock trading")) return "Trading";
-  if (text.includes("real estate") || text.includes("property")) return "Real Estate";
-  if (text.includes("fd") || text.includes("fixed deposit") || text.includes("ppf") || text.includes("bond") || text.includes("debt")) return "Debt";
-  if (text.includes("mutual") || text.includes("equity") || text.includes("stock") || text.includes("pms") || text.includes("aif")) return "Equity";
-  return ASSET_CLASS_OPTIONS.includes(value) ? value : "Other";
-}
-
 export function createReportFromInvestor(investor, month = new Date().getMonth() + 1, year = new Date().getFullYear()) {
   const goals = (investor?.bucketList?.length ? investor.bucketList : investor?.goals || []).map((goal, index) => ({
     goalId: goal.id || `goal-${index + 1}`,
@@ -360,17 +346,12 @@ export function createReportFromInvestor(investor, month = new Date().getMonth()
     isPrimary: Boolean(goal.isPrimary)
   }));
 
-  const funds = (investor?.existingInvestments || []).map((investment, index) => ({
-    id: investment.id || `fund-${index + 1}`,
-    instrumentName: investment.institution || investment.type || "",
-    assetClass: inferAssetClass(investment.type),
-    goalId: "",
-    goalName: "",
-    monthlySip: Number(investment.monthlyContribution || 0),
-    currentValue: Number(investment.currentValue || 0),
-    type: "Fixed",
-    notes: investment.notes || ""
-  }));
+  // Portfolio values and holdings are intentionally not seeded from legacy
+  // investor profile investments. Monthly reports must use a verified
+  // Portfolio Master snapshot (or an explicit import flow) as their current
+  // portfolio source so a Full Portfolio Reset cannot be revived by stale
+  // profile/report data.
+  const funds = [];
 
   const totalCorpus = funds.reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
   const lifetimeTarget = goals.reduce((sum, item) => sum + Number(item.targetAmount || 0), 0);

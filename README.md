@@ -6,6 +6,13 @@ Standalone Next.js application for GrowVest investor operations, portfolio manag
 
 ## Version 0.33.2 - Investor Status & Safe Deletion
 
+- Added Super Admin-only **Full Portfolio Reset** as a separate action from normal controlled portfolio cleanup.
+- Full Portfolio Reset returns a selected Investor to a true first-ever-upload portfolio state by deleting current holdings, investment transactions, ULIP portfolio records, Bajaj trading data, snapshots, Investor-linked import files, recovery journals/items, file fingerprints, provider mappings, SIP funding workflow records, linked portfolio actions/service requests/notifications, portfolio-specific activity history, daily-tracking state and latest Portfolio Master metadata.
+- Central **Portfolio Administration** supports Full Portfolio Reset for up to 25 selected Investors with a fresh impact preview and typed `RESET N INVESTORS` confirmation; an individual Investor requires typed `RESET PORTFOLIO`.
+- Shared import batches are handled safely: only the selected Investor files and daily-coverage references are removed and surviving batch metadata is rebuilt for other Investors; a batch is deleted only when no valid files or other-Investor missing-coverage references remain.
+- Goal/Bucket List definitions, Investor profile/KYC/documents/family/advisor/meetings and published Monthly Reports are preserved. Old holding-to-goal allocations disappear with the deleted holdings.
+- Published Monthly Reports remain historical and no longer backfill staff/Investor **current portfolio** displays or seed new Monthly Report portfolio values/actions when the live Portfolio Master is blank after reset.
+- Full Portfolio Reset intentionally creates no corrected snapshot and no new portfolio-reset history entry, so the next verified upload creates the first new Portfolio Master/snapshot and starts future portfolio history from that point.
 - Added Admin/Super Admin-only **Disable Investor**, **Enable Investor**, and **Delete Investor** controls under Investor → Access & Documents.
 - Disable keeps the Investor visible to staff, blocks Investor Portal authentication, revokes existing sessions, and pauses SIP reminders that were active at the time of disablement.
 - Enable restores active Investor status, resumes only SIP schedules paused by the lifecycle action, and restores prior portal access only when it was enabled before disablement.
@@ -16,6 +23,7 @@ Standalone Next.js application for GrowVest investor operations, portfolio manag
 - Investor list now shows Active/Disabled status and includes an Investor status filter.
 - No new Firestore collections, browser write permissions, or composite indexes are required.
 - See `docs/INVESTOR_STATUS_SAFE_DELETION_v0.33.2.md` for behavior and UAT.
+- See `docs/FULL_PORTFOLIO_RESET_v0.33.2.md` for the fresh-start reset contract, deletion matrix and UAT.
 
 ## Version 0.33.1 - Reconciled Portfolio Administration
 
