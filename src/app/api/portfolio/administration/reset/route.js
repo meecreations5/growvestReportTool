@@ -6,6 +6,7 @@ import {
 import {
   loadPortfolioResetContext,
   portfolioResetPreview,
+  purgeOrphanFundbazaarImportAttempts,
   resetInvestorPortfolio
 } from "@/lib/server/portfolioReset";
 
@@ -67,6 +68,7 @@ export async function POST(request) {
     if (reason.length < 5) return Response.json({ error: "Enter a clear reset reason." }, { status: 400 });
     if (confirmation !== expectedConfirmation) return Response.json({ error: `Type ${expectedConfirmation} to confirm this reset.` }, { status: 400 });
 
+    const resetStartedAt = new Date();
     const results = [];
     // Reload each context immediately before deleting it. Multiple selected investors
     // can share one import batch; refreshing prevents a later reset from restoring
@@ -75,7 +77,8 @@ export async function POST(request) {
       const currentContext = await loadPortfolioResetContext(investor);
       results.push(await resetInvestorPortfolio(currentContext));
     }
-    return Response.json({ success: true, results, totals, expectedConfirmation });
+    const orphanImportCleanup = await purgeOrphanFundbazaarImportAttempts({ before: resetStartedAt });
+    return Response.json({ success: true, results, totals, expectedConfirmation, orphanImportCleanup });
   } catch (error) {
     console.error("Bulk Full Portfolio Reset failed", error);
     return Response.json(

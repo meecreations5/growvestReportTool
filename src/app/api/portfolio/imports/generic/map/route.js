@@ -28,17 +28,42 @@ function tokenSimilarity(left = "", right = "") {
   return union ? overlap / union : 0;
 }
 
+function primaryExternalInvestorName(externalName = "") {
+  const normalized = normaliseExternalName(externalName);
+  if (!normalized) return "";
+  const representativeMarkers = [" REP BY ", " REPRESENTED BY "];
+  for (const marker of representativeMarkers) {
+    const index = normalized.indexOf(marker);
+    if (index > 0) {
+      const primary = normalized.slice(0, index).trim();
+      if (primary.split(" ").filter(Boolean).length >= 2) return primary;
+    }
+  }
+  return normalized;
+}
+
 function buildSuggestions(externalName, investors = []) {
   const normalized = normaliseExternalName(externalName);
+  const primaryName = primaryExternalInvestorName(externalName);
   if (!normalized) return [];
   return investors
     .map((investor) => {
       const investorNormalized = normaliseExternalName(investorName(investor));
-      const exact = normalized === investorNormalized;
-      const tokenScore = tokenSimilarity(normalized, investorNormalized);
-      const containment = normalized.includes(investorNormalized) || investorNormalized.includes(normalized) ? 0.12 : 0;
-      const score = exact ? 1 : Math.min(0.99, tokenScore + containment);
-      return { investorId: investor.id, clientCode: investor.clientCode || "", fullName: investorName(investor), score: Number(score.toFixed(2)), exact };
+      const exact = primaryName === investorNormalized || normalized === investorNormalized;
+      const primaryTokenScore = tokenSimilarity(primaryName, investorNormalized);
+      const fullTokenScore = tokenSimilarity(normalized, investorNormalized);
+      const primaryContainment = primaryName.includes(investorNormalized) || investorNormalized.includes(primaryName) ? 0.12 : 0;
+      const fullContainment = normalized.includes(investorNormalized) || investorNormalized.includes(normalized) ? 0.06 : 0;
+      const primaryScore = primaryTokenScore + primaryContainment;
+      const fullScore = fullTokenScore + fullContainment;
+      const score = exact ? 1 : Math.min(0.99, Math.max(primaryScore, fullScore));
+      return {
+        investorId: investor.id,
+        clientCode: investor.clientCode || "",
+        fullName: investorName(investor),
+        score: Number(score.toFixed(2)),
+        exact
+      };
     })
     .filter((item) => item.score >= 0.34)
     .sort((a, b) => b.score - a.score || a.fullName.localeCompare(b.fullName))

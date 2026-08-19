@@ -163,7 +163,7 @@ export default function DailyPortfolioCoveragePanel({ currentUser, refreshKey = 
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <MetricCard label="Expected" value={coverage?.expectedCount ?? (loading ? "—" : 0)} helper={`${coverage?.pausedCount || 0} paused`} icon={UsersRound} tone="blue" />
-          <MetricCard label="Received" value={coverage?.receivedCount ?? (loading ? "—" : 0)} helper={`${coverage?.completionPercentage ?? 0}% coverage`} icon={CheckCircle2} tone="green" />
+          <MetricCard label="Received" value={coverage?.receivedCount ?? (loading ? "—" : 0)} helper={coverage?.expectedCount ? `${coverage?.completionPercentage ?? 0}% coverage` : "Not started"} icon={CheckCircle2} tone="green" />
           <MetricCard label="Updated" value={coverage?.updatedCount ?? (loading ? "—" : 0)} helper="Applied to Portfolio Master" icon={ShieldCheck} tone="green" />
           <MetricCard label="Need Attention" value={coverage?.attentionCount ?? (loading ? "—" : 0)} helper={coverage?.unmatchedIssues?.length ? `${coverage.unmatchedIssues.length} unmatched file(s)` : "Review exceptions"} icon={AlertTriangle} tone={coverage?.attentionCount ? "amber" : "green"} />
           <MetricCard label="Missing" value={coverage?.missingCount ?? (loading ? "—" : 0)} helper="Latest portfolio retained" icon={Clock3} tone={coverage?.missingCount ? "amber" : "green"} />
@@ -193,7 +193,14 @@ export default function DailyPortfolioCoveragePanel({ currentUser, refreshKey = 
             <div className="mt-2 grid gap-2">
               {coverage.unmatchedIssues.slice(0, 10).map((item) => (
                 <div key={item.fileId} className="rounded-lg bg-white px-3 py-2 text-xs text-slate-700">
-                  <strong>{item.fileName}</strong>{item.externalClientName ? ` · ${item.externalClientName}` : ""}<span className="block mt-1 text-slate-500">{item.error}</span>
+                  <strong>{item.fileName}</strong>{item.externalClientName ? ` · ${item.externalClientName}` : ""}
+                  {item.suggestedInvestorName ? (
+                    <span className="mt-1 block font-semibold text-blue-700">
+                      Suggested investor: {item.suggestedInvestorName}{item.suggestedClientCode ? ` (${item.suggestedClientCode})` : ""}
+                      {item.suggestedExact ? " · Exact name" : item.suggestedScore ? ` · ${Math.round(Number(item.suggestedScore) * 100)}% name match` : ""}
+                    </span>
+                  ) : null}
+                  <span className="mt-1 block text-slate-500">{item.error}</span>
                 </div>
               ))}
             </div>
@@ -202,7 +209,7 @@ export default function DailyPortfolioCoveragePanel({ currentUser, refreshKey = 
 
         <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
           {loading && !coverage ? <div className="p-8 text-center text-sm font-semibold text-slate-500"><Loader2 size={18} className="mx-auto mb-2 animate-spin" />Loading today's coverage...</div> : null}
-          {!loading && coverage && !visibleRows.length ? <div className="p-8 text-center text-sm font-semibold text-emerald-700">No investors in this view. Today's portfolio coverage is clear.</div> : null}
+          {!loading && coverage && !visibleRows.length ? <div className="p-8 text-center text-sm font-semibold text-emerald-700">{coverage.expectedCount || coverage.pausedCount ? "No investors in this view. Today's portfolio coverage is clear." : "Daily Fundbazaar tracking is not started. The first successful portfolio import will create the new verified mapping."}</div> : null}
           {visibleRows.map((row) => <CoverageRow key={row.investorId} row={row} canManage={canManage} onToggle={toggleTracking} busyInvestorId={busyInvestorId} />)}
         </div>
       </div>

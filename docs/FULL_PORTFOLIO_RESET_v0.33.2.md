@@ -73,6 +73,19 @@ For a selected Investor:
 
 Bulk reset reloads each Investor's reset context immediately before deletion. This prevents one selected Investor from restoring stale file IDs after another selected Investor has already modified the same shared batch.
 
+### Orphan/uncommitted Fundbazaar attempts
+
+A previous importer version could store a rejected Fundbazaar `.xls` attempt without enough external Investor identity to attribute that failed preview back to a selected Investor. Those zero-import records could then appear in **Daily Coverage → Need Attention** and in global batch history even after all verified Fundbazaar mappings had been reset.
+
+The corrected behavior is:
+
+1. Daily Coverage counts unmatched issue files only when they can be strongly tied to one of the currently expected verified Fundbazaar mappings.
+2. If `Expected = 0`, coverage is **Not started**, completion is `0%`, and stale orphan preview attempts do not create a Need Attention count.
+3. New rejected/uncommitted files persist external client name/PAN/client-code plus strong mapping suggestions so a future Investor Full Reset can delete them safely.
+4. When a Full Portfolio Reset leaves **zero verified Fundbazaar mappings in the system**, pre-reset orphan Fundbazaar issue files are purged automatically. Empty zero-import batches are deleted; mixed/shared batches keep any surviving imported or non-Fundbazaar files.
+5. The Import Centre operational History view shows only batches that actually imported at least one portfolio. Preview-only/zero-import attempts do not masquerade as historical portfolio updates.
+6. If the reset happened on an older build and those orphan rows already exist, Super Admin can use **Daily Portfolio Update -> History -> Clear old failed attempts**. The action requires confirmation, is blocked while any verified Fundbazaar mapping exists, and never deletes imported portfolio files.
+
 ## Preserved data
 
 Full Portfolio Reset does **not** delete:
@@ -140,6 +153,11 @@ No corrected snapshot is created by Full Portfolio Reset itself.
 12. Confirm the Investor must be mapped again and the new upload creates a fresh first snapshot.
 13. For a reset Investor, upload a readable Fundbazaar Client Wise Valuation `.xls` / HTML-XLS export and confirm it is accepted for this first bootstrap import.
 14. After the first import succeeds, try another legacy `.xls` / HTML-XLS Fundbazaar update and confirm GrowVest requires `Client Wise Valuation Report.xlsx` for the ongoing update.
+15. Immediately after Full Reset with no Fundbazaar mapping, open Daily Portfolio Update and confirm `Expected = 0`, `Received = 0`, `Need Attention = 0`, `Missing = 0`, and the Received helper says **Not started** rather than `100% coverage`.
+16. Confirm old zero-import Fundbazaar `.xls` preview/error attempts are not shown as Daily Coverage exceptions.
+17. Confirm **Recent applied portfolio batches** contains only batches that actually updated a portfolio; old `0 imported / N issues` attempts are absent.
+18. When no verified Fundbazaar mappings remain after reset, confirm orphan pre-reset Fundbazaar issue files and their empty zero-import batches are physically removed.
+19. For an environment already reset on the previous build, confirm **Clear old failed attempts** is visible to Super Admin, removes the legacy zero-import Fundbazaar attempts, disappears after cleanup, and is rejected if a verified Fundbazaar mapping exists.
 
 ### Shared batch safety
 

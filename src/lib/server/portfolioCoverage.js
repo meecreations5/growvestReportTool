@@ -61,6 +61,19 @@ function recordStatus(record = {}) {
   return "received";
 }
 
+function normaliseIdentityName(value = "") {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toUpperCase();
+}
+
+function upperIdentity(value = "") {
+  return String(value || "").trim().toUpperCase();
+}
+
 function mergeExpectedMapping(current, mapping) {
   if (!current) {
     return {
@@ -217,19 +230,58 @@ export async function buildDailyPortfolioCoverage(actor, { dateKey = indiaDateKe
   const attentionRows = rows.filter((item) => ["attention", "updated_attention"].includes(item.status));
   const duplicateRows = rows.filter((item) => item.status === "received_duplicate");
 
+  // Daily coverage is a mapping-based operational view. Old/uncommitted files
+  // that cannot be tied to one of today's expected Fundbazaar investors must
+  // not make a completely reset portfolio look as though it still needs
+  // attention. Strong identity only: verified mapping identity, PAN, or an
+  // exact investor suggestion captured during preview.
+  const expectedNames = new Set();
+  const expectedPans = new Set();
+  expectedMap.forEach((mapping) => {
+    [mapping.externalClientName, mapping.investorName].forEach((value) => {
+      const normalized = normaliseIdentityName(value);
+      if (normalized) expectedNames.add(normalized);
+    });
+    const pan = upperIdentity(mapping.externalPan);
+    if (pan) expectedPans.add(pan);
+  });
+
   const unmatchedIssues = records
     .filter((record) => !record.matchedInvestorId && recordStatus(record) === "attention")
     .filter((record) => actor.role !== "advisor")
-    .map((record) => ({
-      fileId: record.id,
-      fileName: record.fileName || "Portfolio report",
-      status: record.status || record.matchStatus || "review_required",
-      externalClientName: record.externalClientName || "",
-      error: record.importError || record.parseError || "Investor mapping or file review is required."
-    }));
+    .filter((record) => {
+      if (!expectedCount) return false;
+      const suggestedExpectedInvestor = Array.isArray(record.suggestions)
+        && record.suggestions.some((item) => expectedMap.has(String(item?.investorId || "")) && item?.exact === true);
+      if (suggestedExpectedInvestor) return true;
+      const externalPan = upperIdentity(record.externalPan);
+      if (externalPan && expectedPans.has(externalPan)) return true;
+      const externalName = normaliseIdentityName(record.normalizedExternalClientName || record.externalClientName);
+      return Boolean(externalName && expectedNames.has(externalName));
+    })
+    .map((record) => {
+      const expectedSuggestions = Array.isArray(record.suggestions)
+        ? record.suggestions
+          .filter((item) => expectedMap.has(String(item?.investorId || "")))
+          .sort((a, b) => Number(b?.score || 0) - Number(a?.score || 0))
+        : [];
+      const primarySuggestion = expectedSuggestions[0] || (Array.isArray(record.suggestions) ? record.suggestions[0] : null);
+      return {
+        fileId: record.id,
+        fileName: record.fileName || "Portfolio report",
+        status: record.status || record.matchStatus || "review_required",
+        externalClientName: record.externalClientName || "",
+        suggestedInvestorId: primarySuggestion?.investorId || "",
+        suggestedInvestorName: primarySuggestion?.fullName || "",
+        suggestedClientCode: primarySuggestion?.clientCode || "",
+        suggestedScore: Number(primarySuggestion?.score || 0),
+        suggestedExact: primarySuggestion?.exact === true,
+        error: record.importError || record.parseError || "Investor mapping or file review is required."
+      };
+    });
 
   const attentionCount = attentionRows.length + unmatchedIssues.length;
-  const completionPercentage = expectedCount ? Number(((receivedCount / expectedCount) * 100).toFixed(1)) : 100;
+  const completionPercentage = expectedCount ? Number(((receivedCount / expectedCount) * 100).toFixed(1)) : 0;
 
   return {
     dateKey: range.dateKey,

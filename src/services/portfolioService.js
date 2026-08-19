@@ -407,6 +407,14 @@ export async function getPortfolioReportSource(investorId, asOfDate, currentUser
   };
 }
 
+export async function purgeOrphanPortfolioImportAttempts() {
+  return authenticatedFetch("/api/portfolio/imports/orphans", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirmation: "CLEAR FAILED IMPORTS" })
+  });
+}
+
 export async function getPortfolioImportRecovery(batchId) {
   return authenticatedFetch(`/api/portfolio/imports/${batchId}/recovery`);
 }

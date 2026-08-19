@@ -13,6 +13,10 @@ Standalone Next.js application for GrowVest investor operations, portfolio manag
 - Goal/Bucket List definitions, Investor profile/KYC/documents/family/advisor/meetings and published Monthly Reports are preserved. Old holding-to-goal allocations disappear with the deleted holdings.
 - Published Monthly Reports remain historical and no longer backfill staff/Investor **current portfolio** displays when the live Portfolio Master is blank after reset.
 - Full Portfolio Reset intentionally creates no corrected snapshot and no new portfolio-reset history entry, so the next verified upload creates the first new Portfolio Master/snapshot and starts future portfolio history from that point.
+- Daily Fundbazaar Coverage now treats `Expected = 0` as **Not started** instead of 100% coverage and ignores orphan/uncommitted issue files that cannot be tied to a currently expected verified mapping.
+- The Portfolio Import Centre history now shows only batches that actually updated at least one portfolio; zero-import preview/error attempts no longer appear as operational import history after a reset.
+- Rejected/uncommitted portfolio files now persist strong external identity metadata for safe Investor-specific reset cleanup. When a Full Reset leaves **no verified Fundbazaar mappings at all**, pre-reset orphan Fundbazaar issue attempts are also removed and empty issue-only batches are deleted.
+- For systems that were already reset on an older build, Super Admin now gets **Clear old failed attempts** in Daily Portfolio Update. It permanently deletes only zero-import orphan Fundbazaar attempts and is blocked while any verified Fundbazaar mapping exists.
 - Added Admin/Super Admin-only **Disable Investor**, **Enable Investor**, and **Delete Investor** controls under Investor → Access & Documents.
 - Disable keeps the Investor visible to staff, blocks Investor Portal authentication, revokes existing sessions, and pauses SIP reminders that were active at the time of disablement.
 - Enable restores active Investor status, resumes only SIP schedules paused by the lifecycle action, and restores prior portal access only when it was enabled before disablement.

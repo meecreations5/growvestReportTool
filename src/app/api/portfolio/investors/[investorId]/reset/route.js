@@ -6,6 +6,7 @@ import { getAccessibleInvestor } from "@/lib/server/portfolioServer";
 import {
   loadPortfolioResetContext,
   portfolioResetPreview,
+  purgeOrphanFundbazaarImportAttempts,
   resetInvestorPortfolio
 } from "@/lib/server/portfolioReset";
 
@@ -43,8 +44,10 @@ export async function POST(request, { params }) {
     if (reason.length < 5) return Response.json({ error: "Enter a clear reset reason." }, { status: 400 });
     if (confirmation !== "RESET PORTFOLIO") return Response.json({ error: "Type RESET PORTFOLIO to confirm the full reset." }, { status: 400 });
 
+    const resetStartedAt = new Date();
     const result = await resetInvestorPortfolio(context);
-    return Response.json({ success: true, ...result });
+    const orphanImportCleanup = await purgeOrphanFundbazaarImportAttempts({ before: resetStartedAt });
+    return Response.json({ success: true, ...result, orphanImportCleanup });
   } catch (error) {
     console.error("Full Portfolio Reset failed", error);
     return Response.json(

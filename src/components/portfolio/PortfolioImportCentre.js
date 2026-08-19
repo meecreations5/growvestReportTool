@@ -15,6 +15,7 @@ import {
   RefreshCcw,
   ShieldCheck,
   Settings2,
+  Trash2,
   UploadCloud,
   X
 } from "lucide-react";
@@ -23,6 +24,7 @@ import { subscribeInvestors } from "@/services/assessmentService";
 import {
   commitPortfolioImport,
   previewPortfolioImport,
+  purgeOrphanPortfolioImportAttempts,
   subscribePortfolioImports
 } from "@/services/portfolioService";
 import Button from "@/components/ui/Button";
@@ -115,7 +117,9 @@ function isIssue(item = {}, mapping = "") {
 
 function FileCard({ item, investors, mapping, onMappingChange, onOpenGenericMapping, onOpenRecovery }) {
   const requiresChoice = needsInvestorChoice(item);
-  const suggestedIds = new Set((item.suggestions || []).map((candidate) => candidate.investorId));
+  const suggestions = Array.isArray(item.suggestions) ? item.suggestions : [];
+  const primarySuggestion = suggestions[0] || null;
+  const suggestedIds = new Set(suggestions.map((candidate) => candidate.investorId));
   const orderedInvestors = [
     ...investors.filter((investor) => suggestedIds.has(investor.id)),
     ...investors.filter((investor) => !suggestedIds.has(investor.id))
@@ -141,6 +145,19 @@ function FileCard({ item, investors, mapping, onMappingChange, onOpenGenericMapp
               {item.externalPan ? <> · PAN <strong className="text-slate-700">{item.externalPan}</strong></> : null}
               {item.externalClientCode ? <> · Client Code <strong className="text-slate-700">{item.externalClientCode}</strong></> : null}
             </p>
+          ) : null}
+          {primarySuggestion && item.matchStatus !== PORTFOLIO_MATCH_STATUS.VERIFIED ? (
+            <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-2.5">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-blue-600">Suggested GrowVest investor</p>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                <strong className="text-blue-950">{primarySuggestion.fullName}</strong>
+                {primarySuggestion.clientCode ? <span className="font-semibold text-blue-700">({primarySuggestion.clientCode})</span> : null}
+                <span className="rounded-full bg-white px-2 py-0.5 font-bold text-blue-700 ring-1 ring-blue-200">
+                  {primarySuggestion.exact ? "Exact name" : `${Math.round(Number(primarySuggestion.score || 0) * 100)}% name match`}
+                </span>
+              </div>
+              <p className="mt-1 text-[11px] text-blue-700">Suggestion only — confirm the GrowVest investor before updating the portfolio.</p>
+            </div>
           ) : null}
           {item.warnings?.length ? <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800">{item.warnings.slice(0, 2).join(" ")}</div> : null}
           {item.error ? <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-700">{item.error}</p> : null}
@@ -228,6 +245,7 @@ export default function PortfolioImportCentre() {
   const [result, setResult] = useState(null);
   const [viewMode, setViewMode] = useState("all");
   const [coverageRefreshKey, setCoverageRefreshKey] = useState(0);
+  const [historyNotice, setHistoryNotice] = useState("");
 
   useEffect(() => {
     if (!profile?.id) return undefined;
@@ -245,6 +263,13 @@ export default function PortfolioImportCentre() {
   const unresolved = useMemo(() => eligibleFiles.filter((item) => needsInvestorChoice(item) && !mappings[item.fileId]), [eligibleFiles, mappings]);
   const readyFiles = useMemo(() => eligibleFiles.filter((item) => !needsInvestorChoice(item) || Boolean(mappings[item.fileId])), [eligibleFiles, mappings]);
   const duplicateFiles = useMemo(() => previewFiles.filter((item) => item.matchStatus === PORTFOLIO_MATCH_STATUS.DUPLICATE), [previewFiles]);
+  const appliedImportHistory = useMemo(() => recentImports.filter((item) => Number(item.importedCount || 0) > 0 || ["completed", "partial"].includes(String(item.status || ""))), [recentImports]);
+  const failedFundbazaarAttempts = useMemo(() => recentImports.filter((item) => {
+    const source = String(item.source || "");
+    const zeroImported = Number(item.importedCount || 0) === 0;
+    const hasIssues = Number(item.issueCount || item.previewIssueCount || 0) > 0;
+    return zeroImported && hasIssues && ["fundbazaar", "mixed"].includes(source);
+  }), [recentImports]);
   const issueFiles = useMemo(() => previewFiles.filter((item) => isIssue(item, mappings[item.fileId])), [previewFiles, mappings]);
   const selectedValue = useMemo(() => readyFiles.reduce((sum, item) => sum + Number(item.summary?.currentValue || 0), 0), [readyFiles]);
   const visibleFiles = viewMode === "issues" ? issueFiles : previewFiles;
@@ -279,6 +304,24 @@ export default function PortfolioImportCentre() {
       setViewMode(hasIssues ? "issues" : "all");
     } catch (nextError) {
       setError(nextError.message || "Unable to analyse portfolio reports.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function handleClearFailedAttempts() {
+    const confirmed = window.confirm("Permanently delete old Fundbazaar upload attempts that imported 0 portfolios? This is allowed only when no verified Fundbazaar mappings remain. Imported portfolio data is never deleted by this action.");
+    if (!confirmed) return;
+    setBusy("purge-orphans");
+    setError("");
+    setHistoryNotice("");
+    try {
+      const response = await purgeOrphanPortfolioImportAttempts();
+      const cleanup = response?.cleanup || {};
+      setHistoryNotice(`${cleanup.removedFiles || 0} failed file attempt(s) and ${cleanup.removedBatches || 0} empty batch(es) permanently cleared.`);
+      setCoverageRefreshKey((current) => current + 1);
+    } catch (nextError) {
+      setError(nextError.message || "Unable to clear old failed portfolio import attempts.");
     } finally {
       setBusy("");
     }
@@ -446,14 +489,20 @@ export default function PortfolioImportCentre() {
       </Card>
 
       <Card className="overflow-hidden">
-        <div className="border-b border-slate-200 p-5"><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">History</p><h2 className="mt-1 font-heading text-xl font-bold text-slate-950">Recent daily portfolio batches</h2></div>
+        <div className="border-b border-slate-200 p-5">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+            <div><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">History</p><h2 className="mt-1 font-heading text-xl font-bold text-slate-950">Recent applied portfolio batches</h2><p className="mt-1 text-xs text-slate-500">Only batches that actually updated at least one investor portfolio are retained in this operational history view.</p></div>
+            {profile?.role === "super_admin" && failedFundbazaarAttempts.length ? <button type="button" onClick={handleClearFailedAttempts} disabled={busy === "purge-orphans"} className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50">{busy === "purge-orphans" ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Clear old failed attempts</button> : null}
+          </div>
+          {historyNotice ? <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">{historyNotice}</div> : null}
+        </div>
         <div className="divide-y divide-slate-100">
-          {recentImports.length ? recentImports.slice(0, 12).map((item) => (
+          {appliedImportHistory.length ? appliedImportHistory.slice(0, 12).map((item) => (
             <div key={item.id} className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
               <div><p className="font-semibold text-slate-900">{sourceLabel(item.source)} · {item.fileCount || 0} file(s)</p><p className="mt-1 text-xs text-slate-500">{dateTime(item.createdAt)} · {item.createdByName || "GrowVest User"}</p></div>
               <div className="flex flex-wrap items-center gap-2 text-xs font-semibold"><span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">{item.importedCount || 0} imported</span>{Number(item.issueCount || item.previewIssueCount || 0) ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800">{item.issueCount || item.previewIssueCount} issue(s)</span> : null}{Number(item.coverageExpectedCount || 0) > 0 ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">Coverage {item.coverageReceivedCount || 0}/{item.coverageExpectedCount} · {Number(item.coverageCompletionPercentage || 0).toFixed(0)}%</span> : null}{Number(item.missingInvestorCount || 0) ? <span className="rounded-full bg-red-50 px-2.5 py-1 text-red-700">{item.missingInvestorCount} missing</span> : null}<span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">{formatCurrency(item.totalCurrentValue)}</span>{["super_admin", "admin"].includes(profile?.role) && (Number(item.importedCount || 0) > 0 || ["partial", "failed"].includes(item.status)) ? <button type="button" onClick={() => setRecoveryBatchId(item.id)} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700 hover:border-blue-200 hover:text-blue-700"><History size={13} /> Manage</button> : null}</div>
             </div>
-          )) : <div className="p-8 text-center text-sm text-slate-500">No daily portfolio imports yet.</div>}
+          )) : <div className="p-8 text-center text-sm text-slate-500">No applied portfolio imports yet.</div>}
         </div>
       </Card>
       {recoveryBatchId ? <PortfolioImportRecoveryDialog batchId={recoveryBatchId} investors={investors} onClose={() => setRecoveryBatchId("")} onCompleted={() => setCoverageRefreshKey((current) => current + 1)} /> : null}

@@ -30,16 +30,42 @@ function tokenSimilarity(left = "", right = "") {
   return union ? overlap / union : 0;
 }
 
+function primaryExternalInvestorName(externalName = "") {
+  const normalized = normaliseExternalName(externalName);
+  if (!normalized) return "";
+  const representativeMarkers = [" REP BY ", " REPRESENTED BY "];
+  for (const marker of representativeMarkers) {
+    const index = normalized.indexOf(marker);
+    if (index > 0) {
+      const primary = normalized.slice(0, index).trim();
+      if (primary.split(" ").filter(Boolean).length >= 2) return primary;
+    }
+  }
+  return normalized;
+}
+
 function buildSuggestions(externalName, investors = []) {
   const normalized = normaliseExternalName(externalName);
+  const primaryName = primaryExternalInvestorName(externalName);
+  if (!normalized) return [];
   return investors
     .map((investor) => {
       const investorNormalized = normaliseExternalName(investorName(investor));
-      const exact = normalized === investorNormalized;
-      const tokenScore = tokenSimilarity(normalized, investorNormalized);
-      const containment = normalized.includes(investorNormalized) || investorNormalized.includes(normalized) ? 0.12 : 0;
-      const score = exact ? 1 : Math.min(0.99, tokenScore + containment);
-      return { investorId: investor.id, clientCode: investor.clientCode || "", fullName: investorName(investor), score: Number(score.toFixed(2)), exact };
+      const exact = primaryName === investorNormalized || normalized === investorNormalized;
+      const primaryTokenScore = tokenSimilarity(primaryName, investorNormalized);
+      const fullTokenScore = tokenSimilarity(normalized, investorNormalized);
+      const primaryContainment = primaryName.includes(investorNormalized) || investorNormalized.includes(primaryName) ? 0.12 : 0;
+      const fullContainment = normalized.includes(investorNormalized) || investorNormalized.includes(normalized) ? 0.06 : 0;
+      const primaryScore = primaryTokenScore + primaryContainment;
+      const fullScore = fullTokenScore + fullContainment;
+      const score = exact ? 1 : Math.min(0.99, Math.max(primaryScore, fullScore));
+      return {
+        investorId: investor.id,
+        clientCode: investor.clientCode || "",
+        fullName: investorName(investor),
+        score: Number(score.toFixed(2)),
+        exact
+      };
     })
     .filter((item) => item.score >= 0.34)
     .sort((a, b) => b.score - a.score || a.fullName.localeCompare(b.fullName))
@@ -188,6 +214,7 @@ export async function POST(request) {
         && detected.adapterStatus === PORTFOLIO_ADAPTER_STATUS.READY;
 
       if (!isReadyImport) {
+        const issueSuggestions = buildSuggestions(detected.externalClientName, investors);
         const status = detected.adapterStatus === PORTFOLIO_ADAPTER_STATUS.NEEDS_PACKAGE
           ? "needs_package"
           : detected.adapterStatus === PORTFOLIO_ADAPTER_STATUS.MAPPING_REQUIRED
@@ -208,6 +235,11 @@ export async function POST(request) {
           fileFormat: detected.fileFormat || "",
           sheetName: detected.sheetName || "",
           fileFingerprint: detected.fileFingerprint,
+          externalClientName: detected.externalClientName || "",
+          normalizedExternalClientName: detected.normalizedExternalClientName || normaliseExternalName(detected.externalClientName || ""),
+          externalPan: detected.externalPan || "",
+          externalClientCode: detected.externalClientCode || "",
+          suggestions: issueSuggestions,
           matchStatus: status,
           status,
           parseError: detected.error || (status === "mapping_required" ? "Column mapping is required before this file can be imported." : "Automatic importer is not enabled for this report type yet."),
@@ -219,7 +251,7 @@ export async function POST(request) {
           updatedAt: FieldValue.serverTimestamp()
         };
         writer.set(fileRef, fileRecord);
-        fileResults.push(publicFileResult(fileRef, detected, { uploadIndex: index, matchStatus: status, error: fileRecord.parseError, suggestions: [] }));
+        fileResults.push(publicFileResult(fileRef, detected, { uploadIndex: index, matchStatus: status, error: fileRecord.parseError, suggestions: issueSuggestions }));
         continue;
       }
 
