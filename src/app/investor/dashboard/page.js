@@ -104,6 +104,8 @@ export default function InvestorDashboardPage() {
   const primaryGoal = goals.find((item) => item.isPrimary) || activeGoals[0] || goals[0] || null;
   const latestReport = reports[0] || null;
   const previousReport = reports[1] || null;
+  const currentPortfolioValue = Number(investor?.latestPortfolioValue || 0);
+  const hasCurrentPortfolio = Boolean(investor?.latestPortfolioSnapshotId || investor?.latestPortfolioUpdatedAt || currentPortfolioValue > 0);
   const latestValue = Number(latestReport?.summary?.totalCorpus || 0);
   const previousValue = Number(previousReport?.summary?.totalCorpus || 0);
   const monthlyMovement = previousValue ? latestValue - previousValue : Number(latestReport?.summary?.investmentGain || 0);
@@ -132,15 +134,15 @@ export default function InvestorDashboardPage() {
           <div className="mt-7">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Latest portfolio value</p>
             <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-2">
-              <p className="font-heading text-4xl font-bold text-white sm:text-5xl">{loading ? "…" : latestReport ? compactCurrency(latestValue) : "—"}</p>
-              {latestReport ? (
+              <p className="font-heading text-4xl font-bold text-white sm:text-5xl">{loading ? "…" : hasCurrentPortfolio ? compactCurrency(currentPortfolioValue) : "—"}</p>
+              {latestReport && hasCurrentPortfolio ? (
                 <span className={`mb-1 inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold ${movementPositive ? "bg-emerald-400/15 text-emerald-300" : "bg-red-400/15 text-red-300"}`}>
                   {movementPositive ? <TrendingUp size={15} /> : <TrendingDown size={15} />}
                   {movementPositive ? "+" : ""}{compactCurrency(monthlyMovement)} this month
                 </span>
               ) : null}
             </div>
-            <p className="mt-2 text-xs text-slate-400">{latestReport ? `${getMonthLabel(latestReport.reportMonth)} ${latestReport.reportYear} · Published version ${latestReport.publishedVersion || 1}` : "Your first published monthly report will appear here."}</p>
+            <p className="mt-2 text-xs text-slate-400">{hasCurrentPortfolio ? `Current Portfolio Master${investor?.latestPortfolioSnapshotDate ? ` · ${displayDate(investor.latestPortfolioSnapshotDate)}` : ""}` : latestReport ? "No current portfolio data · published Monthly Reports remain available as historical records." : "Your first portfolio update will appear here after GrowVest uploads verified data."}</p>
           </div>
 
           <div className="mt-6">

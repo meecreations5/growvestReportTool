@@ -489,7 +489,7 @@ export default function InvestorDetailClient({ investorId }) {
   const totalGoalCurrent = goals.reduce((sum, goal) => sum + Number(goal.currentAmount || 0), 0);
   const totalInvestments = investments.reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
   const totalLiabilities = liabilities.reduce((sum, item) => sum + Number(item.outstandingAmount || 0), 0);
-  const currentPortfolio = Number(investor.latestPortfolioValue || latestReport?.summary?.totalCorpus || totalInvestments || 0);
+  const currentPortfolio = Number(investor.latestPortfolioValue || 0);
   const latestGain = Number(latestReport?.summary?.investmentGain || 0);
   const latestNewMoney = Number(latestReport?.summary?.newMoneyAdded || 0);
   const latestWithdrawals = Number(latestReport?.summary?.withdrawals || latestReport?.summary?.amountWithdrawn || 0);
@@ -648,7 +648,7 @@ export default function InvestorDetailClient({ investorId }) {
       </section>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-        <SummaryMetric label="Current portfolio" value={formatCurrency(currentPortfolio)} helper={Number(investor.latestPortfolioValue || 0) > 0 ? "Latest verified portfolio snapshot" : latestReport ? `As of ${reportMonthText(latestReport)}` : "No portfolio snapshot available"} icon={WalletCards} tone="blue" />
+        <SummaryMetric label="Current portfolio" value={formatCurrency(currentPortfolio)} helper={investor.latestPortfolioSnapshotId ? "Latest verified portfolio snapshot" : "No current portfolio snapshot available"} icon={WalletCards} tone="blue" />
         <SummaryMetric label="Monthly gain / loss" value={formatCurrency(latestGain)} helper={latestReport ? reportMonthText(latestReport) : "Awaiting report data"} icon={latestGain < 0 ? TrendingDown : TrendingUp} tone={latestGain < 0 ? "red" : "green"} />
         <SummaryMetric label="Monthly return" value={formatPercent(latestMonthlyReturn)} helper="Calculated from latest report" icon={Activity} tone={latestMonthlyReturn < 0 ? "red" : "cyan"} trend={latestMonthlyReturn} />
         <SummaryMetric label="YTD return" value={formatPercent(ytdReturn)} helper={latestYear ? `Calendar year ${latestYear}` : "Awaiting report history"} icon={Sparkles} tone={ytdReturn < 0 ? "red" : "green"} trend={ytdReturn} />

@@ -29,6 +29,21 @@ function emptyInvestorSummary(investorId) {
     currentValue: 0,
     tradeCount: 0,
     tradingNetPnl: 0,
+    historyCount: 0,
+    history: {
+      transactions: 0,
+      policies: 0,
+      snapshots: 0,
+      snapshotPositions: 0,
+      imports: 0,
+      recoveryJournals: 0,
+      recoveryItems: 0,
+      mappings: 0,
+      fingerprints: 0,
+      tradingSummaries: 0,
+      sipSchedules: 0,
+      sipCycles: 0
+    },
     scopes: {
       [PORTFOLIO_ADMIN_SCOPES.FUNDBAZAAR]: emptyScope(),
       [PORTFOLIO_ADMIN_SCOPES.BAJAJ_DELIVERY]: emptyScope(),
@@ -55,6 +70,16 @@ async function getInvestorDocuments(investorIds) {
   return result;
 }
 
+function addHistory(summaries, investorIds, field) {
+  investorIds.forEach((investorId) => {
+    if (!investorId) return;
+    const summary = summaries.get(investorId) || emptyInvestorSummary(investorId);
+    summary.history[field] += 1;
+    summary.historyCount += 1;
+    summaries.set(investorId, summary);
+  });
+}
+
 export async function GET(request) {
   try {
     const actor = await verifyStaffRequest(request);
@@ -62,9 +87,38 @@ export async function GET(request) {
       return Response.json({ error: "Only Admin or Super Admin can use Portfolio Administration." }, { status: 403 });
     }
 
-    const [positionsSnapshot, tradesSnapshot] = await Promise.all([
+    const [
+      positionsSnapshot,
+      tradesSnapshot,
+      transactionsSnapshot,
+      policiesSnapshot,
+      tradingSummariesSnapshot,
+      snapshotsSnapshot,
+      snapshotPositionsSnapshot,
+      importsSnapshot,
+      recoveryJournalsSnapshot,
+      recoveryItemsSnapshot,
+      mappingsSnapshot,
+      fingerprintsSnapshot,
+      sipSchedulesSnapshot,
+      sipCyclesSnapshot,
+      trackedInvestorsSnapshot
+    ] = await Promise.all([
       adminDb.collection("portfolioPositions").get(),
-      adminDb.collection("tradingTransactions").get()
+      adminDb.collection("tradingTransactions").get(),
+      adminDb.collection("investmentTransactions").get(),
+      adminDb.collection("ulipPolicies").get(),
+      adminDb.collection("tradingMonthlySummaries").get(),
+      adminDb.collection("portfolioSnapshots").get(),
+      adminDb.collection("portfolioSnapshotPositions").get(),
+      adminDb.collection("portfolioImportFiles").get(),
+      adminDb.collection("portfolioImportChanges").get(),
+      adminDb.collection("portfolioImportChangeItems").get(),
+      adminDb.collection("externalInvestorMappings").get(),
+      adminDb.collection("portfolioFileFingerprints").get(),
+      adminDb.collection("sipFundingSchedules").get(),
+      adminDb.collection("sipFundingCycles").get(),
+      adminDb.collection("investors").where("fundbazaarDailyTrackingEnabled", "==", true).get()
     ]);
 
     const summaries = new Map();
@@ -96,6 +150,27 @@ export async function GET(request) {
       summaries.set(trade.investorId, summary);
     });
 
+    addHistory(summaries, transactionsSnapshot.docs.map((item) => String(item.data()?.investorId || "")).filter(Boolean), "transactions");
+    addHistory(summaries, policiesSnapshot.docs.map((item) => String(item.data()?.investorId || "")).filter(Boolean), "policies");
+    addHistory(summaries, tradingSummariesSnapshot.docs.map((item) => String(item.data()?.investorId || "")).filter(Boolean), "tradingSummaries");
+    addHistory(summaries, snapshotsSnapshot.docs.map((item) => String(item.data()?.investorId || "")).filter(Boolean), "snapshots");
+    addHistory(summaries, snapshotPositionsSnapshot.docs.map((item) => String(item.data()?.investorId || "")).filter(Boolean), "snapshotPositions");
+    addHistory(summaries, importsSnapshot.docs.map((item) => String(item.data()?.matchedInvestorId || item.data()?.investorId || "")).filter(Boolean), "imports");
+    addHistory(summaries, recoveryJournalsSnapshot.docs.map((item) => String(item.data()?.investorId || "")).filter(Boolean), "recoveryJournals");
+    addHistory(summaries, recoveryItemsSnapshot.docs.map((item) => String(item.data()?.investorId || "")).filter(Boolean), "recoveryItems");
+    addHistory(summaries, mappingsSnapshot.docs.map((item) => String(item.data()?.investorId || "")).filter(Boolean), "mappings");
+    addHistory(summaries, fingerprintsSnapshot.docs.map((item) => String(item.data()?.investorId || "")).filter(Boolean), "fingerprints");
+    addHistory(summaries, sipSchedulesSnapshot.docs.map((item) => String(item.data()?.investorId || "")).filter(Boolean), "sipSchedules");
+    addHistory(summaries, sipCyclesSnapshot.docs.map((item) => String(item.data()?.investorId || "")).filter(Boolean), "sipCycles");
+    trackedInvestorsSnapshot.docs.forEach((item) => {
+      const investorId = String(item.id || "");
+      if (!investorId) return;
+      const summary = summaries.get(investorId) || emptyInvestorSummary(investorId);
+      summaries.set(investorId, summary);
+      investorIds.add(investorId);
+    });
+    summaries.forEach((_, investorId) => investorIds.add(String(investorId)));
+
     const investors = await getInvestorDocuments([...investorIds]);
     const rows = [...summaries.values()]
       .filter((summary) => investors.has(summary.investorId))
@@ -114,6 +189,9 @@ export async function GET(request) {
           currentValue: Number(Number(summary.currentValue || 0).toFixed(2)),
           tradeCount: summary.tradeCount,
           tradingNetPnl: Number(Number(summary.tradingNetPnl || 0).toFixed(2)),
+          historyCount: summary.historyCount,
+          history: summary.history,
+          hasResettableHistory: summary.historyCount > 0 || summary.holdingCount > 0 || summary.tradeCount > 0 || Boolean(investor.latestPortfolioSnapshotId || investor.latestPortfolioUpdatedAt),
           scopes
         };
       })
@@ -124,8 +202,9 @@ export async function GET(request) {
       total.holdings += Number(row.holdingCount || 0);
       total.currentValue += Number(row.currentValue || 0);
       total.trades += Number(row.tradeCount || 0);
+      total.history += Number(row.historyCount || 0);
       return total;
-    }, { investors: 0, holdings: 0, currentValue: 0, trades: 0 });
+    }, { investors: 0, holdings: 0, currentValue: 0, trades: 0, history: 0 });
 
     return Response.json({
       rows,

@@ -21,8 +21,7 @@ import { getOpenInvestorActionsOnce } from "@/services/actionService";
 import {
   getLatestInvestorReport,
   getMonthlyReport,
-  saveMonthlyReport,
-  subscribeMonthlyReports
+  saveMonthlyReport
 } from "@/services/reportService";
 import {
   ACTION_OWNER_OPTIONS,
@@ -91,44 +90,6 @@ function withReportTemplateDefaults(report) {
     templateVersion: Number(template?.version || 1),
     templateSnapshot: createReportTemplateSnapshot(template)
   };
-}
-
-function investorProfilePortfolioValue(investor) {
-  const liveValue = Number(investor?.latestPortfolioValue || 0);
-  if (liveValue > 0) return liveValue;
-
-  const directValue = Number(investor?.portfolioValue || 0);
-  if (directValue > 0) return directValue;
-
-  const summaryValue = Number(investor?.summary?.totalCorpus || 0);
-  if (summaryValue > 0) return summaryValue;
-
-  return (investor?.existingInvestments || []).reduce(
-    (sum, item) => sum + Number(item.currentValue || 0),
-    0
-  );
-}
-
-function latestReportsByInvestor(reports = []) {
-  return reports.reduce((map, report) => {
-    if (!report?.investorId) return map;
-
-    const current = map[report.investorId];
-    const nextMonthKey = String(report.reportMonthKey || "");
-    const currentMonthKey = String(current?.reportMonthKey || "");
-    const nextVersion = Number(report.version || 0);
-    const currentVersion = Number(current?.version || 0);
-
-    if (
-      !current
-      || nextMonthKey > currentMonthKey
-      || (nextMonthKey === currentMonthKey && nextVersion > currentVersion)
-    ) {
-      map[report.investorId] = report;
-    }
-
-    return map;
-  }, {});
 }
 
 function nextReportPeriod(report) {
@@ -209,7 +170,6 @@ export default function ReportForm({ reportId = null }) {
   const [mobileStepsOpen, setMobileStepsOpen] = useState(false);
   const [previousReport, setPreviousReport] = useState(null);
   const [workflowActions, setWorkflowActions] = useState([]);
-  const [latestReportByInvestorId, setLatestReportByInvestorId] = useState({});
   const [duplicateReport, setDuplicateReport] = useState(null);
   const [periodLookupLoading, setPeriodLookupLoading] = useState(false);
   const [saveState, setSaveState] = useState(reportId ? "saved" : "idle");
@@ -227,21 +187,7 @@ export default function ReportForm({ reportId = null }) {
   const [portfolioSourceLoading, setPortfolioSourceLoading] = useState(false);
   const [portfolioRefreshToken, setPortfolioRefreshToken] = useState(0);
 
-  const investorsForSelection = useMemo(() => investors.map((investor) => {
-    const profileCorpus = investorProfilePortfolioValue(investor);
-    const latestReport = latestReportByInvestorId[investor.id];
-    const latestReportedCorpus = Number(latestReport?.summary?.totalCorpus || 0);
-
-    if (profileCorpus > 0 || latestReportedCorpus <= 0) return investor;
-
-    return {
-      ...investor,
-      portfolioValue: latestReportedCorpus,
-      latestReportedCorpus,
-      latestReportId: latestReport.id,
-      latestReportMonthKey: latestReport.reportMonthKey
-    };
-  }), [investors, latestReportByInvestorId]);
+  const investorsForSelection = investors;
 
 
   useEffect(() => {
@@ -283,19 +229,6 @@ export default function ReportForm({ reportId = null }) {
       }
     );
   }, [profile, reportId]);
-
-  useEffect(() => {
-    if (!profile?.id) return undefined;
-
-    return subscribeMonthlyReports(
-      profile,
-      (reports) => setLatestReportByInvestorId(latestReportsByInvestor(reports)),
-      (nextError) => {
-        console.error("Unable to load latest monthly report values.", nextError);
-        setLatestReportByInvestorId({});
-      }
-    );
-  }, [profile]);
 
   useEffect(() => {
     let active = true;
@@ -408,6 +341,22 @@ export default function ReportForm({ reportId = null }) {
         if (!source?.snapshot?.id) {
           setForm((current) => ({
             ...current,
+            summary: {
+              ...current.summary,
+              totalCorpus: Number(generated.summary?.totalCorpus || 0),
+              monthlySip: Number(generated.summary?.monthlySip || 0),
+              newMoneyAdded: 0,
+              investmentGain: 0,
+              openingValue: 0,
+              totalWithdrawals: 0,
+              overallProgress: calculatePercentage(
+                Number(generated.summary?.totalCorpus || 0),
+                Number(current.summary?.lifetimeTarget || generated.summary?.lifetimeTarget || 0)
+              )
+            },
+            holdings: generated.holdings || [],
+            allocation: generated.allocation || [],
+            funds: generated.funds || [],
             portfolioVerification: generated.portfolioVerification,
             reportGenerationSource: "portfolio_master"
           }));
@@ -634,8 +583,7 @@ export default function ReportForm({ reportId = null }) {
     if (carriedActionsFromReportRef.current === carryKey) return;
 
     const workflowCarry = (workflowActions || []).filter((item) => !["Completed", "Rejected", "Cancelled"].includes(String(item.status || "")));
-    const previousCarry = (previousReport?.nextSteps || []).filter((item) => !["Completed", "Rejected", "Cancelled"].includes(String(item.status || "")));
-    const carryForward = workflowCarry.length ? workflowCarry : previousCarry;
+    const carryForward = workflowCarry;
     if (!carryForward.length) {
       carriedActionsFromReportRef.current = carryKey;
       return;
@@ -653,9 +601,9 @@ export default function ReportForm({ reportId = null }) {
           investorDecision: item.investorDecision || "Pending Discussion",
           relatedGoalId: item.relatedGoalId || "",
           relatedInvestmentId: item.relatedInvestmentId || "",
-          sourceActionId: workflowCarry.length ? item.id : (item.sourceActionId || ""),
-          sourceReportId: item.sourceReportId || previousReport?.id || "",
-          sourceReportMonthKey: item.sourceReportMonthKey || item.lastReportMonthKey || previousReport?.reportMonthKey || "",
+          sourceActionId: item.id || item.sourceActionId || "",
+          sourceReportId: item.sourceReportId || "",
+          sourceReportMonthKey: item.sourceReportMonthKey || item.lastReportMonthKey || "",
           owner: item.owner || "Advisor",
           priority: item.priority || "Planned",
           dueDate: item.dueDate || "",
@@ -666,39 +614,6 @@ export default function ReportForm({ reportId = null }) {
     });
     carriedActionsFromReportRef.current = carryKey;
   }, [form.investorId, form.reportMonth, form.reportYear, previousReport, reportId, workflowActions]);
-
-  useEffect(() => {
-    if (reportId || !previousReport || corpusTouchedRef.current) return;
-
-    const previousCorpus = Number(previousReport.summary?.totalCorpus || 0);
-    if (previousCorpus <= 0) return;
-
-    let applied = false;
-    setForm((current) => {
-      if (!current.investorId || Number(current.summary?.totalCorpus || 0) > 0) {
-        return current;
-      }
-
-      applied = true;
-      return {
-        ...current,
-        summary: {
-          ...current.summary,
-          totalCorpus: previousCorpus,
-          overallProgress: calculatePercentage(
-            previousCorpus,
-            current.summary?.lifetimeTarget
-          )
-        }
-      };
-    });
-
-    if (applied) {
-      setSuccess(
-        `Latest reported corpus ${formatCurrency(previousCorpus)} has been used as the opening reference. Review and update the current month values before completion.`
-      );
-    }
-  }, [previousReport, reportId]);
 
   function acknowledgePortfolioVerification() {
     setForm((current) => ({
@@ -775,30 +690,12 @@ export default function ReportForm({ reportId = null }) {
     }
 
     const fresh = withReportTemplateDefaults(createReportFromInvestor(investor, form.reportMonth, form.reportYear));
-    const latestReport = latestReportByInvestorId[investorId];
-    const previousCorpus = Number(latestReport?.summary?.totalCorpus || 0);
-    const profileCorpus = Number(fresh.summary?.totalCorpus || 0);
     const suggestedStatementDate = reportPeriodEndDate(form.reportYear, form.reportMonth);
 
     const nextForm = {
       ...fresh,
       statementDate: form.statementDate || suggestedStatementDate
     };
-
-    if (profileCorpus <= 0 && previousCorpus > 0) {
-      nextForm.summary = {
-        ...nextForm.summary,
-        totalCorpus: previousCorpus,
-        overallProgress: calculatePercentage(
-          previousCorpus,
-          nextForm.summary?.lifetimeTarget
-        )
-      };
-
-      setSuccess(
-        `Latest reported corpus ${formatCurrency(previousCorpus)} has been used as the opening reference. Review and update the current month values before completion.`
-      );
-    }
 
     setForm(nextForm);
   }

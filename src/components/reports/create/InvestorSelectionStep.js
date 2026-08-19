@@ -13,9 +13,12 @@ import {
 import { formatCurrency } from "@/lib/utils/format";
 
 function portfolioValue(investor) {
-  if (Number(investor?.portfolioValue || 0) > 0) return Number(investor.portfolioValue);
-  if (Number(investor?.summary?.totalCorpus || 0) > 0) return Number(investor.summary.totalCorpus);
-  return (investor?.existingInvestments || []).reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
+  const hasCurrentPortfolio = Boolean(
+    investor?.latestPortfolioSnapshotId
+    || investor?.latestPortfolioUpdatedAt
+    || Number(investor?.latestPortfolioValue || 0) > 0
+  );
+  return hasCurrentPortfolio ? Number(investor?.latestPortfolioValue || 0) : 0;
 }
 
 function initials(name = "Investor") {
@@ -129,7 +132,7 @@ export default function InvestorSelectionStep({ investors, selectedInvestor, onS
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-700"><Check size={17} /></span>
             <div>
               <p className="text-sm font-semibold text-slate-950">Investor profile linked</p>
-              <p className="mt-1 text-sm leading-6 text-slate-500">Client code, contact details, Advisor information, goals and existing holdings will be inherited from this profile.</p>
+              <p className="mt-1 text-sm leading-6 text-slate-500">Client code, contact details, Advisor information and goal definitions are inherited from this profile. Current holdings come only from the verified Portfolio Master.</p>
             </div>
           </div>
         </div>

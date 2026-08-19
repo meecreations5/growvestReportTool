@@ -111,17 +111,38 @@ assert(manualImportRoute.includes("Admin access is required for Manual Portfolio
 assert(manualImportRoute.includes('mode === "replace"') && manualImportRoute.includes('manual_portfolio_merged') && manualImportRoute.includes('manual_portfolio_replaced'), "Manual Portfolio importer contains merge and replace workflows");
 assert(manualTemplateRoute.includes("verifyStaffRequest(request)") && manualTemplateRoute.includes("Admin access is required"), "Manual Portfolio Excel template download is authenticated and Admin-only");
 assert(portfolioAdministration.includes("Fundbazaar") && portfolioAdministration.includes("Trading / Intraday") && portfolioAdministration.includes("Manual Portfolio"), "Investor Portfolio Administration separates portfolio types and trading");
-assert(portfolioAdministration.includes("Select multiple investments") && portfolioAdministration.includes("Delete Entire Portfolio"), "individual Investor Portfolio Administration supports selected-holding and entire-portfolio cleanup");
+assert(portfolioAdministration.includes("Select multiple investments") && portfolioAdministration.includes("Delete Current Portfolio") && portfolioAdministration.includes("Full Portfolio Reset"), "individual Investor Portfolio Administration separates selected-holding cleanup, controlled current-portfolio cleanup and Full Portfolio Reset");
 
 const portfolioOverview = read("src/components/portfolio/PortfolioOverview.js");
 assert(portfolioOverview.includes("Portfolio Overview") && portfolioOverview.includes("Daily Portfolio Update") && portfolioOverview.includes("Portfolio health"), "Portfolio Overview separates monitoring from imports and destructive administration");
 
 const centralPortfolioAdministration = read("src/components/portfolio/CentralPortfolioAdministration.js");
 const centralPortfolioAdministrationRoute = read("src/app/api/portfolio/administration/route.js");
+const portfolioResetRoute = read("src/app/api/portfolio/investors/[investorId]/reset/route.js");
+const portfolioBulkResetRoute = read("src/app/api/portfolio/administration/reset/route.js");
+const portfolioResetServer = read("src/lib/server/portfolioReset.js");
+const investorDetail = read("src/components/investors/InvestorDetailClient.js");
+const investorDashboard = read("src/app/investor/dashboard/page.js");
+const reportForm = read("src/components/reports/ReportForm.js");
+const reportInvestorSelection = read("src/components/reports/create/InvestorSelectionStep.js");
+const reportConstants = read("src/lib/constants/report.js");
 assert(centralPortfolioAdministration.includes("Choose investors to manage") && centralPortfolioAdministration.includes("Delete from selected investors"), "central Portfolio Administration supports multi-investor selection and category cleanup");
 assert(centralPortfolioAdministration.includes("ENTIRE") && centralPortfolioAdministration.includes("previewInvestorPortfolioCleanup") && centralPortfolioAdministration.includes("previewInvestorTradingCleanup"), "central Portfolio Administration previews holdings and trading before bulk deletion");
 assert(centralPortfolioAdministrationRoute.includes("verifyStaffRequest(request)") && centralPortfolioAdministrationRoute.includes("Only Admin or Super Admin"), "central Portfolio Administration inventory API is Admin-only");
 assert(centralPortfolioAdministrationRoute.includes("portfolioAdministrationScope") && centralPortfolioAdministrationRoute.includes("tradingTransactions"), "central Portfolio Administration inventory separates holding scopes and trading");
+assert(portfolioResetRoute.includes('actor?.role !== "super_admin"') && portfolioResetRoute.includes('confirmation !== "RESET PORTFOLIO"'), "individual Full Portfolio Reset is Super Admin-only with explicit typed confirmation");
+assert(portfolioBulkResetRoute.includes('actor?.role !== "super_admin"') && portfolioBulkResetRoute.includes("RESET ${count} INVESTOR"), "bulk Full Portfolio Reset is Super Admin-only with investor-count confirmation");
+assert(portfolioResetServer.includes('investorRows("portfolioPositions"') && portfolioResetServer.includes('investorRows("portfolioSnapshots"') && portfolioResetServer.includes('investorRows("portfolioFileFingerprints"') && portfolioResetServer.includes('investorRows("externalInvestorMappings"'), "Full Portfolio Reset removes portfolio master, snapshot, fingerprint and provider-mapping state");
+assert(portfolioResetServer.includes('investorRows("portfolioImportChanges"') && portfolioResetServer.includes('investorRows("portfolioImportChangeItems"') && portfolioResetServer.includes('investorRows("activityLogs"') && portfolioResetServer.includes('fundbazaarDailyTrackingEnabled'), "Full Portfolio Reset removes recovery, portfolio-specific internal history and daily tracking state");
+assert(portfolioResetServer.includes('batch.missingInvestors') && portfolioResetServer.includes('deleteBatch: remainingIds.length === 0 && missingInvestors.length === 0'), "Full Portfolio Reset removes historical daily-coverage references without deleting other Investors' shared batch history");
+assert(!portfolioResetServer.includes("monthlyReports") && !portfolioResetServer.includes("bucketList") && !portfolioResetServer.includes("goals"), "Full Portfolio Reset preserves published Monthly Reports and Goal/Bucket definitions");
+assert(centralPortfolioAdministration.includes("Preview Full Portfolio Reset") && centralPortfolioAdministration.includes("previewBulkFullPortfolioReset") && centralPortfolioAdministrationRoute.includes("hasResettableHistory"), "central Portfolio Administration supports Super Admin bulk Full Reset including history-only investors");
+assert(centralPortfolioAdministrationRoute.includes('collection("portfolioImportChanges")') && centralPortfolioAdministrationRoute.includes('collection("portfolioImportChangeItems")') && centralPortfolioAdministrationRoute.includes('collection("sipFundingCycles")') && centralPortfolioAdministrationRoute.includes('fundbazaarDailyTrackingEnabled'), "central Portfolio Administration detects recovery/SIP/daily-tracking history even without live holdings");
+assert(investorDetail.includes('const currentPortfolio = Number(investor.latestPortfolioValue || 0)') && !investorDetail.includes('latestPortfolioValue || latestReport?.summary?.totalCorpus'), "staff current-portfolio summary does not revive a reset Portfolio Master from historical Monthly Reports");
+assert(investorDashboard.includes("hasCurrentPortfolio") && investorDashboard.includes("No current portfolio data · published Monthly Reports remain available as historical records."), "Investor dashboard separates current Portfolio Master state from preserved historical Monthly Reports");
+assert(!reportForm.includes("Latest reported corpus") && !reportForm.includes("subscribeMonthlyReports") && reportForm.includes("const carryForward = workflowCarry;"), "new Monthly Reports do not revive reset portfolio values or operational actions from historical reports");
+assert(reportInvestorSelection.includes("latestPortfolioSnapshotId") && reportInvestorSelection.includes("Current holdings come only from the verified Portfolio Master") && !reportInvestorSelection.includes("investor?.portfolioValue"), "Monthly Report investor selection shows current Portfolio Master values only");
+assert(reportConstants.includes("const funds = [];") && !reportConstants.includes("investor?.existingInvestments"), "Monthly Report base data does not seed current holdings from legacy Investor profile investments");
 
 const navigation = read("src/lib/constants/navigation.js");
 assert(navigation.includes('label: "Advisor Follow-up"') && navigation.includes('label: "Service Requests"') && navigation.includes('label: "Bulk Data Upload"') && navigation.includes('label: "Monthly Market Note"'), "staff navigation uses simplified operating-language module names");
