@@ -41,6 +41,7 @@ import {
 import MeetingStatusBadge from "@/components/meetings/MeetingStatusBadge";
 import InvestorDocumentsPanel from "@/components/investors/InvestorDocumentsPanel";
 import InvestorPortalAccessCard from "@/components/investors/InvestorPortalAccessCard";
+import InvestorLifecycleCard from "@/components/investors/InvestorLifecycleCard";
 import InvestorPortfolioPanel from "@/components/portfolio/InvestorPortfolioPanel";
 import ActionStatusBadge from "@/components/actions/ActionStatusBadge";
 import InvestorReportsPanel from "@/components/reports/InvestorReportsPanel";
@@ -618,6 +619,7 @@ export default function InvestorDetailClient({ investorId }) {
             <Link href={`/investors/${investor.id}/edit`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
               <Edit3 size={16} /> Edit
             </Link>
+            {["super_admin", "admin"].includes(profile?.role) ? <button type="button" onClick={() => setTab("access")} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 text-sm font-semibold text-amber-900 transition hover:bg-amber-100"><ShieldCheck size={16} /> Manage Status</button> : null}
             <Link href={`/meetings/create?investorId=${investor.id}`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-800 transition hover:bg-blue-100">
               <CalendarPlus size={16} /> Meeting
             </Link>
@@ -987,6 +989,7 @@ export default function InvestorDetailClient({ investorId }) {
 
       {tab === "access" ? (
         <div className="grid gap-5 xl:grid-cols-2">
+          <InvestorLifecycleCard investor={investor} />
           <InvestorPortalAccessCard investor={investor} />
           <InvestorDocumentsPanel investor={investor} />
           <Card className="p-5 xl:col-span-2">

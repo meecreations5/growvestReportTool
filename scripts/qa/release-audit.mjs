@@ -28,7 +28,7 @@ function walk(directory) {
 }
 
 const packageJson = JSON.parse(read("package.json"));
-assert(packageJson.version === "0.33.1", "package.json version is 0.33.1");
+assert(packageJson.version === "0.33.2", "package.json version is 0.33.2");
 
 const forbiddenTopLevel = [".env", ".env.local", ".git", ".next", "node_modules"];
 for (const item of forbiddenTopLevel) {
@@ -81,6 +81,12 @@ assert(kyc.includes("at least 32 characters"), "KYC encryption rejects weak keys
 
 const kycRoute = read("src/app/api/investors/[investorId]/kyc/route.js");
 assert(kycRoute.includes('"aadhaarLookupHash", "==", protectedValue.aadhaarLookupHash') && kycRoute.includes("another GrowVest investor"), "Aadhaar duplicate lookup is enforced before secure write");
+
+const investorLifecycleRoute = read("src/app/api/investors/[investorId]/lifecycle/route.js");
+const investorLifecycleCard = read("src/components/investors/InvestorLifecycleCard.js");
+assert(investorLifecycleRoute.includes("Only Admin or Super Admin") && investorLifecycleRoute.includes('action === "disable"') && investorLifecycleRoute.includes('action === "delete"'), "Investor lifecycle management is Admin-only and supports disable/delete actions");
+assert(investorLifecycleRoute.includes("soft_delete_with_retention") && investorLifecycleRoute.includes("revokeRefreshTokens") && investorLifecycleRoute.includes("pausedByInvestorLifecycle"), "Investor deletion retains history while portal sessions are revoked and SIP reminders are lifecycle-paused");
+assert(investorLifecycleCard.includes("Type DELETE to confirm") && investorLifecycleCard.includes("Records retained for history"), "Investor lifecycle UI requires explicit delete confirmation and shows retained-record impact");
 
 const portfolioParser = read("src/lib/server/portfolioImportParser.js");
 const portfolioCommit = read("src/app/api/portfolio/imports/fundbazaar/commit/route.js");

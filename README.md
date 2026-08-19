@@ -4,6 +4,19 @@ Standalone Next.js application for GrowVest investor operations, portfolio manag
 
 ## Current implementation
 
+## Version 0.33.2 - Investor Status & Safe Deletion
+
+- Added Admin/Super Admin-only **Disable Investor**, **Enable Investor**, and **Delete Investor** controls under Investor → Access & Documents.
+- Disable keeps the Investor visible to staff, blocks Investor Portal authentication, revokes existing sessions, and pauses SIP reminders that were active at the time of disablement.
+- Enable restores active Investor status, resumes only SIP schedules paused by the lifecycle action, and restores prior portal access only when it was enabled before disablement.
+- Delete removes the Investor from active GrowVest Investor lists using retained-record soft deletion rather than silently destroying financial history.
+- Delete impact preview shows portfolio holdings, transactions, trading, ULIP policies, snapshots, reports, documents, meetings, Advisor Follow-ups and linked portal accounts before confirmation.
+- Investor deletion requires a reason plus typed `DELETE`, disables/revokes linked portal accounts, pauses SIP reminders, deactivates external Investor mappings, and records an immutable activity log.
+- Existing portfolio/report/document history remains retained for audit and published Monthly Reports are not rewritten.
+- Investor list now shows Active/Disabled status and includes an Investor status filter.
+- No new Firestore collections, browser write permissions, or composite indexes are required.
+- See `docs/INVESTOR_STATUS_SAFE_DELETION_v0.33.2.md` for behavior and UAT.
+
 ## Version 0.33.1 - Reconciled Portfolio Administration
 
 - Reconciled Portfolio navigation into **Portfolio Overview**, **Daily Portfolio Update**, and Admin-only **Portfolio Administration** so monitoring, importing and destructive cleanup are separate.

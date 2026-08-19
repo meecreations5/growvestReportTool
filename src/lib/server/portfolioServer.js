@@ -31,6 +31,7 @@ export async function getAccessibleInvestor(actor, investorId) {
   const snapshot = await adminDb.collection("investors").doc(investorId).get();
   if (!snapshot.exists) throw new Error("Investor profile was not found.");
   const investor = { id: snapshot.id, ...snapshot.data() };
+  if (investor.isDeleted === true || investor.lifecycleStatus === "deleted") throw new Error("This Investor has been deleted from active GrowVest records.");
   if (!canStaffAccessRecord(actor, investor)) throw new Error("You are not authorised to update this investor portfolio.");
   return investor;
 }

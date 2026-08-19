@@ -61,7 +61,7 @@ function InvestorCard({ investor, summary }) {
         </div>
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 text-slate-500 group-hover:border-blue-200 group-hover:bg-blue-50 group-hover:text-blue-700"><ArrowUpRight size={17} /></span>
       </div>
-      <div className="mt-4 flex flex-wrap items-center gap-2"><RiskBadge profile={investor.riskAssessment?.finalProfile} /><StatusBadge value={summary?.profile?.status || investor.profileStatus || investorProfileCompletion(investor).status} helper={`${summary?.profile?.percent ?? investor.profileCompletionPercent ?? investorProfileCompletion(investor).percent}% profile`} />{investor.portalEnabled ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Portal enabled</span> : <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">Portal disabled</span>}</div>
+      <div className="mt-4 flex flex-wrap items-center gap-2"><RiskBadge profile={investor.riskAssessment?.finalProfile} /><StatusBadge value={summary?.profile?.status || investor.profileStatus || investorProfileCompletion(investor).status} helper={`${summary?.profile?.percent ?? investor.profileCompletionPercent ?? investorProfileCompletion(investor).percent}% profile`} />{String(investor.status || "active").toLowerCase() === "inactive" ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">Investor disabled</span> : <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Investor active</span>}{investor.portalEnabled ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Portal enabled</span> : <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">Portal disabled</span>}</div>
       <dl className="mt-4 grid grid-cols-2 gap-3">
         <div><dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Primary goal</dt><dd className="mt-1 truncate text-sm font-semibold text-slate-800">{primaryGoal?.name || "—"}</dd></div>
         <div><dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Target</dt><dd className="mt-1 text-sm font-semibold text-slate-800">{formatCurrency(primaryGoal?.targetAmount)}</dd></div>
@@ -80,6 +80,7 @@ export default function InvestorsTable() {
   const [search, setSearch] = useState("");
   const [risk, setRisk] = useState("ALL");
   const [portal, setPortal] = useState("ALL");
+  const [lifecycle, setLifecycle] = useState("ALL");
   const [statusSummaries, setStatusSummaries] = useState({});
 
   useEffect(() => {
@@ -112,14 +113,18 @@ export default function InvestorsTable() {
         .some((value) => String(value || "").toLowerCase().includes(term));
       const matchesRisk = risk === "ALL" || investor.riskAssessment?.finalProfile === risk;
       const matchesPortal = portal === "ALL" || (portal === "ENABLED" ? investor.portalEnabled : !investor.portalEnabled);
-      return matchesSearch && matchesRisk && matchesPortal;
+      const investorDisabled = String(investor.status || "active").toLowerCase() === "inactive" || investor.lifecycleStatus === "disabled";
+      const matchesLifecycle = lifecycle === "ALL" || (lifecycle === "ACTIVE" ? !investorDisabled : investorDisabled);
+      return matchesSearch && matchesRisk && matchesPortal && matchesLifecycle;
     });
-  }, [investors, portal, risk, search]);
+  }, [investors, lifecycle, portal, risk, search]);
 
   const stats = useMemo(() => {
     const goals = investors.map((item) => getPrimaryGoal(investorGoals(item))).filter(Boolean);
     return {
       total: investors.length,
+      active: investors.filter((item) => String(item.status || "active").toLowerCase() !== "inactive").length,
+      inactive: investors.filter((item) => String(item.status || "active").toLowerCase() === "inactive").length,
       portalEnabled: investors.filter((item) => item.portalEnabled).length,
       assessed: investors.filter((item) => item.riskAssessment?.finalProfile).length,
       totalTarget: goals.reduce((sum, goal) => sum + Number(goal.targetAmount || 0), 0)
@@ -132,28 +137,29 @@ export default function InvestorsTable() {
   return (
     <div className="grid gap-5">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <MetricCard label="Total investors" value={stats.total} helper="Active investor profiles" icon={UserRoundCheck} tone="blue" />
+        <MetricCard label="Total investors" value={stats.total} helper={`${stats.active} active · ${stats.inactive} disabled`} icon={UserRoundCheck} tone="blue" />
         <MetricCard label="Portal enabled" value={stats.portalEnabled} helper="Investors with portal access" icon={ShieldCheck} tone="green" />
         <MetricCard label="Risk assessed" value={stats.assessed} helper="Completed suitability profiles" icon={Sparkles} tone="amber" />
         <MetricCard label="Primary goal target" value={formatCurrency(stats.totalTarget)} helper="Across primary Bucket List goals" tone="cyan" />
       </div>
 
       <Card className="overflow-hidden" elevated={false}>
-        <div className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-[minmax(0,1fr)_220px_190px]">
+        <div className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-[minmax(0,1fr)_210px_180px_180px]">
           <div className="relative">
             <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input className={`${inputClassName} pl-10`} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by client ID, name, contact or advisor" />
           </div>
           <div className="relative"><Filter size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><select className={`${inputClassName} pl-9`} value={risk} onChange={(event) => setRisk(event.target.value)}><option value="ALL">All risk profiles</option><option value="CONSERVATIVE">Conservative</option><option value="MODERATE">Moderate</option><option value="AGGRESSIVE">Aggressive</option></select></div>
           <select className={inputClassName} value={portal} onChange={(event) => setPortal(event.target.value)}><option value="ALL">All portal statuses</option><option value="ENABLED">Portal enabled</option><option value="DISABLED">Portal disabled</option></select>
+          <select className={inputClassName} value={lifecycle} onChange={(event) => setLifecycle(event.target.value)}><option value="ALL">All investor statuses</option><option value="ACTIVE">Active investors</option><option value="DISABLED">Disabled investors</option></select>
         </div>
 
         {filtered.length ? (
           <>
             <div className="grid gap-3 p-4 md:hidden">{filtered.map((investor) => <InvestorCard key={investor.id} investor={investor} summary={statusSummaries[investor.id]} />)}</div>
             <div className="gv-scrollbar hidden overflow-x-auto md:block">
-              <table className="min-w-[1280px] w-full border-collapse text-left text-sm">
-                <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3 font-bold">Investor</th><th className="px-5 py-3 font-bold">Advisor</th><th className="px-5 py-3 font-bold">Profile</th><th className="px-5 py-3 font-bold">KYC</th><th className="px-5 py-3 font-bold">Documents</th><th className="px-5 py-3 font-bold">Risk profile</th><th className="px-5 py-3 font-bold">Primary goal</th><th className="px-5 py-3 font-bold">Portal</th><th className="px-5 py-3 text-right font-bold">Action</th></tr></thead>
+              <table className="min-w-[1400px] w-full border-collapse text-left text-sm">
+                <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3 font-bold">Investor</th><th className="px-5 py-3 font-bold">Advisor</th><th className="px-5 py-3 font-bold">Profile</th><th className="px-5 py-3 font-bold">KYC</th><th className="px-5 py-3 font-bold">Documents</th><th className="px-5 py-3 font-bold">Risk profile</th><th className="px-5 py-3 font-bold">Primary goal</th><th className="px-5 py-3 font-bold">Investor status</th><th className="px-5 py-3 font-bold">Portal</th><th className="px-5 py-3 text-right font-bold">Action</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {filtered.map((investor) => {
                     const primaryGoal = getPrimaryGoal(investorGoals(investor));
@@ -166,6 +172,7 @@ export default function InvestorsTable() {
                         <td className="px-5 py-4"><StatusBadge value={statusSummaries[investor.id]?.documents?.status || investor.documentStatusSummary?.status || "Not checked"} helper={statusSummaries[investor.id]?.documents ? `${statusSummaries[investor.id].documents.uploadedCount}/${statusSummaries[investor.id].documents.requiredCount} uploaded` : investor.documentStatusSummary ? `${investor.documentStatusSummary.uploadedCount || 0}/${investor.documentStatusSummary.requiredCount || 0} uploaded` : ""} /></td>
                         <td className="px-5 py-4"><RiskBadge profile={investor.riskAssessment?.finalProfile} /></td>
                         <td className="px-5 py-4 text-slate-700">{primaryGoal?.name || "—"}</td>
+                        <td className="px-5 py-4">{String(investor.status || "active").toLowerCase() === "inactive" ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">Disabled</span> : <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Active</span>}</td>
                         <td className="px-5 py-4">{investor.portalEnabled ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Enabled</span> : <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">Disabled</span>}</td>
                         <td className="px-5 py-4 text-right"><Link href={`/investors/${investor.id}`} aria-label={`Open ${investor.fullName}`} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"><ChevronRight size={17} /></Link></td>
                       </tr>
