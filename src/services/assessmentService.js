@@ -26,6 +26,10 @@ function isPrivileged(currentUser) {
   return [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN].includes(currentUser.role);
 }
 
+function isIndexUnavailable(error) {
+  return error?.code === "failed-precondition" || /index.*building|requires an index/i.test(error?.message || "");
+}
+
 export function sanitizeForFirestore(value) {
   if (value === undefined) return null;
 
@@ -251,17 +255,45 @@ export function subscribeAssessment(leadId, callback, onError) {
   );
 }
 
-export function subscribeAssessmentVersions(leadId, callback, onError) {
-  return onSnapshot(
+export function subscribeAssessmentVersions(leadId, currentUser, callback, onError) {
+  if (!leadId) {
+    callback([]);
+    return () => {};
+  }
+
+  if (!currentUser?.id) {
+    callback([]);
+    return () => {};
+  }
+
+  const constraints = [where("leadId", "==", leadId)];
+  if (currentUser?.role === USER_ROLES.ADVISOR) constraints.push(where("assignedAdvisorUid", "==", currentUser.id));
+
+  let fallbackUnsubscribe = () => {};
+  const primaryUnsubscribe = onSnapshot(
     query(
       collection(db, "assessmentVersions"),
-      where("leadId", "==", leadId),
+      ...constraints,
       orderBy("versionNumber", "desc"),
       limit(20)
     ),
     (snapshot) => callback(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))),
-    onError
+    (error) => {
+      if (!isIndexUnavailable(error)) {
+        onError?.(error);
+        return;
+      }
+      fallbackUnsubscribe = onSnapshot(
+        query(collection(db, "assessmentVersions"), ...constraints),
+        (snapshot) => callback(snapshot.docs
+          .map((item) => ({ id: item.id, ...item.data() }))
+          .sort((a, b) => Number(b.versionNumber || 0) - Number(a.versionNumber || 0))
+          .slice(0, 20)),
+        onError
+      );
+    }
   );
+  return () => { primaryUnsubscribe(); fallbackUnsubscribe(); };
 }
 
 export async function saveAssessment(

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { inflateSync } from "node:zlib";
 import {
   PORTFOLIO_ADAPTER_STATUS,
   PORTFOLIO_PRODUCT_TYPES,
@@ -105,7 +106,7 @@ export function sourceDate(value) {
     const month = /^\d+$/.test(match[2]) ? Number(match[2]) : MONTHS[match[2].toLowerCase()];
     let year = Number(match[3]);
     if (year < 100) year += year >= 70 ? 1900 : 2000;
-    if (day && month && year) return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year) return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   }
   const parsed = new Date(text);
   if (Number.isNaN(parsed.getTime())) return text;
@@ -134,10 +135,10 @@ const BAJAJ_DELIVERY_ALIASES = {
   isin: ["ISIN", "ISIN Code"],
   exchange: ["Exchange", "Exch", "Exchange Name"],
   buyDate: ["Buy Date", "Purchase Date", "Acquisition Date", "Date of Purchase"],
-  quantity: ["Quantity", "Qty", "Net Qty", "Net Quantity", "Holding Qty", "Holding Quantity", "Available Qty", "Total Qty"],
+  quantity: ["Quantity", "Qty", "Net Qty", "Net Quantity", "Total Holding Qty", "Total Holding Quantity", "Holding Qty", "Holding Quantity", "Available Qty", "Total Qty"],
   averageBuyRate: ["Average Buy Rate", "Avg Buy Rate", "Average Buy Price", "Avg Buy Price", "Average Price", "Avg Price", "Avg Cost", "Average Cost", "Cost Price"],
   investedAmount: ["Invested Amount", "Investment Value", "Cost Value", "Cost Amount", "Buy Value", "Book Value"],
-  currentRate: ["Current Rate", "Current Price", "Market Price", "LTP", "Last Traded Price", "Closing Price", "CMP"],
+  currentRate: ["Current Rate", "Current Price", "Market Price", "LTP", "Last Traded Price", "Closing Price", "Close Rate", "CMP"],
   currentValue: ["Current Value", "Market Value", "Holding Value", "Market Valuation", "Value"],
   unrealisedPnl: ["Unrealised P&L", "Unrealized P&L", "Unrealised PNL", "Unrealized PNL", "MTM", "Profit/Loss", "P&L"],
   returnPercentage: ["Return %", "Return Percentage", "Returns %", "P&L %", "PnL %"],
@@ -984,9 +985,11 @@ function mappedField(map = {}, key) {
 function safeBajajDeliveryTable(table) {
   if (!table) return false;
   const map = table.map || {};
+  // Native Bajaj Client Holding Report is a valuation/DP snapshot and does not
+  // contain purchase cost. Quantity + current valuation is sufficient to update
+  // delivery holdings safely; cost basis is preserved from prior GrowVest data.
   return mappedField(map, "quantity")
     && (mappedField(map, "stockName") || mappedField(map, "symbol"))
-    && (mappedField(map, "averageBuyRate") || mappedField(map, "investedAmount"))
     && (mappedField(map, "currentRate") || mappedField(map, "currentValue"));
 }
 
@@ -1045,10 +1048,10 @@ function finishBajajIdentity(identity, matrix = []) {
         const code = normalizeClientCode(next);
         if (code && !normalisePan(code)) identity.clientCodes.add(code);
       }
-      if (["client name", "investor name", "account holder", "beneficiary name"].includes(normalized) && next) identity.names.add(next);
+      if (["client name", "investor name", "account holder", "beneficiary name", "name"].includes(normalized) && next) identity.names.add(next);
       const inlinePan = value.match(/\b([A-Z]{5}[0-9]{4}[A-Z])\b/i);
       if (inlinePan) identity.pans.add(inlinePan[1].toUpperCase());
-      const inlineName = value.match(/^(?:client name|investor name|account holder)\s*[:=-]\s*(.+)$/i);
+      const inlineName = value.match(/^(?:client name|investor name|account holder|beneficiary name|name)\s*[:=-]\s*(.+)$/i);
       if (inlineName?.[1]) identity.names.add(inlineName[1].trim());
       const inlineCode = value.match(/^(?:client code|client id|ucc|trading code|bo id)\s*[:=-]\s*([A-Za-z0-9._/-]+)$/i);
       if (inlineCode?.[1] && !normalisePan(inlineCode[1])) identity.clientCodes.add(normalizeClientCode(inlineCode[1]));
@@ -1069,17 +1072,33 @@ function finishBajajIdentity(identity, matrix = []) {
   };
 }
 
+function bajajReportDate(matrix = []) {
+  for (const row of matrix.slice(0, 30)) {
+    for (const value of row || []) {
+      const text = String(value || "").trim();
+      if (!text) continue;
+      const periodMatch = text.match(/(?:client\s*holding\s*report\s*period\s*as\s*on|report\s*period\s*as\s*on)\s*[:=-]\s*(.+)$/i);
+      if (periodMatch?.[1]) return sourceDate(periodMatch[1].trim());
+      const dateMatch = text.match(/^date\s*[:=-]\s*(.+)$/i);
+      if (dateMatch?.[1]) return sourceDate(dateMatch[1].trim());
+    }
+  }
+  return "";
+}
+
 function parseBajajDelivery(matrix = []) {
   const candidateTable = findStructuredTable(
     matrix,
     BAJAJ_DELIVERY_ALIASES,
-    ["quantity", "stockName", "symbol", "averageBuyRate", "investedAmount", "currentRate", "currentValue"],
-    4
+    ["quantity", "stockName", "symbol", "currentRate", "currentValue", "averageBuyRate", "investedAmount"],
+    3
   );
   const table = safeBajajDeliveryTable(candidateTable) ? candidateTable : null;
-  if (!table) throw new Error("Bajaj Delivery Holdings was detected, but Quantity, Security/Symbol, Cost and Current Valuation columns could not be mapped safely.");
+  if (!table) throw new Error("Bajaj Delivery Holdings was detected, but Quantity, Security/Symbol and Current Valuation columns could not be mapped safely.");
 
   const identity = { names: new Set(), pans: new Set(), clientCodes: new Set() };
+  const reportDate = bajajReportDate(matrix);
+  const costColumnsPresent = mappedField(table.map, "averageBuyRate") || mappedField(table.map, "investedAmount");
   const rawHoldings = [];
   let blankRun = 0;
   for (let rowIndex = table.headerIndex + 1; rowIndex < matrix.length; rowIndex += 1) {
@@ -1092,7 +1111,7 @@ function parseBajajDelivery(matrix = []) {
       continue;
     }
     blankRun = 0;
-    if (/^total$/i.test(stockName || symbol)) break;
+    if (/^total(?:\s|$)/i.test(String(stockName || symbol).replace(/\s+/g, " ").trim())) break;
     collectBajajIdentity(identity, row, table.map);
 
     const quantity = sourceNumber(mappedValue(row, table.map, "quantity"));
@@ -1103,8 +1122,12 @@ function parseBajajDelivery(matrix = []) {
     if (!totalInvested && quantity && averageBuyRate) totalInvested = quantity * averageBuyRate;
     if (!currentValue && quantity && currentRate) currentValue = quantity * currentRate;
     if (!quantity && !currentValue) continue;
-    const gainLoss = sourceNumber(mappedValue(row, table.map, "unrealisedPnl")) || (currentValue - totalInvested);
-    const returnPercentage = sourceNumber(mappedValue(row, table.map, "returnPercentage")) || (totalInvested > 0 ? gainLoss / totalInvested * 100 : 0);
+    const costBasisAvailable = Boolean(totalInvested > 0 || averageBuyRate > 0);
+    const suppliedGainLoss = sourceNumber(mappedValue(row, table.map, "unrealisedPnl"));
+    const gainLoss = costBasisAvailable ? (suppliedGainLoss || (currentValue - totalInvested)) : 0;
+    const returnPercentage = costBasisAvailable
+      ? (sourceNumber(mappedValue(row, table.map, "returnPercentage")) || (totalInvested > 0 ? gainLoss / totalInvested * 100 : 0))
+      : 0;
     rawHoldings.push({
       sourceRow: rowIndex + 1,
       source: PORTFOLIO_SOURCES.BAJAJ_BROKING,
@@ -1125,7 +1148,9 @@ function parseBajajDelivery(matrix = []) {
       currentValue: Number(currentValue.toFixed(2)),
       gainLoss: Number(gainLoss.toFixed(2)),
       returnPercentage: Number(returnPercentage.toFixed(2)),
-      valuationDate: sourceDate(mappedValue(row, table.map, "valuationDate")),
+      costBasisAvailable,
+      costBasisStatus: costBasisAvailable ? "available" : "pending",
+      valuationDate: sourceDate(mappedValue(row, table.map, "valuationDate")) || reportDate,
       requestedGoalName: cleanIdentifier(mappedValue(row, table.map, "goalName")),
       notes: cleanIdentifier(mappedValue(row, table.map, "notes"))
     });
@@ -1140,6 +1165,8 @@ function parseBajajDelivery(matrix = []) {
     current.totalInvested += Number(holding.totalInvested || 0);
     current.investedAmount = current.totalInvested;
     current.currentValue += Number(holding.currentValue || 0);
+    current.costBasisAvailable = Boolean(current.costBasisAvailable || holding.costBasisAvailable);
+    current.costBasisStatus = current.costBasisAvailable ? "available" : "pending";
     if (holding.valuationDate && (!current.valuationDate || holding.valuationDate > current.valuationDate)) {
       current.valuationDate = holding.valuationDate;
       current.currentRate = holding.currentRate;
@@ -1151,9 +1178,12 @@ function parseBajajDelivery(matrix = []) {
   const holdings = [...holdingMap.values()].map((holding) => {
     const averageBuyRate = holding.quantity > 0 && holding.totalInvested > 0 ? holding.totalInvested / holding.quantity : Number(holding.averageBuyRate || 0);
     const currentRate = holding.quantity > 0 && holding.currentValue > 0 ? holding.currentValue / holding.quantity : Number(holding.currentRate || 0);
-    const gainLoss = holding.currentValue - holding.totalInvested;
+    const costBasisAvailable = Boolean(holding.costBasisAvailable && holding.totalInvested > 0);
+    const gainLoss = costBasisAvailable ? holding.currentValue - holding.totalInvested : 0;
     return {
       ...holding,
+      costBasisAvailable,
+      costBasisStatus: costBasisAvailable ? "available" : "pending",
       quantity: Number(holding.quantity.toFixed(6)),
       totalInvested: Number(holding.totalInvested.toFixed(2)),
       investedAmount: Number(holding.totalInvested.toFixed(2)),
@@ -1161,7 +1191,7 @@ function parseBajajDelivery(matrix = []) {
       currentRate: Number(currentRate.toFixed(6)),
       currentValue: Number(holding.currentValue.toFixed(2)),
       gainLoss: Number(gainLoss.toFixed(2)),
-      returnPercentage: Number((holding.totalInvested > 0 ? gainLoss / holding.totalInvested * 100 : 0).toFixed(2)),
+      returnPercentage: Number((costBasisAvailable && holding.totalInvested > 0 ? gainLoss / holding.totalInvested * 100 : 0).toFixed(2)),
       investmentMode: "Delivery"
     };
   });
@@ -1173,11 +1203,24 @@ function parseBajajDelivery(matrix = []) {
     return total;
   }, { totalInvested: 0, currentValue: 0, gainLoss: 0 });
   const valuationDate = holdings.map((item) => item.valuationDate).filter(Boolean).sort().at(-1) || "";
+  const warnings = [];
+  if (!costColumnsPresent || holdings.some((item) => !item.costBasisAvailable)) {
+    warnings.push("Bajaj Client Holding Report does not contain purchase cost. GrowVest will update quantity/current value and preserve any existing cost basis; new holdings remain cost-basis pending until trade/cost data is supplied.");
+  }
   return {
     ...id,
     holdings,
     transactions: [],
     trades: [],
+    warnings,
+    holdingSnapshot: true,
+    completeSnapshot: true,
+    brokerAccount: {
+      broker: "Bajaj Broking",
+      accountType: "trading_demat",
+      accountReference: id.externalClientCode || id.externalPan || "",
+      reportDate
+    },
     summary: {
       totalInvested: Number(summary.totalInvested.toFixed(2)),
       currentValue: Number(summary.currentValue.toFixed(2)),
@@ -1185,7 +1228,9 @@ function parseBajajDelivery(matrix = []) {
       positionCount: holdings.length,
       transactionCount: 0,
       tradeCount: 0,
-      valuationDate
+      valuationDate: valuationDate || reportDate,
+      costBasisComplete: holdings.every((item) => item.costBasisAvailable),
+      costBasisPendingCount: holdings.filter((item) => !item.costBasisAvailable).length
     }
   };
 }
@@ -1445,6 +1490,7 @@ function mergeBajajResults(results = []) {
     total.turnover += Number(item.summary?.turnover || 0);
     return total;
   }, { totalInvested: 0, currentValue: 0, gainLoss: 0, grossPnl: 0, totalCharges: 0, netPnl: 0, turnover: 0 });
+  const deliveryPart = valid.find((item) => item.holdingSnapshot === true || (item.holdings || []).length);
   return {
     externalClientName,
     normalizedExternalClientName: normaliseExternalName(externalClientName),
@@ -1457,6 +1503,14 @@ function mergeBajajResults(results = []) {
     blockingError: valid.map((item) => item.blockingError).filter(Boolean).join(" "),
     reportPeriodStart: startDates[0] || "",
     reportPeriodEnd: endDates.at(-1) || "",
+    holdingSnapshot: Boolean(deliveryPart?.holdingSnapshot),
+    completeSnapshot: Boolean(deliveryPart?.completeSnapshot),
+    brokerAccount: deliveryPart?.brokerAccount || {
+      broker: "Bajaj Broking",
+      accountType: "trading_demat",
+      accountReference: externalClientCode || externalPan || "",
+      reportDate: endDates.at(-1) || ""
+    },
     summary: {
       totalInvested: Number(summary.totalInvested.toFixed(2)),
       currentValue: Number(summary.currentValue.toFixed(2)),
@@ -1468,7 +1522,9 @@ function mergeBajajResults(results = []) {
       totalCharges: Number(summary.totalCharges.toFixed(2)),
       netPnl: Number(summary.netPnl.toFixed(2)),
       turnover: Number(summary.turnover.toFixed(2)),
-      valuationDate: endDates.at(-1) || ""
+      valuationDate: endDates.at(-1) || "",
+      costBasisComplete: holdings.length ? holdings.every((item) => item.costBasisAvailable === true) : true,
+      costBasisPendingCount: holdings.filter((item) => item.costBasisAvailable !== true).length
     }
   };
 }
@@ -1499,7 +1555,7 @@ function findHeaderIndex(row = [], aliases = []) {
   return row.findIndex((value) => {
     const normalized = normaliseHeader(value);
     if (!normalized || normalized.length < 4) return false;
-    return normalizedAliases.some((alias) => alias.length >= 4 && (normalized.includes(alias) || alias.includes(normalized)));
+    return normalizedAliases.some((alias) => alias !== "name" && alias.length >= 4 && (normalized.includes(alias) || alias.includes(normalized)));
   });
 }
 
@@ -2029,7 +2085,7 @@ function detectMatrixReport(matrix = [], sheetName = "") {
 
   const terms = matrixTerms(matrix);
   const sheet = normaliseHeader(sheetName);
-  const bajajBrand = sheet.includes("bajaj") || [...terms].some((term) => term.includes("bajaj broking") || term === "bajaj");
+  const bajajBrand = sheet.includes("bajaj") || [...terms].some((term) => term.includes("bajaj broking") || term.includes("bajaj financial securities") || term === "bajaj");
 
   if (hasTerms(terms, ["scheme name", "folio no", "net investment", "current value", "xirr"], 4)
     || hasTerms(terms, ["transaction date", "transaction type", "nav rate", "balance units", "scheme name"], 4)) {
@@ -2039,8 +2095,8 @@ function detectMatrixReport(matrix = [], sheetName = "") {
   const bajajDeliveryCandidate = findStructuredTable(
     matrix,
     BAJAJ_DELIVERY_ALIASES,
-    ["quantity", "stockName", "symbol", "averageBuyRate", "investedAmount", "currentRate", "currentValue"],
-    4
+    ["quantity", "stockName", "symbol", "currentRate", "currentValue", "averageBuyRate", "investedAmount"],
+    3
   );
   const bajajDeliveryTable = safeBajajDeliveryTable(bajajDeliveryCandidate) ? bajajDeliveryCandidate : null;
   if (bajajDeliveryTable && bajajBrand) {
@@ -2158,6 +2214,318 @@ function excelWebWrapper(text = "") {
     || /rel=File-List[^>]+_files\/filelist\.xml/i.test(value);
 }
 
+
+function decodePdfLiteral(value = "") {
+  let result = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (char !== "\\") {
+      result += char;
+      continue;
+    }
+    const next = value[index + 1];
+    if (next == null) break;
+    if (/[0-7]/.test(next)) {
+      let octal = next;
+      let cursor = index + 2;
+      while (cursor < value.length && octal.length < 3 && /[0-7]/.test(value[cursor])) {
+        octal += value[cursor];
+        cursor += 1;
+      }
+      result += String.fromCharCode(parseInt(octal, 8));
+      index = cursor - 1;
+      continue;
+    }
+    const escapes = { n: "\n", r: "\r", t: "\t", b: "\b", f: "\f", "(": "(", ")": ")", "\\": "\\" };
+    if (next === "\r" || next === "\n") {
+      if (next === "\r" && value[index + 2] === "\n") index += 1;
+      index += 1;
+      continue;
+    }
+    result += escapes[next] ?? next;
+    index += 1;
+  }
+  return result;
+}
+
+function pdfLiteralStrings(value = "") {
+  const rows = [];
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] !== "(") continue;
+    let depth = 1;
+    let raw = "";
+    for (let cursor = index + 1; cursor < value.length; cursor += 1) {
+      const char = value[cursor];
+      if (char === "\\") {
+        raw += char;
+        if (cursor + 1 < value.length) raw += value[++cursor];
+        continue;
+      }
+      if (char === "(") depth += 1;
+      if (char === ")") depth -= 1;
+      if (!depth) {
+        rows.push(decodePdfLiteral(raw));
+        index = cursor;
+        break;
+      }
+      raw += char;
+    }
+  }
+  return rows;
+}
+
+function pdfiumTextItems(buffer) {
+  // Angel One's downloaded DP statements are generated by PDFium and use
+  // WinAnsi literal strings inside Flate-compressed page content streams. This
+  // lightweight extractor is deliberately limited to that digital-text layout;
+  // scanned/image PDFs remain unsupported rather than invoking OCR on-server.
+  const bytes = Buffer.from(buffer);
+  const latin = bytes.toString("latin1");
+  const streamPattern = /(\d+)\s+\d+\s+obj\s*([\s\S]*?)stream\r?\n/g;
+  const items = [];
+  let match;
+  while ((match = streamPattern.exec(latin))) {
+    const dictionary = match[2] || "";
+    if (!/\/Filter\s*\/FlateDecode/.test(dictionary)) continue;
+    const lengthMatch = dictionary.match(/\/Length\s+(\d+)/);
+    if (!lengthMatch) continue;
+    const length = Number(lengthMatch[1]);
+    if (!Number.isFinite(length) || length <= 0) continue;
+    const start = match.index + match[0].length;
+    const end = start + length;
+    if (end > bytes.length) continue;
+    let decoded;
+    try {
+      decoded = inflateSync(bytes.subarray(start, end)).toString("latin1");
+    } catch {
+      continue;
+    }
+    if (!decoded.includes("BT") || !decoded.includes("Tj")) continue;
+    const textBlocks = decoded.matchAll(/BT([\s\S]*?)ET/g);
+    for (const blockMatch of textBlocks) {
+      const block = blockMatch[1] || "";
+      const tdMatches = [...block.matchAll(/(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+Td\b/g)];
+      if (!tdMatches.length) continue;
+      const x = Number(tdMatches.at(-1)[1]);
+      const y = Number(tdMatches.at(-1)[2]);
+      const strings = pdfLiteralStrings(block);
+      const text = strings.join("").replace(/\s+/g, " ").trim();
+      if (!text) continue;
+      items.push({ x, y, text });
+    }
+    streamPattern.lastIndex = end;
+  }
+  return items;
+}
+
+function pdfTextRows(buffer) {
+  const items = pdfiumTextItems(buffer);
+  const rows = [];
+  const sorted = [...items].sort((left, right) => right.y - left.y || left.x - right.x);
+  for (const item of sorted) {
+    let row = rows.find((candidate) => Math.abs(candidate.y - item.y) <= 1.25);
+    if (!row) {
+      row = { y: item.y, items: [] };
+      rows.push(row);
+    }
+    row.items.push(item);
+  }
+  return rows
+    .map((row) => ({ ...row, items: row.items.sort((left, right) => left.x - right.x) }))
+    .sort((left, right) => right.y - left.y);
+}
+
+function rowText(row = {}) {
+  return (row.items || []).map((item) => item.text).join(" ").replace(/\s+/g, " ").trim();
+}
+
+function pdfColumnText(row = {}, minX = -Infinity, maxX = Infinity) {
+  return (row.items || [])
+    .filter((item) => Number(item.x) >= minX && Number(item.x) < maxX)
+    .map((item) => item.text)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function angelPdfNumber(value = "") {
+  return sourceNumber(String(value || "").replace(/[^0-9.,()\-]/g, ""));
+}
+
+function angelStatementDate(value = "") {
+  const text = String(value || "").trim();
+  const dmy = text.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dmy) return `${dmy[3]}-${String(dmy[2]).padStart(2, "0")}-${String(dmy[1]).padStart(2, "0")}`;
+  return sourceDate(text);
+}
+
+function parseAngelOneDpStatement(buffer) {
+  const rows = pdfTextRows(buffer);
+  const allText = rows.map(rowText).join("\n");
+  if (!/angelone\.in|angel\s*one/i.test(allText) || !/statement of dp transaction cum holding/i.test(allText)) {
+    throw new Error("This PDF is not a supported Angel One DP Transaction Cum Holding statement.");
+  }
+
+  let externalClientName = "";
+  let externalClientCode = "";
+  let statementDate = "";
+  let reportPeriodStart = "";
+  let reportPeriodEnd = "";
+
+  for (const row of rows) {
+    const text = rowText(row);
+    const demat = text.match(/Demat\s*ID\s*:\s*([0-9]{8,})/i);
+    if (demat?.[1]) externalClientCode = demat[1];
+    const name = text.match(/^Name\s*:\s*(.+)$/i);
+    if (name?.[1]) externalClientName = name[1].trim();
+    const date = text.match(/^Date\s*:\s*(.+)$/i);
+    if (date?.[1]) statementDate = sourceDate(date[1].trim());
+    const period = text.match(/Statement of DP Transaction Cum Holding for the Period\s*:\s*(.+?)\s+TO\s+(.+)$/i);
+    if (period) {
+      reportPeriodStart = sourceDate(period[1].trim());
+      reportPeriodEnd = sourceDate(period[2].trim());
+    }
+  }
+  if (!externalClientName || !externalClientCode) {
+    throw new Error("Angel One DP statement was detected, but Investor Name or Demat ID could not be read safely.");
+  }
+
+  const holdings = [];
+  const dpTransactions = [];
+  let currentInstrument = null;
+  let lastTransaction = null;
+
+  for (const row of rows) {
+    const text = rowText(row);
+    const isinItem = (row.items || []).find((item) => /^[A-Z]{2}[A-Z0-9]{10}$/.test(String(item.text || "").trim().toUpperCase()));
+    if (isinItem) {
+      const isin = String(isinItem.text || "").trim().toUpperCase();
+      const instrumentName = pdfColumnText(row, 80, 454).replace(/^\s+|\s+$/g, "") || isin;
+      currentInstrument = { isin, instrumentName };
+      lastTransaction = null;
+      continue;
+    }
+
+    if (currentInstrument && /CLOSING\s+BALANCE/i.test(text)) {
+      const quantity = angelPdfNumber(pdfColumnText(row, 555, 621));
+      const currentValue = angelPdfNumber(pdfColumnText(row, 620, Infinity));
+      if (quantity > 0 || currentValue > 0) {
+        const currentRate = quantity > 0 && currentValue > 0 ? currentValue / quantity : 0;
+        holdings.push({
+          source: PORTFOLIO_SOURCES.ANGEL_ONE,
+          provider: "Angel One",
+          productType: PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY,
+          assetClass: "Equity",
+          investmentMode: "Delivery",
+          instrumentName: currentInstrument.instrumentName,
+          stockName: currentInstrument.instrumentName,
+          symbol: "",
+          isin: currentInstrument.isin,
+          exchange: "",
+          quantity: Number(quantity.toFixed(6)),
+          averageBuyRate: 0,
+          totalInvested: 0,
+          investedAmount: 0,
+          currentRate: Number(currentRate.toFixed(6)),
+          currentValue: Number(currentValue.toFixed(2)),
+          gainLoss: 0,
+          returnPercentage: 0,
+          costBasisAvailable: false,
+          costBasisStatus: "pending",
+          valuationDate: reportPeriodEnd || statementDate,
+          notes: "Closing DP holding from Angel One statement"
+        });
+      }
+      lastTransaction = null;
+      continue;
+    }
+
+    const dateText = pdfColumnText(row, -Infinity, 90);
+    const txDate = dateText.match(/\b\d{1,2}-\d{1,2}-\d{4}\b/)?.[0] || "";
+    if (currentInstrument && txDate) {
+      const debitQuantity = angelPdfNumber(pdfColumnText(row, 454, 503.8));
+      const creditQuantity = angelPdfNumber(pdfColumnText(row, 503.8, 555.4));
+      const reportedBalance = angelPdfNumber(pdfColumnText(row, 555.4, 621));
+      const amount = angelPdfNumber(pdfColumnText(row, 620, Infinity));
+      const transaction = {
+        source: PORTFOLIO_SOURCES.ANGEL_ONE,
+        provider: "Angel One",
+        transactionDate: angelStatementDate(txDate),
+        isin: currentInstrument.isin,
+        instrumentName: currentInstrument.instrumentName,
+        externalTransactionId: pdfColumnText(row, 80, 234),
+        description: pdfColumnText(row, 234, 454),
+        debitQuantity: Number(debitQuantity.toFixed(6)),
+        creditQuantity: Number(creditQuantity.toFixed(6)),
+        reportedBalance: Number(reportedBalance.toFixed(6)),
+        amount: Number(amount.toFixed(2))
+      };
+      dpTransactions.push(transaction);
+      lastTransaction = transaction;
+      continue;
+    }
+
+    // Multi-line CTBO/settlement descriptions are printed on a second line in
+    // the same Description column. Preserve them without trying to infer a
+    // second transaction from the continuation text.
+    if (lastTransaction) {
+      const continuation = pdfColumnText(row, 234, 454);
+      if (continuation && !/OPENING\s+BALANCE|CLOSING\s+BALANCE|DESCRIPTION/i.test(continuation)) {
+        lastTransaction.description = `${lastTransaction.description} ${continuation}`.replace(/\s+/g, " ").trim();
+      }
+    }
+  }
+
+  if (!holdings.length) throw new Error("Angel One DP statement was detected, but no closing holdings were found.");
+  const currentValue = holdings.reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
+  const totalQuantity = holdings.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+  return {
+    source: PORTFOLIO_SOURCES.ANGEL_ONE,
+    reportType: PORTFOLIO_REPORT_TYPES.ANGEL_ONE_DP_STATEMENT,
+    adapterStatus: PORTFOLIO_ADAPTER_STATUS.READY,
+    confidence: 1,
+    sheetName: "PDF",
+    externalClientName,
+    normalizedExternalClientName: normaliseExternalName(externalClientName),
+    externalPan: "",
+    externalClientCode,
+    reportPeriodStart,
+    reportPeriodEnd,
+    holdings,
+    transactions: [],
+    trades: [],
+    dpTransactions,
+    holdingSnapshot: true,
+    completeSnapshot: true,
+    brokerAccount: {
+      broker: "Angel One",
+      accountType: "trading_demat",
+      accountReference: externalClientCode,
+      dematId: externalClientCode,
+      statementDate,
+      reportPeriodStart,
+      reportPeriodEnd
+    },
+    warnings: [
+      "Angel One DP statement provides closing quantity/value but not purchase cost. GrowVest preserves any known cost basis; new delivery holdings remain cost-basis pending until trade/cost data is supplied.",
+      "DP debit/credit rows are stored for reconciliation and are not treated as intraday P&L trades."
+    ],
+    summary: {
+      totalInvested: 0,
+      currentValue: Number(currentValue.toFixed(2)),
+      gainLoss: 0,
+      positionCount: holdings.length,
+      transactionCount: 0,
+      tradeCount: 0,
+      dpTransactionCount: dpTransactions.length,
+      closingQuantity: Number(totalQuantity.toFixed(6)),
+      valuationDate: reportPeriodEnd || statementDate,
+      costBasisComplete: false,
+      costBasisPendingCount: holdings.length
+    }
+  };
+}
+
 export async function detectPortfolioImportFile(file) {
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
@@ -2175,7 +2543,7 @@ export async function detectPortfolioImportFile(file) {
     adapterStatus: PORTFOLIO_ADAPTER_STATUS.UNSUPPORTED,
     confidence: 0,
     sheetName: "",
-    fileFormat: isHtml ? "HTML-XLS" : (/\.xlsx$/i.test(file.name) ? "XLSX" : /\.xls$/i.test(file.name) ? "XLS" : /\.csv$/i.test(file.name) ? "CSV" : "Unknown")
+    fileFormat: isHtml ? "HTML-XLS" : (/\.xlsx$/i.test(file.name) ? "XLSX" : /\.xls$/i.test(file.name) ? "XLS" : /\.csv$/i.test(file.name) ? "CSV" : /\.pdf$/i.test(file.name) ? "PDF" : "Unknown")
   };
 
   if (isHtml && excelWebWrapper(buffer.toString("utf8"))) {
@@ -2209,6 +2577,15 @@ export async function detectPortfolioImportFile(file) {
       };
     }
     return { ...base, error: "The HTML/XLS file was read, but its portfolio report structure is not recognised yet." };
+  }
+
+  if (/\.pdf$/i.test(file.name)) {
+    try {
+      const parsed = parseAngelOneDpStatement(buffer);
+      return { ...base, ...parsed, error: "" };
+    } catch (error) {
+      return { ...base, fileFormat: "PDF", error: error?.message || "Unable to read this broker PDF statement." };
+    }
   }
 
   if (/\.(xls|xlsx|csv)$/i.test(file.name)) {

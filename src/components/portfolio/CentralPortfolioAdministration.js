@@ -21,6 +21,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
+import BulkManualPortfolioExcelPanel from "@/components/portfolio/BulkManualPortfolioExcelPanel";
 import PageHeader from "@/components/ui/PageHeader";
 import { inputClassName } from "@/components/ui/Field";
 import { ADMIN_ROLES } from "@/lib/constants/roles";
@@ -45,6 +46,7 @@ const MAX_BULK_FULL_RESET = 25;
 const POSITION_SCOPE_KEYS = [
   PORTFOLIO_ADMIN_SCOPES.FUNDBAZAAR,
   PORTFOLIO_ADMIN_SCOPES.BAJAJ_DELIVERY,
+  PORTFOLIO_ADMIN_SCOPES.BROKER_DELIVERY,
   PORTFOLIO_ADMIN_SCOPES.ULIP,
   PORTFOLIO_ADMIN_SCOPES.MANUAL,
   PORTFOLIO_ADMIN_SCOPES.GENERIC_OTHER
@@ -135,7 +137,7 @@ function FullResetDialog({ open, busy, preview, reason, confirmation, onReason, 
   if (!open) return null;
   const totals = preview?.totals || {};
   const expectedConfirmation = preview?.expectedConfirmation || "";
-  const tradingTotal = Number(totals.tradingRecords || 0) + Number(totals.tradingSummaries || 0);
+  const tradingTotal = Number(totals.tradingRecords || 0) + Number(totals.tradingSummaries || 0) + Number(totals.brokerAccounts || 0) + Number(totals.brokerAccountSnapshots || 0) + Number(totals.brokerDpTransactions || 0);
   const recoveryTotal = Number(totals.recoveryJournals || 0) + Number(totals.recoveryItems || 0);
   const sipTotal = Number(totals.sipSchedules || 0) + Number(totals.sipCycles || 0);
 
@@ -181,7 +183,7 @@ function FullResetDialog({ open, busy, preview, reason, confirmation, onReason, 
           <div className="mb-2 flex items-center justify-between gap-3"><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Selected investors</p><p className="text-[10px] font-bold text-red-700">{Number(totals.totalResetRecords || 0).toLocaleString("en-IN")} resettable record(s)</p></div>
           <div className="grid max-h-72 gap-2 overflow-y-auto pr-1">{preview.details.map((item) => {
             const counts = item.counts || {};
-            const itemTrading = Number(counts.tradingRecords || 0) + Number(counts.tradingSummaries || 0);
+            const itemTrading = Number(counts.tradingRecords || 0) + Number(counts.tradingSummaries || 0) + Number(counts.brokerAccounts || 0) + Number(counts.brokerAccountSnapshots || 0) + Number(counts.brokerDpTransactions || 0);
             return <div key={item.investorId} className="rounded-xl border border-slate-200 bg-white p-3"><div className="flex flex-col justify-between gap-2 lg:flex-row lg:items-start"><div><p className="text-sm font-bold text-slate-950">{item.investorName}</p><p className="mt-0.5 text-[11px] text-slate-500">{item.clientCode || "No client code"} · Current value {formatCurrency(item.currentValue)}</p></div><div className="flex max-w-2xl flex-wrap gap-x-2 gap-y-1 text-[11px] font-semibold text-slate-600"><span>{counts.holdings || 0} holdings</span><span>·</span><span>{counts.transactions || 0} transactions</span><span>·</span><span>{counts.snapshots || 0} snapshots</span><span>·</span><span>{counts.importFiles || 0} imports</span><span>·</span><span>{counts.mappings || 0} mappings</span><span>·</span><span>{itemTrading} trading</span></div></div></div>;
           })}</div>
         </div>
@@ -440,7 +442,7 @@ export default function CentralPortfolioAdministration() {
   if (!canAdminister) return <EmptyState title="Admin access required" description="Central Portfolio Administration is restricted to Super Admin and Admin users." />;
 
   return <div className="grid gap-6">
-    <PageHeader eyebrow="Portfolio management" title="Portfolio Administration" description="Select multiple investors, choose the portfolio categories that need correction, preview the exact impact and remove the selected data through the same audited cleanup engine used on individual investor portfolios." action={<><Link href="/portfolio/daily-update" className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">Daily Portfolio Update</Link><Button type="button" variant="secondary" onClick={() => load({ quiet: true })} disabled={refreshing}>{refreshing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCcw size={16} />} Refresh</Button></>} />
+    <PageHeader eyebrow="Portfolio management" title="Portfolio Administration" description="Upload Manual Portfolio holdings for multiple investors in one Excel, or select investors for controlled cleanup and Full Portfolio Reset with audited previews." action={<><Link href="/portfolio/daily-update" className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">Daily Portfolio Update</Link><Button type="button" variant="secondary" onClick={() => load({ quiet: true })} disabled={refreshing}>{refreshing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCcw size={16} />} Refresh</Button></>} />
 
     {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}
 
@@ -450,6 +452,8 @@ export default function CentralPortfolioAdministration() {
       <Metric label="Current Portfolio Value" value={formatCurrency(totals.currentValue)} helper="Trading P&L excluded" icon={WalletCards} />
       <Metric label="Trading Records" value={Number(totals.trades || 0).toLocaleString("en-IN")} helper="Tracked separately from goal corpus" icon={CandlestickChart} />
     </div>
+
+    <BulkManualPortfolioExcelPanel onImported={() => load({ quiet: true })} />
 
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_330px]">
       <Card className="overflow-hidden">

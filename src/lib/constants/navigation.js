@@ -17,6 +17,7 @@ import {
   PenTool,
   UserRound,
   WalletCards,
+  CandlestickChart,
   ListChecks,
   CakeSlice,
   Settings2
@@ -52,6 +53,7 @@ export const NAV_GROUPS = [
     label: "Portfolio Management",
     items: [
       { label: "Portfolio Overview", href: "/portfolio", icon: WalletCards, roles: STAFF_ROLES, permission: "portfolio" },
+      { label: "Trading Accounts", href: "/portfolio/trading", icon: CandlestickChart, roles: STAFF_ROLES, permission: "portfolio" },
       { label: "Daily Portfolio Update", href: "/portfolio/daily-update", icon: FileUp, roles: STAFF_ROLES, permission: "portfolio" },
       { label: "Portfolio Administration", href: "/portfolio/administration", icon: Settings2, roles: ADMIN_ROLES, permission: "portfolio" },
       { label: "Monthly Reports", href: "/reports", icon: FileBarChart, roles: STAFF_ROLES, permission: "reports" },

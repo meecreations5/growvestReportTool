@@ -82,6 +82,19 @@ async function authenticatedFetch(url, options = {}) {
   return payload;
 }
 
+export function subscribeManualPortfolioAccounts(investorId, currentUser, callback, onError) {
+  if (!investorId) {
+    callback([]);
+    return () => {};
+  }
+  const ownership = currentUser?.role === "advisor" ? [where("advisorUid", "==", currentUser.id)] : [];
+  return onSnapshot(
+    query(collection(db, "manualPortfolioAccounts"), where("investorId", "==", investorId), ...ownership),
+    (snapshot) => callback(rows(snapshot).sort((a, b) => String(a.accountCode || "").localeCompare(String(b.accountCode || "")))),
+    onError
+  );
+}
+
 export function subscribeInvestorPortfolio(investorId, currentUser, callback, onError) {
   if (!investorId) {
     callback([]);
@@ -478,6 +491,34 @@ export async function downloadManualPortfolioTemplate() {
   return response.blob();
 }
 
+export async function downloadBulkManualPortfolioTemplate() {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Your session has expired. Sign in again.");
+  const headers = await authenticatedApiHeaders({}, user);
+  const response = await fetch("/api/portfolio/manual-bulk-template", { headers });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || "Unable to download the multi-investor Manual Portfolio template.");
+  }
+  return response.blob();
+}
+
+export async function previewBulkManualPortfolioExcel(file, mode = "merge") {
+  const formData = new FormData();
+  formData.append("action", "preview");
+  formData.append("mode", mode);
+  formData.append("file", file);
+  return authenticatedFetch("/api/portfolio/manual-bulk-import", { method: "POST", body: formData });
+}
+
+export async function commitBulkManualPortfolioExcel(file, mode = "merge") {
+  const formData = new FormData();
+  formData.append("action", "commit");
+  formData.append("mode", mode);
+  formData.append("file", file);
+  return authenticatedFetch("/api/portfolio/manual-bulk-import", { method: "POST", body: formData });
+}
+
 export async function previewManualPortfolioExcel(investorId, file, mode = "merge") {
   const formData = new FormData();
   formData.append("action", "preview");
@@ -540,4 +581,8 @@ export async function bulkFullPortfolioReset(investorIds = [], reason, confirmat
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "reset", investorIds, reason, confirmation })
   });
+}
+
+export async function getTradingAccounts() {
+  return authenticatedFetch("/api/portfolio/trading/accounts");
 }

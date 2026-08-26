@@ -113,6 +113,9 @@ function sourceClientCode(investor = {}, source = "") {
   if (source === PORTFOLIO_SOURCES.BAJAJ_BROKING) {
     return String(investor.bajajClientCode || investor.brokerClientCode || investor.tradingClientCode || "").trim().toUpperCase();
   }
+  if (source === PORTFOLIO_SOURCES.ANGEL_ONE) {
+    return String(investor.angelOneDematId || investor.dematId || investor.angelOneClientCode || investor.brokerClientCode || investor.tradingClientCode || "").trim().toUpperCase();
+  }
   if (source === PORTFOLIO_SOURCES.ULIP) {
     return String(investor.ulipClientCode || investor.insuranceClientCode || "").trim().toUpperCase();
   }
@@ -144,6 +147,9 @@ function publicFileResult(fileRef, detected, extra = {}) {
     genericMapping: detected.genericMapping || null,
     mappingProfileId: detected.mappingProfileId || "",
     completeSnapshot: detected.completeSnapshot === true,
+    holdingSnapshot: detected.holdingSnapshot === true,
+    brokerAccount: detected.brokerAccount || null,
+    dpTransactionCount: Array.isArray(detected.dpTransactions) ? detected.dpTransactions.length : Number(detected.summary?.dpTransactionCount || 0),
     fundbazaarBootstrapOnly: detected.fundbazaarBootstrapOnly === true,
     error: detected.error || "",
     ...extra
@@ -207,6 +213,7 @@ export async function POST(request) {
         PORTFOLIO_REPORT_TYPES.BAJAJ_DELIVERY,
         PORTFOLIO_REPORT_TYPES.BAJAJ_INTRADAY,
         PORTFOLIO_REPORT_TYPES.BAJAJ_COMBINED,
+        PORTFOLIO_REPORT_TYPES.ANGEL_ONE_DP_STATEMENT,
         PORTFOLIO_REPORT_TYPES.ULIP_PORTFOLIO,
         PORTFOLIO_REPORT_TYPES.GROWVEST_STANDARD
       ];
@@ -246,6 +253,9 @@ export async function POST(request) {
           genericMapping: detected.genericMapping || null,
           mappingProfileId: detected.mappingProfileId || "",
           completeSnapshot: detected.completeSnapshot === true,
+          holdingSnapshot: detected.holdingSnapshot === true,
+          brokerAccount: detected.brokerAccount || null,
+          dpTransactions: detected.dpTransactions || [],
           fundbazaarBootstrapOnly: detected.fundbazaarBootstrapOnly === true,
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp()
@@ -353,6 +363,9 @@ export async function POST(request) {
         genericMapping: detected.genericMapping || null,
         mappingProfileId: detected.mappingProfileId || "",
         completeSnapshot: detected.completeSnapshot === true,
+        holdingSnapshot: detected.holdingSnapshot === true,
+        brokerAccount: detected.brokerAccount || null,
+        dpTransactions: detected.dpTransactions || [],
         fundbazaarBootstrapOnly: detected.fundbazaarBootstrapOnly === true,
         trades: detected.trades || [],
         duplicateOfImportId: fingerprintSnapshot.exists ? fingerprintSnapshot.data()?.batchId || "" : "",

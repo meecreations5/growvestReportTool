@@ -47,6 +47,7 @@ import {
   subscribeInvestorPortfolio,
   subscribeInvestorTrading,
   subscribeInvestorUlipPolicies,
+  subscribeManualPortfolioAccounts,
   subscribePortfolioSnapshotHistory,
   subscribeRecentInvestmentTransactions,
   updatePortfolioGoal
@@ -336,7 +337,7 @@ function ManualHoldingForm({ investor, onClose, onSaved }) {
     finally { setBusy(false); }
   }
 
-  return <Card className="border-blue-200 bg-blue-50/20 p-5"><div className="flex items-start justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">Manual portfolio entry</p><h3 className="mt-1 font-heading text-xl font-bold text-slate-950">Add investment holding</h3></div><button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500"><X size={16} /></button></div>{error ? <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}<div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4"><Field label="Investment type"><select className={inputClassName} value={type} onChange={(event) => { const next = event.target.value; setType(next); setForm((current) => ({ ...current, provider: next === PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY ? "Bajaj Broking" : current.provider })); }}><option value={PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY}>Stock - Delivery</option><option value={PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND}>Mutual Fund</option><option value={PORTFOLIO_PRODUCT_TYPES.ULIP}>ULIP</option><option value={PORTFOLIO_PRODUCT_TYPES.PMS}>PMS</option><option value={PORTFOLIO_PRODUCT_TYPES.BOND}>Bond</option><option value={PORTFOLIO_PRODUCT_TYPES.FIXED_DEPOSIT}>Fixed Deposit</option><option value={PORTFOLIO_PRODUCT_TYPES.GOLD}>Gold</option><option value={PORTFOLIO_PRODUCT_TYPES.REAL_ESTATE}>Real Estate</option><option value={PORTFOLIO_PRODUCT_TYPES.OTHER}>Other</option></select></Field><Field label="Investment / instrument"><input className={inputClassName} value={form.instrumentName || ""} onChange={(e) => set("instrumentName", e.target.value)} /></Field><Field label="Provider"><input className={inputClassName} value={form.provider || ""} onChange={(e) => set("provider", e.target.value)} /></Field><Field label="Goal / Corpus"><select className={inputClassName} value={form.goalId || ""} onChange={(e) => set("goalId", e.target.value)}><option value="">General Wealth / Unassigned</option>{goals.map((goal) => <option key={goal.id || goal.goalId} value={goal.id || goal.goalId}>{goal.name || goal.goalName}</option>)}</select></Field>
+  return <Card className="border-blue-200 bg-blue-50/20 p-5"><div className="flex items-start justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">Manual portfolio entry</p><h3 className="mt-1 font-heading text-xl font-bold text-slate-950">Add investment holding</h3></div><button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500"><X size={16} /></button></div>{error ? <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}<div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4"><Field label="Investment type"><select className={inputClassName} value={type} onChange={(event) => { const next = event.target.value; setType(next); setForm((current) => ({ ...current, provider: next === PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY ? "Bajaj Broking" : current.provider })); }}><option value={PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY}>Stock - Delivery</option><option value={PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND}>Mutual Fund</option><option value={PORTFOLIO_PRODUCT_TYPES.ULIP}>ULIP</option><option value={PORTFOLIO_PRODUCT_TYPES.PMS}>PMS</option><option value={PORTFOLIO_PRODUCT_TYPES.BOND}>Bond</option><option value={PORTFOLIO_PRODUCT_TYPES.FIXED_DEPOSIT}>Fixed Deposit</option><option value={PORTFOLIO_PRODUCT_TYPES.GOLD}>Gold</option><option value={PORTFOLIO_PRODUCT_TYPES.ETF}>ETF</option><option value={PORTFOLIO_PRODUCT_TYPES.REAL_ESTATE}>Real Estate</option><option value={PORTFOLIO_PRODUCT_TYPES.OTHER}>Other</option></select></Field><Field label="Investment / instrument"><input className={inputClassName} value={form.instrumentName || ""} onChange={(e) => set("instrumentName", e.target.value)} /></Field><Field label="Provider"><input className={inputClassName} value={form.provider || ""} onChange={(e) => set("provider", e.target.value)} /></Field><Field label="Goal / Corpus"><select className={inputClassName} value={form.goalId || ""} onChange={(e) => set("goalId", e.target.value)}><option value="">General Wealth / Unassigned</option>{goals.map((goal) => <option key={goal.id || goal.goalId} value={goal.id || goal.goalId}>{goal.name || goal.goalName}</option>)}</select></Field>
       {type === PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY ? <><Field label="Symbol"><input className={inputClassName} value={form.symbol || ""} onChange={(e) => set("symbol", e.target.value)} /></Field><Field label="Exchange"><select className={inputClassName} value={form.exchange || "NSE"} onChange={(e) => set("exchange", e.target.value)}><option>NSE</option><option>BSE</option></select></Field><Field label="Buy / Avg Rate"><input type="number" className={inputClassName} value={form.averageBuyRate || ""} onChange={(e) => set("averageBuyRate", e.target.value)} /></Field><Field label="Quantity"><input type="number" className={inputClassName} value={form.quantity || ""} onChange={(e) => set("quantity", e.target.value)} /></Field><Field label="Current Rate"><input type="number" className={inputClassName} value={form.currentRate || ""} onChange={(e) => set("currentRate", e.target.value)} /></Field><Field label="Price Date"><input type="date" className={inputClassName} value={form.priceDate || ""} onChange={(e) => set("priceDate", e.target.value)} /></Field></> : null}
       {type === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? <><Field label="Investment mode"><select className={inputClassName} value={form.investmentMode || "SIP"} onChange={(e) => set("investmentMode", e.target.value)}>{MUTUAL_FUND_INVESTMENT_MODES.map((item) => <option key={item}>{item}</option>)}</select></Field><Field label="ISIN"><input className={inputClassName} value={form.isin || ""} onChange={(e) => set("isin", e.target.value)} /></Field><Field label="Folio"><input className={inputClassName} value={form.folioNo || ""} onChange={(e) => set("folioNo", e.target.value)} /></Field><Field label="Total Invested"><input type="number" className={inputClassName} value={form.totalInvested || ""} onChange={(e) => set("totalInvested", e.target.value)} /></Field><Field label="Units"><input type="number" step="0.0001" className={inputClassName} value={form.totalUnits || ""} onChange={(e) => set("totalUnits", e.target.value)} /></Field><Field label="Current NAV"><input type="number" step="0.0001" className={inputClassName} value={form.currentNav || ""} onChange={(e) => set("currentNav", e.target.value)} /></Field><Field label="NAV Date"><input type="date" className={inputClassName} value={form.navDate || ""} onChange={(e) => set("navDate", e.target.value)} /></Field><Field label="Monthly SIP"><input type="number" className={inputClassName} value={form.monthlySip || ""} onChange={(e) => set("monthlySip", e.target.value)} /></Field></> : null}
       {type === PORTFOLIO_PRODUCT_TYPES.ULIP ? <><Field label="Insurance Company"><input className={inputClassName} value={form.insurer || form.provider || ""} onChange={(e) => { set("insurer", e.target.value); set("provider", e.target.value); }} /></Field><Field label="Policy Number"><input className={inputClassName} value={form.policyNumber || ""} onChange={(e) => set("policyNumber", e.target.value)} /></Field><Field label="Plan Name"><input className={inputClassName} value={form.planName || ""} onChange={(e) => set("planName", e.target.value)} /></Field><Field label="Fund Name"><input className={inputClassName} value={form.fundName || ""} onChange={(e) => { set("fundName", e.target.value); if (!form.instrumentName) set("instrumentName", e.target.value); }} /></Field><Field label="Fund Code"><input className={inputClassName} value={form.fundCode || ""} onChange={(e) => set("fundCode", e.target.value)} /></Field><Field label="Policy Start Date"><input type="date" className={inputClassName} value={form.policyStartDate || ""} onChange={(e) => set("policyStartDate", e.target.value)} /></Field><Field label="Units"><input type="number" step="0.0001" className={inputClassName} value={form.totalUnits || ""} onChange={(e) => set("totalUnits", e.target.value)} /></Field><Field label="NAV"><input type="number" step="0.0001" className={inputClassName} value={form.currentNav || ""} onChange={(e) => set("currentNav", e.target.value)} /></Field><Field label="NAV Date"><input type="date" className={inputClassName} value={form.navDate || ""} onChange={(e) => set("navDate", e.target.value)} /></Field><Field label="Total Premium Paid"><input type="number" className={inputClassName} value={form.policyTotalPremiumPaid || ""} onChange={(e) => set("policyTotalPremiumPaid", e.target.value)} /></Field><Field label="Premium Amount"><input type="number" className={inputClassName} value={form.premiumAmount || ""} onChange={(e) => set("premiumAmount", e.target.value)} /></Field><Field label="Premium Frequency"><select className={inputClassName} value={form.premiumFrequency || ""} onChange={(e) => set("premiumFrequency", e.target.value)}><option value="">Select</option><option>Monthly</option><option>Quarterly</option><option>Half-Yearly</option><option>Annual</option><option>Single</option></select></Field><Field label="Maturity Date"><input type="date" className={inputClassName} value={form.maturityDate || ""} onChange={(e) => set("maturityDate", e.target.value)} /></Field><Field label="Sum Assured"><input type="number" className={inputClassName} value={form.sumAssured || ""} onChange={(e) => set("sumAssured", e.target.value)} /></Field></> : null}
@@ -360,6 +361,7 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
   const [snapshots, setSnapshots] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [trades, setTrades] = useState([]);
+  const [manualAccounts, setManualAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
@@ -409,6 +411,13 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
     profile,
     setTrades,
     (nextError) => console.error("Unable to load trading history", nextError)
+  ), [investor?.id, profile]);
+
+  useEffect(() => subscribeManualPortfolioAccounts(
+    investor?.id,
+    profile,
+    setManualAccounts,
+    (nextError) => console.error("Unable to load Manual Portfolio accounts", nextError)
   ), [investor?.id, profile]);
 
   const snapshot = snapshots[0] || null;
@@ -625,6 +634,53 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
         <Stat label="Gain / Loss" value={formatCurrency(summary.gain)} helper={summary.gainPartial ? "Excludes ULIP funds without fund-level cost basis" : summary.invested ? percent(summary.gain / summary.invested * 100) : "—"} icon={summary.gain >= 0 ? TrendingUp : TrendingDown} tone={summary.gain >= 0 ? "green" : "red"} />
         <Stat label="Monthly SIP" value={formatCurrency(summary.monthlySip)} helper="Active mutual fund contribution" icon={RefreshCcw} tone="green" />
       </div>
+
+      {manualAccounts.length ? <Card className="overflow-hidden">
+        <div className="border-b border-slate-200 p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700">Manual Portfolio Management</p>
+              <h2 className="mt-1 font-heading text-xl font-bold text-slate-950">Managed portfolio accounts</h2>
+              <p className="mt-1 text-sm text-slate-500">Holdings, cash, realised/unrealised P&amp;L, income, charges and return metrics calculated from the uploaded Manual Portfolio Management workbook.</p>
+            </div>
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-50 text-violet-700"><WalletCards size={19} /></span>
+          </div>
+        </div>
+        <div className="grid gap-3 p-5 sm:p-6 xl:grid-cols-2">
+          {manualAccounts.map((account) => {
+            const metrics = account.metrics || {};
+            const absoluteReturn = metrics.absoluteReturnPercentage;
+            const xirrValue = metrics.xirrPercentage;
+            return <article key={account.id} className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-slate-950">{account.accountName || account.accountCode || "Manual Portfolio"}</p>
+                  <p className="mt-1 text-[11px] text-slate-500">{[account.accountCode, account.strategy, account.provider].filter(Boolean).join(" · ") || "Manual account"}</p>
+                </div>
+                <span className={`inline-flex w-fit rounded-full px-2 py-1 text-[10px] font-bold uppercase ${String(account.status || "active").toLowerCase() === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{account.status || "active"}</span>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="rounded-lg bg-blue-50 p-3"><p className="text-[9px] font-bold uppercase tracking-wide text-blue-600">Current Value</p><p className="mt-1 text-sm font-black text-blue-950">{formatCurrency(metrics.currentPortfolioValue)}</p></div>
+                <div className="rounded-lg bg-slate-50 p-3"><p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Invested</p><p className="mt-1 text-sm font-black text-slate-950">{formatCurrency(metrics.investedAmount)}</p></div>
+                <div className="rounded-lg bg-emerald-50 p-3"><p className="text-[9px] font-bold uppercase tracking-wide text-emerald-700">Cash</p><p className="mt-1 text-sm font-black text-emerald-950">{formatCurrency(metrics.cashBalance)}</p></div>
+                <div className="rounded-lg bg-violet-50 p-3"><p className="text-[9px] font-bold uppercase tracking-wide text-violet-700">XIRR</p><p className="mt-1 text-sm font-black text-violet-950">{Number.isFinite(Number(xirrValue)) ? percent(Number(xirrValue)) : "—"}</p></div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3">
+                <p className="text-slate-500">Unrealised <strong className={Number(metrics.unrealizedGainLoss || 0) >= 0 ? "text-emerald-700" : "text-red-700"}>{formatCurrency(metrics.unrealizedGainLoss)}</strong></p>
+                <p className="text-slate-500">Realised <strong className={Number(metrics.realizedPnl || 0) >= 0 ? "text-emerald-700" : "text-red-700"}>{formatCurrency(metrics.realizedPnl)}</strong></p>
+                <p className="text-slate-500">Income <strong className="text-slate-900">{formatCurrency(metrics.incomeTotal)}</strong></p>
+                <p className="text-slate-500">Charges <strong className="text-slate-900">{formatCurrency(metrics.chargesTotal)}</strong></p>
+                <p className="text-slate-500">Absolute <strong className={Number(absoluteReturn || 0) >= 0 ? "text-emerald-700" : "text-red-700"}>{Number.isFinite(Number(absoluteReturn)) ? percent(Number(absoluteReturn)) : "—"}</strong></p>
+                <p className="text-slate-500">Records <strong className="text-slate-900">{Number(metrics.holdingCount || 0)} holdings · {Number(metrics.transactionCount || 0)} txns</strong></p>
+              </div>
+              {account.latestReconciliation ? <div className={`mt-3 flex flex-col justify-between gap-2 rounded-lg border p-3 text-xs sm:flex-row sm:items-center ${String(account.latestReconciliation.status || "").toLowerCase() === "verified" ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+                <div><p className="font-bold text-slate-900">Reconciliation · {account.latestReconciliation.reconciliationDate ? formatDate(account.latestReconciliation.reconciliationDate) : "Latest"}</p><p className="mt-1 text-slate-600">Statement {formatCurrency(account.latestReconciliation.statementValue)} · System {formatCurrency(account.latestReconciliation.systemValue)} · Difference {formatCurrency(account.latestReconciliation.difference)}</p></div>
+                <span className={`w-fit rounded-full px-2 py-1 text-[10px] font-black uppercase ${String(account.latestReconciliation.status || "").toLowerCase() === "verified" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{account.latestReconciliation.status || "review"}</span>
+              </div> : null}
+            </article>;
+          })}
+        </div>
+      </Card> : null}
 
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <Card className="p-5">

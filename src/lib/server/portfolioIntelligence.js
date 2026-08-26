@@ -384,7 +384,7 @@ export function buildPortfolioIntelligence({
       totals.reviewAmount += result.amount;
       totals.reviewCount += 1;
     }
-    totals.realisedPnl += number(transaction.realisedPnl);
+    totals.realisedPnl += number(transaction.realisedPnl ?? transaction.realizedPnl);
     return totals;
   }, { newMoney: 0, withdrawals: 0, internalTransfers: 0, reviewAmount: 0, reviewCount: 0, realisedPnl: 0 });
 

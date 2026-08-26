@@ -87,9 +87,9 @@ export default function ReportDetailClient({ reportId }) {
   );
 
   useEffect(() => {
-    if (!report?.investorId) return undefined;
-    return subscribeInvestorReports(report.investorId, setHistory, () => {});
-  }, [report?.investorId]);
+    if (!report?.investorId || !profile) return undefined;
+    return subscribeInvestorReports(report.investorId, profile, setHistory, () => {});
+  }, [report?.investorId, profile]);
 
   useEffect(() => {
     if (!report?.investorPortalUid) {

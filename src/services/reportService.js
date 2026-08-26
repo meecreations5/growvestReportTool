@@ -454,12 +454,29 @@ export function subscribeMonthlyReports(currentUser, callback, onError) {
   );
 }
 
-export function subscribeInvestorReports(investorId, callback, onError) {
+export function subscribeInvestorReports(investorId, currentUser, callback, onError) {
+  if (!investorId) {
+    callback([]);
+    return () => {};
+  }
+
+  if (!currentUser?.id) {
+    callback([]);
+    return () => {};
+  }
+
+  const constraints = [where("investorId", "==", investorId)];
+  if (currentUser?.role === USER_ROLES.ADVISOR) constraints.push(where("advisorUid", "==", currentUser.id));
+  if (currentUser?.role === USER_ROLES.INVESTOR) {
+    constraints.push(where("investorVisible", "==", true));
+    constraints.push(where("status", "==", REPORT_STATUS.COMPLETED));
+  }
+
   let fallbackUnsubscribe = () => {};
   const primaryUnsubscribe = onSnapshot(
     query(
       collection(db, "monthlyReports"),
-      where("investorId", "==", investorId),
+      ...constraints,
       orderBy("reportMonthKey", "desc"),
       limit(36)
     ),
@@ -470,7 +487,7 @@ export function subscribeInvestorReports(investorId, callback, onError) {
         return;
       }
       fallbackUnsubscribe = onSnapshot(
-        query(collection(db, "monthlyReports"), where("investorId", "==", investorId)),
+        query(collection(db, "monthlyReports"), ...constraints),
         (snapshot) => callback(sortReportsDescending(rowsFromSnapshot(snapshot)).slice(0, 36)),
         onError
       );

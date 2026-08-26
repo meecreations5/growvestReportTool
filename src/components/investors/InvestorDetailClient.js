@@ -412,22 +412,24 @@ export default function InvestorDetailClient({ investorId }) {
   ), [investorId]);
 
   useEffect(() => {
-    if (!investor?.id) return undefined;
+    if (!investor?.id || !profile) return undefined;
     return subscribeInvestorMeetings(
       investor.id,
+      profile,
       setMeetings,
       (nextError) => console.error("Unable to load investor meetings", nextError)
     );
-  }, [investor?.id]);
+  }, [investor?.id, profile]);
 
   useEffect(() => {
-    if (!investor?.id) return undefined;
+    if (!investor?.id || !profile) return undefined;
     return subscribeInvestorReports(
       investor.id,
+      profile,
       setReports,
       (nextError) => console.error("Unable to load investor reports", nextError)
     );
-  }, [investor?.id]);
+  }, [investor?.id, profile]);
 
   useEffect(() => {
     if (!investor?.id || !profile) return undefined;
@@ -440,13 +442,14 @@ export default function InvestorDetailClient({ investorId }) {
   }, [investor?.id, profile]);
 
   useEffect(() => {
-    if (!investor?.leadId) return undefined;
+    if (!investor?.leadId || !profile) return undefined;
     return subscribeAssessmentVersions(
       investor.leadId,
+      profile,
       setVersions,
       (nextError) => console.error("Unable to load assessment history", nextError)
     );
-  }, [investor?.leadId]);
+  }, [investor?.leadId, profile]);
 
   const goals = useMemo(() => investorGoals(investor), [investor]);
   const primaryGoal = useMemo(() => getPrimaryGoal(goals), [goals]);

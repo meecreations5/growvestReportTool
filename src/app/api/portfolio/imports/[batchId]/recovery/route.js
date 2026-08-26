@@ -112,6 +112,9 @@ async function assertRecoverySafe(batchId, fileId, items) {
       if (data.sourceImportFileId !== fileId) conflicts.push(`${data.monthKey || item.entityId} trading summary has a newer update.`);
     } else if (item.collectionName === "ulipPolicies") {
       if (data.sourceImportFileId !== fileId) conflicts.push(`${data.policyNumber || item.entityId} ULIP policy has a newer update.`);
+    } else if (["brokerAccounts", "brokerAccountSnapshots", "brokerDpTransactions"].includes(item.collectionName)) {
+      const belongsToFile = data.lastSuccessfulImportFileId === fileId || data.sourceImportFileId === fileId;
+      if (!belongsToFile) conflicts.push(`${data.provider || data.accountReference || item.entityId} broker record has a newer update.`);
     } else if (item.collectionName === "externalInvestorMappings") {
       if (data.lastSuccessfulImportId && data.lastSuccessfulImportId !== batchId) conflicts.push("The investor mapping has been used by a newer import.");
     } else if (item.collectionName === "portfolioFileFingerprints") {
@@ -213,12 +216,15 @@ async function legacyCleanupFile({ actor, batchRef, batch, file, reason, resetMa
   if (!investorId) throw new Error("The legacy import is not linked to an investor.");
   if (file.status !== "imported") throw new Error("Only an imported legacy file can be cleaned.");
 
-  const [positions, transactions, trades, policies, monthlySummaries, investorSnapshots] = await Promise.all([
+  const [positions, transactions, trades, policies, monthlySummaries, brokerAccounts, brokerAccountSnapshots, brokerDpTransactions, investorSnapshots] = await Promise.all([
     adminDb.collection("portfolioPositions").where("sourceImportFileId", "==", file.id).get(),
     adminDb.collection("investmentTransactions").where("sourceImportFileId", "==", file.id).get(),
     adminDb.collection("tradingTransactions").where("sourceImportFileId", "==", file.id).get(),
     adminDb.collection("ulipPolicies").where("sourceImportFileId", "==", file.id).get(),
     adminDb.collection("tradingMonthlySummaries").where("sourceImportFileId", "==", file.id).get(),
+    adminDb.collection("brokerAccounts").where("lastSuccessfulImportFileId", "==", file.id).get(),
+    adminDb.collection("brokerAccountSnapshots").where("sourceImportFileId", "==", file.id).get(),
+    adminDb.collection("brokerDpTransactions").where("sourceImportFileId", "==", file.id).get(),
     adminDb.collection("portfolioSnapshots").where("investorId", "==", investorId).get()
   ]);
 
@@ -237,7 +243,7 @@ async function legacyCleanupFile({ actor, batchRef, batch, file, reason, resetMa
   const fingerprintSnapshot = fingerprintRef ? await fingerprintRef.get() : null;
 
   const writer = adminDb.bulkWriter();
-  [...positions.docs, ...transactions.docs, ...trades.docs, ...policies.docs, ...monthlySummaries.docs, ...snapshotPositionDocs, ...snapshotsToDelete].forEach((item) => writer.delete(item.ref));
+  [...positions.docs, ...transactions.docs, ...trades.docs, ...policies.docs, ...monthlySummaries.docs, ...brokerAccounts.docs, ...brokerAccountSnapshots.docs, ...brokerDpTransactions.docs, ...snapshotPositionDocs, ...snapshotsToDelete].forEach((item) => writer.delete(item.ref));
   mappingSnapshots.forEach((snapshot) => {
     if (!snapshot.exists) return;
     const data = snapshot.data();
@@ -282,6 +288,9 @@ async function legacyCleanupFile({ actor, batchRef, batch, file, reason, resetMa
       transactionsRemoved: transactions.size,
       tradesRemoved: trades.size,
       policiesRemoved: policies.size,
+      brokerAccountsRemoved: brokerAccounts.size,
+      brokerSnapshotsRemoved: brokerAccountSnapshots.size,
+      brokerDpMovementsRemoved: brokerDpTransactions.size,
       fingerprintReleased: Boolean(fingerprintSnapshot?.exists && fingerprintSnapshot.data()?.batchId === batch.id)
     },
     createdByUid: actor.uid,
@@ -295,7 +304,10 @@ async function legacyCleanupFile({ actor, batchRef, batch, file, reason, resetMa
       positions: positions.size,
       transactions: transactions.size,
       trades: trades.size,
-      policies: policies.size
+      policies: policies.size,
+      brokerAccounts: brokerAccounts.size,
+      brokerSnapshots: brokerAccountSnapshots.size,
+      brokerDpMovements: brokerDpTransactions.size
     }
   };
 }

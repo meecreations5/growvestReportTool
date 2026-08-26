@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { FileBarChart, Plus } from "lucide-react";
 import { subscribeInvestorReports } from "@/services/reportService";
 import { formatCurrency, formatDate } from "@/lib/utils/format";
@@ -10,17 +11,22 @@ import ReportStatusBadge from "@/components/reports/ReportStatusBadge";
 import Card from "@/components/ui/Card";
 
 export default function InvestorReportsPanel({ investorId }) {
+  const { profile } = useAuth();
   const [reports, setReports] = useState([]);
   const [error, setError] = useState("");
 
-  useEffect(() => subscribeInvestorReports(
-    investorId,
-    setReports,
-    (nextError) => {
-      console.error(nextError);
-      setError("Unable to load report history.");
-    }
-  ), [investorId]);
+  useEffect(() => {
+    if (!investorId || !profile) return undefined;
+    return subscribeInvestorReports(
+      investorId,
+      profile,
+      setReports,
+      (nextError) => {
+        console.error(nextError);
+        setError("Unable to load report history.");
+      }
+    );
+  }, [investorId, profile]);
 
   return (
     <Card className="p-5 sm:p-6">

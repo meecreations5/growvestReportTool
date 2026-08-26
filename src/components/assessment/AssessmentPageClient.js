@@ -351,7 +351,7 @@ export default function AssessmentPageClient({ leadId }) {
       setLoading(false);
     });
 
-    const unsubscribeVersions = subscribeAssessmentVersions(leadId, setVersions, (error) => {
+    const unsubscribeVersions = subscribeAssessmentVersions(leadId, profile, setVersions, (error) => {
       console.error("Unable to load assessment history", error);
     });
 

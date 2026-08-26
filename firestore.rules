@@ -680,12 +680,80 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Manual Portfolio Management ledgers are server-written. Current holdings
+    // continue to live in portfolioPositions; these collections preserve the
+    // supporting account, cash, income, action, charge, allocation and
+    // reconciliation history for manually managed portfolios.
+    match /manualPortfolioAccounts/{accountId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /manualPortfolioAccountSnapshots/{snapshotId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /manualPortfolioCashLedger/{entryId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /manualPortfolioIncome/{incomeId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /manualPortfolioCorporateActions/{actionId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /manualPortfolioCharges/{chargeId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /manualPortfolioGoalAllocations/{allocationId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /manualPortfolioReconciliations/{reconciliationId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /manualPortfolioNotes/{noteId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data)
+        || (investorOwnsRecord(resource.data) && resource.data.visibility == 'Investor');
+      allow create, update, delete: if false;
+    }
+
     match /portfolioSnapshots/{snapshotId} {
       allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
       allow create, update, delete: if false;
     }
 
     match /portfolioSnapshotPositions/{snapshotPositionId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    // Broker account identity, daily broker snapshots and depository movements
+    // are server-written. Delivery holdings still live in portfolioPositions;
+    // these records preserve account-level provenance and DP reconciliation.
+    match /brokerAccounts/{accountId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /brokerAccountSnapshots/{snapshotId} {
+      allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /brokerDpTransactions/{transactionId} {
       allow read: if isAdmin() || ownsAdvisorRecord(resource.data) || investorOwnsRecord(resource.data);
       allow create, update, delete: if false;
     }

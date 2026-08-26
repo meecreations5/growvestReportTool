@@ -6,6 +6,15 @@ Standalone Next.js application for GrowVest investor operations, portfolio manag
 
 ## Version 0.33.2 - Investor Status & Safe Deletion
 
+### Trading Account native broker import - Phase 1
+
+- Added a separate **Trading Accounts** workspace under Portfolio Management for broker-level delivery holdings, DP movement and intraday activity.
+- Validated native **Bajaj Broking Client Holding Report** parsing against the supplied production-format XLSX: current delivery quantity/value is authoritative while absent purchase cost remains explicitly pending and no P&L is fabricated.
+- Added native **Angel One DP Transaction Cum Holding** digital-PDF parsing for investor/Demat identity, DP credit/debit movement and statement-reported closing delivery holdings. DP records are never treated as intraday trades.
+- Added `brokerAccounts`, `brokerAccountSnapshots` and `brokerDpTransactions` server-managed records, broker-account-aware position identity, recovery support, Firestore rules and Full Portfolio Reset coverage.
+- Unified Import now accepts supported digital PDF broker statements and keeps delivery corpus, depository movement and intraday P&L visibly separate.
+- See `docs/TRADING_ACCOUNT_BROKER_IMPORTS_v0.33.2.md` for data model, safeguards, limitations and UAT.
+
 - Added Super Admin-only **Full Portfolio Reset** as a separate action from normal controlled portfolio cleanup.
 - Full Portfolio Reset returns a selected Investor to a true first-ever-upload portfolio state by deleting current holdings, investment transactions, ULIP portfolio records, Bajaj trading data, snapshots, Investor-linked import files, recovery journals/items, file fingerprints, provider mappings, SIP funding workflow records, linked portfolio actions/service requests/notifications, portfolio-specific activity history, daily-tracking state and latest Portfolio Master metadata.
 - Central **Portfolio Administration** supports Full Portfolio Reset for up to 25 selected Investors with a fresh impact preview and typed `RESET N INVESTORS` confirmation; an individual Investor requires typed `RESET PORTFOLIO`.
@@ -13,6 +22,8 @@ Standalone Next.js application for GrowVest investor operations, portfolio manag
 - Goal/Bucket List definitions, Investor profile/KYC/documents/family/advisor/meetings and published Monthly Reports are preserved. Old holding-to-goal allocations disappear with the deleted holdings.
 - Published Monthly Reports remain historical and no longer backfill staff/Investor **current portfolio** displays when the live Portfolio Master is blank after reset.
 - Full Portfolio Reset intentionally creates no corrected snapshot and no new portfolio-reset history entry, so the next verified upload creates the first new Portfolio Master/snapshot and starts future portfolio history from that point.
+- Added Admin/Super Admin **Multi-Investor Manual Portfolio Excel** under central Portfolio Administration: one workbook can contain many holdings for many investors, matched by Investor ID/PAN/Client Code/exact unique name with preview-first conflict protection.
+- Multi-Investor Manual Portfolio supports Merge/Update and investor-by-investor Replace modes, preserves non-Manual portfolio sources, writes per-investor audit events, and rebuilds a fresh Portfolio Master snapshot for every imported investor.
 - Daily Fundbazaar Coverage now treats `Expected = 0` as **Not started** instead of 100% coverage and ignores orphan/uncommitted issue files that cannot be tied to a currently expected verified mapping.
 - The Portfolio Import Centre history now shows only batches that actually updated at least one portfolio; zero-import preview/error attempts no longer appear as operational import history after a reset.
 - Rejected/uncommitted portfolio files now persist strong external identity metadata for safe Investor-specific reset cleanup. When a Full Reset leaves **no verified Fundbazaar mappings at all**, pre-reset orphan Fundbazaar issue attempts are also removed and empty issue-only batches are deleted.
@@ -656,3 +667,7 @@ Advisor portfolio reads now include the advisor ownership constraint required by
 - Ledger holdings reconcile to existing Fundbazaar positions by folio + ISIN/scheme rather than creating duplicate holdings when the Ledger does not contain ISIN.
 - Client Wise Valuation remains authoritative for precise NAV/current valuation when it is as fresh or fresher than the Ledger; Ledger remains authoritative for transaction/reconciliation fields.
 - Transaction canonical keys prevent Client Wise Valuation and Portfolio Ledger from duplicating the same SIP/purchase rows when both reports are imported.
+
+## v0.33.2 Manual Portfolio Management workbook
+
+Portfolio Administration now supports one multi-sheet Excel workbook for multiple investors and multiple manually managed portfolio accounts. The workflow covers account master, current holdings, transactions, cash, income, corporate actions, charges, goal allocations, reconciliation and notes, while preserving existing Fundbazaar/Bajaj/ULIP flows. Account-level performance metrics and dated account snapshots preserve cash, realised/unrealised P&L, XIRR and asset allocation for later month/FY/since-inception reporting. See `docs/MANUAL_PORTFOLIO_MANAGEMENT_v0.33.2.md`.

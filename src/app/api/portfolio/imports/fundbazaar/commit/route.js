@@ -134,6 +134,7 @@ async function createRecoveryJournal({
   tradingEntries = [],
   tradingSummaryEntries = [],
   policyEntries = [],
+  extraEntries = [],
   source = PORTFOLIO_SOURCES.FUNDBAZAAR
 }) {
   const changeRef = adminDb.collection("portfolioImportChanges").doc(file.id);
@@ -170,6 +171,7 @@ async function createRecoveryJournal({
   tradingEntries.forEach((item) => addItem("tradingTransactions", item.ref, item.existingData || null, "trade"));
   tradingSummaryEntries.forEach((item) => addItem("tradingMonthlySummaries", item.ref, item.existingData || null, "trading_summary"));
   policyEntries.forEach((item) => addItem("ulipPolicies", item.ref, item.existingData || null, "ulip_policy"));
+  extraEntries.forEach((item) => addItem(item.collectionName, item.ref, item.existingData || null, item.entityType || "broker_record"));
   if (mappingEntries.length) {
     mappingEntries.forEach((item) => addItem("externalInvestorMappings", item.ref, item.snapshot?.exists ? item.snapshot.data() : null, `mapping_${item.identityType || "external"}`));
   } else {
@@ -194,6 +196,7 @@ async function createRecoveryJournal({
     positionCount: positionById.size,
     policyCount: policyEntries.length,
     transactionCount: transactionEntries.length + tradingEntries.length,
+    extraRecordCount: extraEntries.length,
     createdByUid: actor.uid,
     createdByName: actor.fullName || actor.email || "GrowVest User",
     createdAt: FieldValue.serverTimestamp(),
@@ -218,6 +221,158 @@ async function loadBajajMappingEntries(file = {}) {
   const refs = descriptors.map((item) => adminDb.collection("externalInvestorMappings").doc(item.id));
   const snapshots = await adminDb.getAll(...refs);
   return descriptors.map((item, index) => ({ ...item, ref: refs[index], snapshot: snapshots[index] }));
+}
+
+
+function brokerMappingDescriptors(file = {}, source = PORTFOLIO_SOURCES.MANUAL) {
+  const rows = [];
+  if (file.normalizedExternalClientName) rows.push({ identityType: "client_name", id: `${source}_name_${stableHash(file.normalizedExternalClientName, 32)}` });
+  if (file.externalPan) rows.push({ identityType: "pan", id: `${source}_pan_${stableHash(String(file.externalPan).toUpperCase(), 32)}` });
+  if (file.externalClientCode) rows.push({ identityType: "client_code", id: `${source}_client_${stableHash(String(file.externalClientCode).toUpperCase(), 32)}` });
+  return rows.filter((item, index, all) => all.findIndex((other) => other.id === item.id) === index);
+}
+
+async function loadBrokerMappingEntries(file = {}, source = PORTFOLIO_SOURCES.MANUAL) {
+  const descriptors = brokerMappingDescriptors(file, source);
+  if (!descriptors.length) return [];
+  const refs = descriptors.map((item) => adminDb.collection("externalInvestorMappings").doc(item.id));
+  const snapshots = await adminDb.getAll(...refs);
+  return descriptors.map((item, index) => ({ ...item, ref: refs[index], snapshot: snapshots[index] }));
+}
+
+function brokerProviderName(source = "", file = {}) {
+  if (file?.brokerAccount?.broker) return String(file.brokerAccount.broker);
+  if (source === PORTFOLIO_SOURCES.ANGEL_ONE) return "Angel One";
+  if (source === PORTFOLIO_SOURCES.BAJAJ_BROKING) return "Bajaj Broking";
+  return "Broker";
+}
+
+function brokerAccountReference(file = {}) {
+  return String(file?.brokerAccount?.accountReference || file.externalClientCode || file.externalPan || file.normalizedExternalClientName || "").trim().toUpperCase();
+}
+
+function brokerAccountDocumentId(investorId, source, accountReference = "") {
+  return `broker_${stableHash([investorId, source, String(accountReference).trim().toUpperCase()].join("|"), 48)}`;
+}
+
+function brokerAccountSnapshotDocumentId(accountId, valuationDate = "") {
+  return `bas_${stableHash([accountId, valuationDate || "undated"].join("|"), 48)}`;
+}
+
+function brokerDpTransactionDocumentId(investorId, source, accountReference, transaction = {}) {
+  const identity = [
+    investorId,
+    source,
+    String(accountReference || "").trim().toUpperCase(),
+    String(transaction.isin || "").trim().toUpperCase(),
+    String(transaction.transactionDate || ""),
+    String(transaction.externalTransactionId || "").trim().toUpperCase(),
+    Number(transaction.debitQuantity || 0).toFixed(6),
+    Number(transaction.creditQuantity || 0).toFixed(6),
+    normaliseExternalName(transaction.description || "")
+  ].join("|");
+  return `dpt_${stableHash(identity, 48)}`;
+}
+
+async function prepareBrokerAccountRecords({ file, investorId, source, dpTransactions = [] }) {
+  const accountReference = brokerAccountReference(file);
+  if (!accountReference) throw new Error(`${brokerProviderName(source, file)} account reference could not be determined safely.`);
+  const accountId = brokerAccountDocumentId(investorId, source, accountReference);
+  const accountRef = adminDb.collection("brokerAccounts").doc(accountId);
+  const valuationDate = String(file.summary?.valuationDate || file.reportPeriodEnd || file.brokerAccount?.reportDate || file.brokerAccount?.statementDate || "");
+  const snapshotRef = adminDb.collection("brokerAccountSnapshots").doc(brokerAccountSnapshotDocumentId(accountId, valuationDate));
+  const dpRefs = dpTransactions.map((transaction) => adminDb.collection("brokerDpTransactions").doc(brokerDpTransactionDocumentId(investorId, source, accountReference, transaction)));
+  const refs = [accountRef, snapshotRef, ...dpRefs];
+  const snapshots = refs.length ? await adminDb.getAll(...refs) : [];
+  return {
+    accountId,
+    accountReference,
+    accountRef,
+    accountSnapshot: snapshots[0],
+    valuationDate,
+    snapshotRef,
+    snapshotSnapshot: snapshots[1],
+    dpEntries: dpTransactions.map((transaction, index) => ({
+      transaction,
+      ref: dpRefs[index],
+      existingData: snapshots[index + 2]?.exists ? snapshots[index + 2].data() : null
+    }))
+  };
+}
+
+function sameBrokerDeliveryHolding(existing = {}, holding = {}, source = "", brokerAccountId = "") {
+  if (existing.source !== source || existing.productType !== "stock_delivery") return false;
+  if (brokerAccountId && existing.brokerAccountId && String(existing.brokerAccountId) !== String(brokerAccountId)) return false;
+  if (existing.isin && holding.isin) return String(existing.isin).trim().toUpperCase() === String(holding.isin).trim().toUpperCase();
+  const leftSymbol = normaliseExternalName(existing.symbol || existing.stockName || existing.instrumentName || "");
+  const rightSymbol = normaliseExternalName(holding.symbol || holding.stockName || holding.instrumentName || "");
+  if (!leftSymbol || !rightSymbol || leftSymbol !== rightSymbol) return false;
+  const leftExchange = String(existing.exchange || "").trim().toUpperCase();
+  const rightExchange = String(holding.exchange || "").trim().toUpperCase();
+  return !leftExchange || !rightExchange || leftExchange === rightExchange;
+}
+
+function brokerPositionNumbers(holding = {}, previous = {}) {
+  const quantity = Number(holding.quantity || 0);
+  const currentRate = Number(holding.currentRate || 0);
+  const currentValue = Number(holding.currentValue || (quantity && currentRate ? quantity * currentRate : 0));
+  const incomingCost = Number(holding.totalInvested ?? holding.investedAmount ?? 0);
+  const incomingAverage = Number(holding.averageBuyRate || 0);
+  const hasIncomingCost = holding.costBasisAvailable === true || incomingCost > 0 || incomingAverage > 0;
+  const previousCost = Number(previous.totalInvested ?? previous.investedAmount ?? 0);
+  const previousAverage = Number(previous.averageBuyRate || 0);
+  const totalInvested = hasIncomingCost
+    ? (incomingCost > 0 ? incomingCost : quantity * incomingAverage)
+    : previousCost;
+  const averageBuyRate = hasIncomingCost
+    ? (incomingAverage > 0 ? incomingAverage : (quantity > 0 && totalInvested > 0 ? totalInvested / quantity : 0))
+    : previousAverage;
+  const costBasisAvailable = totalInvested > 0 || averageBuyRate > 0;
+  const gainLoss = costBasisAvailable ? currentValue - totalInvested : 0;
+  const returnPercentage = costBasisAvailable && totalInvested > 0 ? gainLoss / totalInvested * 100 : 0;
+  return {
+    quantity,
+    currentRate,
+    currentValue,
+    totalInvested,
+    averageBuyRate,
+    costBasisAvailable,
+    gainLoss,
+    returnPercentage
+  };
+}
+
+function brokerAccountPayload({ actor, batchId, file, investor, investorId, source, accountId, accountReference }) {
+  const provider = brokerProviderName(source, file);
+  const valuationDate = String(file.summary?.valuationDate || file.reportPeriodEnd || file.brokerAccount?.reportDate || file.brokerAccount?.statementDate || "");
+  return {
+    investorId,
+    investorName: investor.fullName || investor.name || "",
+    clientCode: investor.clientCode || "",
+    advisorUid: investor.assignedAdvisorUid || investor.advisorUid || "",
+    assignedAdvisorUid: investor.assignedAdvisorUid || investor.advisorUid || "",
+    investorPortalUid: investor.portalUid || investor.investorPortalUid || null,
+    source,
+    provider,
+    broker: provider,
+    accountType: file.brokerAccount?.accountType || "trading_demat",
+    accountReference,
+    brokerAccountId: accountId,
+    dematId: file.brokerAccount?.dematId || (source === PORTFOLIO_SOURCES.ANGEL_ONE ? accountReference : ""),
+    externalPan: file.externalPan || "",
+    externalClientCode: file.externalClientCode || "",
+    status: "active",
+    lastValuationDate: valuationDate,
+    lastStatementDate: file.brokerAccount?.statementDate || file.brokerAccount?.reportDate || valuationDate,
+    lastReportPeriodStart: file.reportPeriodStart || file.brokerAccount?.reportPeriodStart || "",
+    lastReportPeriodEnd: file.reportPeriodEnd || file.brokerAccount?.reportPeriodEnd || "",
+    lastSuccessfulImportId: batchId,
+    lastSuccessfulImportFileId: file.id,
+    lastSuccessfulImportAt: FieldValue.serverTimestamp(),
+    updatedByUid: actor.uid,
+    updatedByName: actor.fullName || actor.email || "GrowVest User",
+    updatedAt: FieldValue.serverTimestamp()
+  };
 }
 
 function sameBajajHolding(existing = {}, holding = {}) {
@@ -299,26 +454,38 @@ async function commitBajajFile({ actor, batchId, file, fileRef, investor, invest
 
   const holdings = Array.isArray(file.holdings) ? file.holdings : [];
   const trades = Array.isArray(file.trades) ? file.trades : [];
+  const brokerRecords = await prepareBrokerAccountRecords({
+    file,
+    investorId,
+    source: PORTFOLIO_SOURCES.BAJAJ_BROKING,
+    dpTransactions: []
+  });
   const investorPositionSnapshot = await adminDb.collection("portfolioPositions").where("investorId", "==", investorId).get();
   const investorPositions = investorPositionSnapshot.docs.map((item) => ({ id: item.id, ref: item.ref, ...item.data() }));
   const holdingEntries = holdings.map((holding) => {
-    const existing = investorPositions.find((item) => sameBajajHolding(item, holding));
+    const existing = investorPositions.find((item) => sameBrokerDeliveryHolding(item, holding, PORTFOLIO_SOURCES.BAJAJ_BROKING, brokerRecords.accountId));
     const ref = existing?.ref || adminDb.collection("portfolioPositions").doc(positionDocumentId({
       investorId,
       source: PORTFOLIO_SOURCES.BAJAJ_BROKING,
       isin: holding.isin || "",
       symbol: holding.symbol || "",
-      folioNo: "",
+      folioNo: brokerRecords.accountReference,
       instrumentName: holding.instrumentName || holding.stockName || holding.symbol || "Stock"
     }));
     return { holding, ref, existing: existing || null };
   });
-  // Do not infer a Bajaj exit merely because a security is absent from an
-  // unverified broker export layout. Once a real Bajaj Holdings sample confirms
-  // that the report is always a complete holding set, this can safely become an
-  // authoritative missing-position exit check. Explicit/manual stock sales remain
-  // available meanwhile and recovery protects all imported position updates.
-  const exitedPositions = [];
+  // The native Client Holding Report is an authoritative current-delivery
+  // snapshot. Missing positions can be exited once they are already tied to the
+  // same broker account. Legacy Bajaj positions without an account id are left
+  // untouched until they are observed and backfilled by a current report.
+  const currentHoldingIds = new Set(holdingEntries.map((item) => item.ref.id));
+  const exitedPositions = file.holdingSnapshot === true && file.completeSnapshot === true
+    ? investorPositions.filter((item) => item.source === PORTFOLIO_SOURCES.BAJAJ_BROKING
+      && item.productType === "stock_delivery"
+      && item.brokerAccountId === brokerRecords.accountId
+      && !["inactive", "exited", "removed"].includes(String(item.status || "").toLowerCase())
+      && !currentHoldingIds.has(item.id))
+    : [];
 
   const tradeRefs = trades.map((trade) => adminDb.collection("tradingTransactions").doc(bajajTradeDocumentId(investorId, trade)));
   const tradeSnapshots = tradeRefs.length ? await adminDb.getAll(...tradeRefs) : [];
@@ -347,6 +514,10 @@ async function commitBajajFile({ actor, batchId, file, fileRef, investor, invest
     mappingEntries,
     tradingEntries,
     tradingSummaryEntries,
+    extraEntries: [
+      { collectionName: "brokerAccounts", ref: brokerRecords.accountRef, existingData: brokerRecords.accountSnapshot?.exists ? brokerRecords.accountSnapshot.data() : null, entityType: "broker_account" },
+      ...(file.holdingSnapshot === true ? [{ collectionName: "brokerAccountSnapshots", ref: brokerRecords.snapshotRef, existingData: brokerRecords.snapshotSnapshot?.exists ? brokerRecords.snapshotSnapshot.data() : null, entityType: "broker_account_snapshot" }] : [])
+    ],
     source: PORTFOLIO_SOURCES.BAJAJ_BROKING
   });
 
@@ -375,6 +546,36 @@ async function commitBajajFile({ actor, batchId, file, fileRef, investor, invest
     verifiedAt: entry.snapshot.exists ? entry.snapshot.data()?.verifiedAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp()
   }, { merge: true }));
 
+  writer.set(brokerRecords.accountRef, {
+    ...brokerAccountPayload({ actor, batchId, file, investor, investorId, source: PORTFOLIO_SOURCES.BAJAJ_BROKING, accountId: brokerRecords.accountId, accountReference: brokerRecords.accountReference }),
+    createdAt: brokerRecords.accountSnapshot?.exists ? brokerRecords.accountSnapshot.data()?.createdAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp()
+  }, { merge: true });
+  if (file.holdingSnapshot === true) {
+    writer.set(brokerRecords.snapshotRef, {
+      investorId,
+      investorName: investor.fullName || investor.name || "",
+      clientCode: investor.clientCode || "",
+      advisorUid: investor.assignedAdvisorUid || investor.advisorUid || "",
+      assignedAdvisorUid: investor.assignedAdvisorUid || investor.advisorUid || "",
+      investorPortalUid: investor.portalUid || investor.investorPortalUid || null,
+      brokerAccountId: brokerRecords.accountId,
+      source: PORTFOLIO_SOURCES.BAJAJ_BROKING,
+      provider: brokerProviderName(PORTFOLIO_SOURCES.BAJAJ_BROKING, file),
+      accountReference: brokerRecords.accountReference,
+      snapshotDate: brokerRecords.valuationDate,
+      valuationDate: brokerRecords.valuationDate,
+      holdingValue: Number(Number(file.summary?.currentValue || 0).toFixed(2)),
+      positionCount: Number(file.summary?.positionCount || holdings.length || 0),
+      costBasisPendingCount: Number(file.summary?.costBasisPendingCount || holdings.filter((item) => !item.costBasisAvailable).length || 0),
+      costBasisComplete: file.summary?.costBasisComplete === true,
+      sourceImportId: batchId,
+      sourceImportFileId: file.id,
+      sourceFileName: file.fileName || "",
+      createdAt: brokerRecords.snapshotSnapshot?.exists ? brokerRecords.snapshotSnapshot.data()?.createdAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+  }
+
   exitedPositions.forEach((item) => writer.update(item.ref, {
     status: "exited",
     exitDetectedByImportId: batchId,
@@ -391,13 +592,8 @@ async function commitBajajFile({ actor, batchId, file, fileRef, investor, invest
     let goalAllocations = recovered?.goalAllocations || (Array.isArray(previous.goalAllocations) ? previous.goalAllocations : []);
     if (!goalAllocations.length && !existing && holding.requestedGoalName) goalAllocations = requestedGoalAllocation(investor, holding.requestedGoalName);
     const valuationDate = holding.valuationDate || file.summary?.valuationDate || file.reportPeriodEnd || "";
-    const currentRate = Number(holding.currentRate || 0);
-    const currentValue = Number(holding.currentValue || 0);
-    const totalInvested = Number(holding.totalInvested ?? holding.investedAmount ?? 0);
-    const quantity = Number(holding.quantity || 0);
-    const averageBuyRate = Number(holding.averageBuyRate || (quantity > 0 ? totalInvested / quantity : 0));
-    const gainLoss = Number(holding.gainLoss ?? (currentValue - totalInvested));
-    const returnPercentage = totalInvested > 0 ? gainLoss / totalInvested * 100 : Number(holding.returnPercentage || 0);
+    const numbers = brokerPositionNumbers(holding, previous);
+    const { quantity, currentRate, currentValue, totalInvested, averageBuyRate, costBasisAvailable, gainLoss, returnPercentage } = numbers;
     const valuationChanged = Boolean(previous.currentValue || previous.currentRate || previous.valuationDate) && (
       Number(previous.currentValue || 0) !== currentValue
       || Number(previous.currentRate || 0) !== currentRate
@@ -412,6 +608,8 @@ async function commitBajajFile({ actor, batchId, file, fileRef, investor, invest
       investorPortalUid: investor.portalUid || investor.investorPortalUid || null,
       source: PORTFOLIO_SOURCES.BAJAJ_BROKING,
       provider: holding.provider || "Bajaj Broking",
+      brokerAccountId: brokerRecords.accountId,
+      brokerAccountReference: brokerRecords.accountReference,
       productType: "stock_delivery",
       assetClass: "Equity",
       instrumentName: holding.instrumentName || holding.stockName || holding.symbol || previous.instrumentName || "Stock",
@@ -429,6 +627,9 @@ async function commitBajajFile({ actor, batchId, file, fileRef, investor, invest
       currentValue: Number(currentValue.toFixed(2)),
       gainLoss: Number(gainLoss.toFixed(2)),
       returnPercentage: Number(returnPercentage.toFixed(2)),
+      costBasisAvailable,
+      costBasisStatus: costBasisAvailable ? "available" : "pending",
+      performanceAvailable: costBasisAvailable,
       valuationDate,
       priceDate: valuationDate,
       previousRate: valuationChanged ? Number(previous.currentRate || 0) : Number(previous.previousRate || 0),
@@ -468,6 +669,8 @@ async function commitBajajFile({ actor, batchId, file, fileRef, investor, invest
       investorPortalUid: investor.portalUid || investor.investorPortalUid || null,
       source: PORTFOLIO_SOURCES.BAJAJ_BROKING,
       provider: trade.provider || "Bajaj Broking",
+      brokerAccountId: brokerRecords.accountId,
+      brokerAccountReference: brokerRecords.accountReference,
       tradeType: "intraday",
       tradeDate: trade.tradeDate || "",
       stockName: trade.stockName || trade.instrumentName || trade.symbol || "Stock",
@@ -582,6 +785,293 @@ async function commitBajajFile({ actor, batchId, file, fileRef, investor, invest
   }
 }
 
+
+
+async function commitAngelOneFile({ actor, batchId, file, fileRef, investor, investorId, writer }) {
+  if (file.reportType !== PORTFOLIO_REPORT_TYPES.ANGEL_ONE_DP_STATEMENT) {
+    throw new Error("This Angel One report type is not enabled yet. Upload the DP Transaction Cum Holding statement PDF.");
+  }
+
+  const source = PORTFOLIO_SOURCES.ANGEL_ONE;
+  const mappingEntries = await loadBrokerMappingEntries(file, source);
+  for (const entry of mappingEntries) {
+    if (entry.snapshot.exists && entry.snapshot.data()?.investorId !== investorId) {
+      throw new Error(`This Angel One ${entry.identityType.replaceAll("_", " ")} is already mapped to another GrowVest investor.`);
+    }
+  }
+
+  const holdings = Array.isArray(file.holdings) ? file.holdings : [];
+  const dpTransactions = Array.isArray(file.dpTransactions) ? file.dpTransactions : [];
+  if (!holdings.length) throw new Error("Angel One DP statement contains no closing holdings to update.");
+
+  const brokerRecords = await prepareBrokerAccountRecords({ file, investorId, source, dpTransactions });
+  const accountOwnership = await adminDb.collection("brokerAccounts").where("accountReference", "==", brokerRecords.accountReference).get();
+  const ownershipConflict = accountOwnership.docs.find((item) => {
+    const data = item.data() || {};
+    return data.source === source && data.investorId && data.investorId !== investorId;
+  });
+  if (ownershipConflict) throw new Error(`Angel One Demat ID ${brokerRecords.accountReference} is already linked to another GrowVest investor.`);
+
+  const positionSnapshot = await adminDb.collection("portfolioPositions").where("investorId", "==", investorId).get();
+  const investorPositions = positionSnapshot.docs.map((item) => ({ id: item.id, ref: item.ref, ...item.data() }));
+  const holdingEntries = holdings.map((holding) => {
+    const existing = investorPositions.find((item) => sameBrokerDeliveryHolding(item, holding, source, brokerRecords.accountId));
+    const ref = existing?.ref || adminDb.collection("portfolioPositions").doc(positionDocumentId({
+      investorId,
+      source,
+      isin: holding.isin || "",
+      symbol: holding.symbol || "",
+      folioNo: brokerRecords.accountReference,
+      instrumentName: holding.instrumentName || holding.stockName || holding.symbol || "Stock"
+    }));
+    return { holding, ref, existing: existing || null };
+  });
+  const currentHoldingIds = new Set(holdingEntries.map((item) => item.ref.id));
+  const exitedPositions = file.holdingSnapshot === true && file.completeSnapshot === true
+    ? investorPositions.filter((item) => item.source === source
+      && item.productType === "stock_delivery"
+      && item.brokerAccountId === brokerRecords.accountId
+      && !["inactive", "exited", "removed"].includes(String(item.status || "").toLowerCase())
+      && !currentHoldingIds.has(item.id))
+    : [];
+
+  const fingerprintRef = adminDb.collection("portfolioFileFingerprints").doc(file.fileFingerprint);
+  const fingerprintSnapshot = await fingerprintRef.get();
+  const recoveryRef = await createRecoveryJournal({
+    batchId,
+    file,
+    actor,
+    investorId,
+    fingerprintRef,
+    fingerprintSnapshot,
+    holdingEntries,
+    exitedPositions,
+    transactionEntries: [],
+    mappingEntries,
+    extraEntries: [
+      { collectionName: "brokerAccounts", ref: brokerRecords.accountRef, existingData: brokerRecords.accountSnapshot?.exists ? brokerRecords.accountSnapshot.data() : null, entityType: "broker_account" },
+      { collectionName: "brokerAccountSnapshots", ref: brokerRecords.snapshotRef, existingData: brokerRecords.snapshotSnapshot?.exists ? brokerRecords.snapshotSnapshot.data() : null, entityType: "broker_account_snapshot" },
+      ...brokerRecords.dpEntries.map((item) => ({ collectionName: "brokerDpTransactions", ref: item.ref, existingData: item.existingData, entityType: "broker_dp_transaction" }))
+    ],
+    source
+  });
+
+  try {
+    const mappingPayload = {
+      source,
+      externalClientName: file.externalClientName || "",
+      normalizedExternalClientName: file.normalizedExternalClientName || "",
+      externalPan: file.externalPan || "",
+      externalClientCode: file.externalClientCode || "",
+      investorId,
+      investorName: investor.fullName || investor.name || "",
+      clientCode: investor.clientCode || "",
+      advisorUid: investor.assignedAdvisorUid || investor.advisorUid || "",
+      status: "verified",
+      verifiedByUid: actor.uid,
+      verifiedByName: actor.fullName || actor.email || "GrowVest User",
+      lastSuccessfulImportAt: FieldValue.serverTimestamp(),
+      lastSuccessfulImportId: batchId,
+      updatedAt: FieldValue.serverTimestamp()
+    };
+    mappingEntries.forEach((entry) => writer.set(entry.ref, {
+      ...mappingPayload,
+      identityType: entry.identityType,
+      verifiedAt: entry.snapshot.exists ? entry.snapshot.data()?.verifiedAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp()
+    }, { merge: true }));
+
+    writer.set(brokerRecords.accountRef, {
+      ...brokerAccountPayload({ actor, batchId, file, investor, investorId, source, accountId: brokerRecords.accountId, accountReference: brokerRecords.accountReference }),
+      createdAt: brokerRecords.accountSnapshot?.exists ? brokerRecords.accountSnapshot.data()?.createdAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    writer.set(brokerRecords.snapshotRef, {
+      investorId,
+      investorName: investor.fullName || investor.name || "",
+      clientCode: investor.clientCode || "",
+      advisorUid: investor.assignedAdvisorUid || investor.advisorUid || "",
+      assignedAdvisorUid: investor.assignedAdvisorUid || investor.advisorUid || "",
+      investorPortalUid: investor.portalUid || investor.investorPortalUid || null,
+      brokerAccountId: brokerRecords.accountId,
+      source,
+      provider: "Angel One",
+      accountReference: brokerRecords.accountReference,
+      snapshotDate: brokerRecords.valuationDate,
+      valuationDate: brokerRecords.valuationDate,
+      reportPeriodStart: file.reportPeriodStart || "",
+      reportPeriodEnd: file.reportPeriodEnd || "",
+      holdingValue: Number(Number(file.summary?.currentValue || 0).toFixed(2)),
+      positionCount: Number(file.summary?.positionCount || holdings.length || 0),
+      closingQuantity: Number(file.summary?.closingQuantity || 0),
+      dpTransactionCount: dpTransactions.length,
+      costBasisPendingCount: Number(file.summary?.costBasisPendingCount || holdings.length || 0),
+      costBasisComplete: file.summary?.costBasisComplete === true,
+      sourceImportId: batchId,
+      sourceImportFileId: file.id,
+      sourceFileName: file.fileName || "",
+      createdAt: brokerRecords.snapshotSnapshot?.exists ? brokerRecords.snapshotSnapshot.data()?.createdAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    exitedPositions.forEach((item) => writer.update(item.ref, {
+      status: "exited",
+      exitDetectedByImportId: batchId,
+      exitDetectedByFileId: file.id,
+      exitedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedByUid: actor.uid,
+      updatedByName: actor.fullName || actor.email || "GrowVest User"
+    }));
+
+    holdingEntries.forEach(({ holding, ref, existing }) => {
+      const previous = existing || {};
+      const numbers = brokerPositionNumbers(holding, previous);
+      const valuationDate = holding.valuationDate || brokerRecords.valuationDate;
+      const valuationChanged = Boolean(previous.currentValue || previous.currentRate || previous.valuationDate) && (
+        Number(previous.currentValue || 0) !== numbers.currentValue
+        || Number(previous.currentRate || 0) !== numbers.currentRate
+        || String(previous.valuationDate || previous.priceDate || "") !== String(valuationDate || "")
+      );
+      const goalAllocations = Array.isArray(previous.goalAllocations) ? previous.goalAllocations : [];
+      writer.set(ref, {
+        investorId,
+        investorName: investor.fullName || investor.name || "",
+        clientCode: investor.clientCode || "",
+        advisorUid: investor.assignedAdvisorUid || investor.advisorUid || "",
+        assignedAdvisorUid: investor.assignedAdvisorUid || investor.advisorUid || "",
+        investorPortalUid: investor.portalUid || investor.investorPortalUid || null,
+        source,
+        provider: "Angel One",
+        brokerAccountId: brokerRecords.accountId,
+        brokerAccountReference: brokerRecords.accountReference,
+        productType: "stock_delivery",
+        assetClass: "Equity",
+        instrumentName: holding.instrumentName || holding.stockName || holding.symbol || previous.instrumentName || "Stock",
+        stockName: holding.stockName || holding.instrumentName || holding.symbol || previous.stockName || "",
+        symbol: holding.symbol || previous.symbol || "",
+        isin: holding.isin || previous.isin || "",
+        exchange: holding.exchange || previous.exchange || "",
+        investmentMode: "Delivery",
+        purchaseDate: holding.purchaseDate || previous.purchaseDate || "",
+        quantity: Number(numbers.quantity.toFixed(6)),
+        averageBuyRate: Number(numbers.averageBuyRate.toFixed(6)),
+        totalInvested: Number(numbers.totalInvested.toFixed(2)),
+        investedAmount: Number(numbers.totalInvested.toFixed(2)),
+        currentRate: Number(numbers.currentRate.toFixed(6)),
+        currentValue: Number(numbers.currentValue.toFixed(2)),
+        gainLoss: Number(numbers.gainLoss.toFixed(2)),
+        returnPercentage: Number(numbers.returnPercentage.toFixed(2)),
+        costBasisAvailable: numbers.costBasisAvailable,
+        costBasisStatus: numbers.costBasisAvailable ? "available" : "pending",
+        performanceAvailable: numbers.costBasisAvailable,
+        valuationDate,
+        priceDate: valuationDate,
+        previousRate: valuationChanged ? Number(previous.currentRate || 0) : Number(previous.previousRate || 0),
+        previousCurrentValue: valuationChanged ? Number(previous.currentValue || 0) : Number(previous.previousCurrentValue || 0),
+        previousValuationDate: valuationChanged ? (previous.valuationDate || previous.priceDate || "") : (previous.previousValuationDate || ""),
+        goalAllocations,
+        allocationStatus: goalAllocations.length ? (previous.allocationStatus || "allocated") : "general_wealth",
+        notes: holding.notes || previous.notes || "",
+        status: numbers.quantity > 0 || numbers.currentValue > 0 ? "active" : "exited",
+        valuationSourceReportType: file.reportType || "",
+        sourceImportId: batchId,
+        sourceImportFileId: file.id,
+        sourceFileName: file.fileName || "",
+        createdAt: previous.createdAt || FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedByUid: actor.uid,
+        updatedByName: actor.fullName || actor.email || "GrowVest User"
+      }, { merge: true });
+    });
+
+    brokerRecords.dpEntries.forEach(({ transaction, ref, existingData }) => {
+      const existing = existingData || {};
+      writer.set(ref, {
+        investorId,
+        investorName: investor.fullName || investor.name || "",
+        clientCode: investor.clientCode || "",
+        advisorUid: investor.assignedAdvisorUid || investor.advisorUid || "",
+        assignedAdvisorUid: investor.assignedAdvisorUid || investor.advisorUid || "",
+        investorPortalUid: investor.portalUid || investor.investorPortalUid || null,
+        source,
+        provider: "Angel One",
+        brokerAccountId: brokerRecords.accountId,
+        accountReference: brokerRecords.accountReference,
+        dematId: brokerRecords.accountReference,
+        transactionDate: transaction.transactionDate || "",
+        isin: transaction.isin || "",
+        instrumentName: transaction.instrumentName || "",
+        externalTransactionId: transaction.externalTransactionId || "",
+        description: transaction.description || "",
+        debitQuantity: Number(Number(transaction.debitQuantity || 0).toFixed(6)),
+        creditQuantity: Number(Number(transaction.creditQuantity || 0).toFixed(6)),
+        reportedBalance: Number(Number(transaction.reportedBalance || 0).toFixed(6)),
+        amount: Number(Number(transaction.amount || 0).toFixed(2)),
+        classification: "dp_movement",
+        affectsTradingPnl: false,
+        sourceImportId: batchId,
+        sourceImportFileId: file.id,
+        sourceFileName: file.fileName || "",
+        createdAt: existing.createdAt || FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+    });
+
+    writer.set(fingerprintRef, {
+      source,
+      batchId,
+      fileId: file.id,
+      investorId,
+      importedAt: FieldValue.serverTimestamp(),
+      importedByUid: actor.uid
+    }, { merge: true });
+    writer.update(fileRef, {
+      matchedInvestorId: investorId,
+      matchedInvestorName: investor.fullName || investor.name || "",
+      matchedClientCode: investor.clientCode || "",
+      matchStatus: PORTFOLIO_MATCH_STATUS.VERIFIED,
+      brokerAccountId: brokerRecords.accountId,
+      brokerAccountReference: brokerRecords.accountReference,
+      status: "imported",
+      importedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    });
+    await writer.flush();
+
+    await recoveryRef.update({
+      status: "committed",
+      committedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    }).catch(async (journalError) => {
+      console.error("Angel One recovery journal finalisation failed", journalError);
+      await fileRef.set({ recoveryJournalError: journalError?.message || "Recovery journal could not be finalised." }, { merge: true }).catch(() => {});
+    });
+
+    return {
+      fileId: file.id,
+      fileName: file.fileName,
+      status: "imported",
+      investorId,
+      investorName: investor.fullName || investor.name || "",
+      brokerAccountId: brokerRecords.accountId,
+      positionCount: holdings.length,
+      newPositionCount: holdingEntries.filter((item) => !item.existing).length,
+      exitedPositionCount: exitedPositions.length,
+      transactionCount: dpTransactions.length,
+      dpTransactionCount: dpTransactions.length,
+      currentValue: Number(file.summary?.currentValue || 0)
+    };
+  } catch (error) {
+    await recoveryRef.set({
+      status: "commit_failed",
+      reversible: true,
+      failureReason: error?.message || "Angel One import failed",
+      failedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true }).catch(() => {});
+    throw error;
+  }
+}
 
 
 function genericMappingDescriptors(file = {}) {
@@ -1362,6 +1852,12 @@ export async function POST(request) {
           const bajajResult = await commitBajajFile({ actor, batchId, file, fileRef, investor, investorId, writer });
           affectedInvestors.set(investorId, investor);
           results.push(bajajResult);
+          continue;
+        }
+        if (file.source === PORTFOLIO_SOURCES.ANGEL_ONE) {
+          const angelResult = await commitAngelOneFile({ actor, batchId, file, fileRef, investor, investorId, writer });
+          affectedInvestors.set(investorId, investor);
+          results.push(angelResult);
           continue;
         }
         if (file.source === PORTFOLIO_SOURCES.ULIP) {

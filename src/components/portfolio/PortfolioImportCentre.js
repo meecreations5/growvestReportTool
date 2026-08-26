@@ -43,7 +43,7 @@ import {
   PORTFOLIO_SOURCE_LABELS
 } from "@/lib/constants/portfolio";
 
-const ACCEPT = ".xls,.xlsx,.csv";
+const ACCEPT = ".xls,.xlsx,.csv,.pdf";
 
 function dateTime(value) {
   const date = value?.toDate?.() || (value ? new Date(value) : null);
@@ -143,7 +143,7 @@ function FileCard({ item, investors, mapping, onMappingChange, onOpenGenericMapp
             <p className="mt-2 text-xs text-slate-500">
               External investor: <strong className="text-slate-700">{item.externalClientName || "Identity detected"}</strong>
               {item.externalPan ? <> · PAN <strong className="text-slate-700">{item.externalPan}</strong></> : null}
-              {item.externalClientCode ? <> · Client Code <strong className="text-slate-700">{item.externalClientCode}</strong></> : null}
+              {item.externalClientCode ? <> · {item.reportType === PORTFOLIO_REPORT_TYPES.ANGEL_ONE_DP_STATEMENT ? "Demat ID" : "Client Code"} <strong className="text-slate-700">{item.externalClientCode}</strong></> : null}
             </p>
           ) : null}
           {primarySuggestion && item.matchStatus !== PORTFOLIO_MATCH_STATUS.VERIFIED ? (
@@ -171,6 +171,13 @@ function FileCard({ item, investors, mapping, onMappingChange, onOpenGenericMapp
               <div className="rounded-lg bg-slate-50 p-2.5"><p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Funds</p><p className="mt-1 font-bold text-slate-900">{item.summary.positionCount || 0}</p></div>
               <div className="rounded-lg bg-blue-50 p-2.5"><p className="text-[9px] font-bold uppercase tracking-wide text-blue-500">Premium Paid</p><p className="mt-1 font-bold text-blue-950">{formatCurrency(item.summary.totalInvested)}</p></div>
               <div className="rounded-lg bg-emerald-50 p-2.5"><p className="text-[9px] font-bold uppercase tracking-wide text-emerald-600">Fund Value</p><p className="mt-1 font-bold text-emerald-950">{formatCurrency(item.summary.currentValue)}</p></div>
+            </div>
+          ) : item.reportType === PORTFOLIO_REPORT_TYPES.ANGEL_ONE_DP_STATEMENT ? (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:min-w-[440px]">
+              <div className="rounded-lg bg-slate-50 p-2.5"><p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Holdings</p><p className="mt-1 font-bold text-slate-900">{item.summary.positionCount || 0}</p></div>
+              <div className="rounded-lg bg-violet-50 p-2.5"><p className="text-[9px] font-bold uppercase tracking-wide text-violet-600">DP Movements</p><p className="mt-1 font-bold text-violet-950">{item.summary.dpTransactionCount || item.dpTransactionCount || 0}</p></div>
+              <div className="rounded-lg bg-amber-50 p-2.5"><p className="text-[9px] font-bold uppercase tracking-wide text-amber-600">Cost Pending</p><p className="mt-1 font-bold text-amber-950">{item.summary.costBasisPendingCount || 0}</p></div>
+              <div className="rounded-lg bg-emerald-50 p-2.5"><p className="text-[9px] font-bold uppercase tracking-wide text-emerald-600">Closing Value</p><p className="mt-1 font-bold text-emerald-950">{formatCurrency(item.summary.currentValue)}</p></div>
             </div>
           ) : item.reportType === PORTFOLIO_REPORT_TYPES.BAJAJ_INTRADAY ? (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:min-w-[440px]">
@@ -277,13 +284,13 @@ export default function PortfolioImportCentre() {
   const genericMappingSourceFile = genericMappingItem ? files[Number(genericMappingItem.uploadIndex || 0)] || null : null;
 
   function selectFiles(nextFiles) {
-    const items = [...nextFiles].filter((file) => /\.(xls|xlsx|csv)$/i.test(file.name));
+    const items = [...nextFiles].filter((file) => /\.(xls|xlsx|csv|pdf)$/i.test(file.name));
     setFiles(items);
     setPreview(null);
     setMappings({});
     setResult(null);
     setViewMode("all");
-    setError(items.length ? "" : "Choose XLS/XLSX/CSV portfolio reports.");
+    setError(items.length ? "" : "Choose XLS/XLSX/CSV or a supported digital PDF portfolio report.");
   }
 
   async function handlePreview() {
@@ -408,7 +415,7 @@ export default function PortfolioImportCentre() {
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">Unified Import</p>
               <h2 className="mt-1 font-heading text-2xl font-bold text-slate-950">Upload → Detect → Review Exceptions → Update</h2>
-              <p className="mt-1 text-sm text-slate-500">Fundbazaar, Bajaj Broking, ULIP and GrowVest Standard/Generic portfolio imports are enabled. Unknown provider layouts can be mapped once and remembered for future uploads.</p>
+              <p className="mt-1 text-sm text-slate-500">Fundbazaar, Bajaj Broking, Angel One DP, ULIP and GrowVest Standard/Generic portfolio imports are enabled. Unknown provider layouts can be mapped once and remembered for future uploads.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <a href="/templates/GrowVest_Standard_Portfolio_Import_v0.32.3.xlsx" download className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-100"><Download size={15} /> Standard Template</a>
@@ -431,7 +438,7 @@ export default function PortfolioImportCentre() {
               <span>
                 <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-white text-blue-700 shadow-sm"><UploadCloud size={25} /></span>
                 <span className="mt-4 block font-heading text-xl font-bold text-slate-950">Drop all today's portfolio reports here</span>
-                <span className="mt-2 block text-sm text-slate-500">XLS / XLSX / CSV · up to 100 files · filenames are not used for investor matching</span>
+                <span className="mt-2 block text-sm text-slate-500">XLS / XLSX / CSV / supported digital PDF · up to 100 files · filenames are not used for investor matching</span>
                 {files.length ? <span className="mt-4 inline-flex rounded-full bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-800">{files.length} file(s) selected</span> : null}
               </span>
             </button>
@@ -476,7 +483,7 @@ export default function PortfolioImportCentre() {
               <div className="sticky bottom-3 z-10 flex flex-col justify-between gap-3 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur sm:flex-row sm:items-center">
                 <div>
                   <p className="text-sm font-bold text-slate-900">{readyFiles.length} report(s) ready to update</p>
-                  <p className="mt-1 text-xs text-slate-500">{unresolved.length ? `${unresolved.length} investor mapping(s) still need confirmation.` : issueFiles.length ? "Files still needing mapping stay untouched; ready Fundbazaar, Bajaj, ULIP and GrowVest Standard reports can be processed safely." : "All eligible files are verified."}</p>
+                  <p className="mt-1 text-xs text-slate-500">{unresolved.length ? `${unresolved.length} investor mapping(s) still need confirmation.` : issueFiles.length ? "Files still needing mapping stay untouched; ready Fundbazaar, Bajaj, Angel One, ULIP and GrowVest Standard reports can be processed safely." : "All eligible files are verified."}</p>
                 </div>
                 <div className="flex gap-2">
                   <Button type="button" variant="secondary" onClick={() => { setPreview(null); setMappings({}); setViewMode("all"); }}>Back</Button>

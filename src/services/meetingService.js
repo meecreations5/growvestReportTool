@@ -36,6 +36,18 @@ function dateTimeTimestamp(date, time) {
   return parsed ? Timestamp.fromDate(parsed) : null;
 }
 
+function isIndexUnavailable(error) {
+  return error?.code === "failed-precondition" || /index.*building|requires an index/i.test(error?.message || "");
+}
+
+function meetingTimeValue(value) {
+  if (!value) return 0;
+  if (typeof value?.toMillis === "function") return value.toMillis();
+  if (typeof value?.toDate === "function") return value.toDate().getTime();
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
 async function nextMeetingCode() {
   const counterRef = doc(db, "counters", "meetings");
   const value = await runTransaction(db, async (transaction) => {
@@ -232,12 +244,41 @@ export function subscribeMeetings(currentUser, callback, onError) {
   );
 }
 
-export function subscribeInvestorMeetings(investorId, callback, onError) {
-  return onSnapshot(
-    query(collection(db, "meetings"), where("investorId", "==", investorId), orderBy("startAt", "desc"), limit(50)),
+export function subscribeInvestorMeetings(investorId, currentUser, callback, onError) {
+  if (!investorId) {
+    callback([]);
+    return () => {};
+  }
+
+  if (!currentUser?.id) {
+    callback([]);
+    return () => {};
+  }
+
+  const constraints = [where("investorId", "==", investorId)];
+  if (currentUser?.role === USER_ROLES.ADVISOR) constraints.push(where("advisorUid", "==", currentUser.id));
+  if (currentUser?.role === USER_ROLES.INVESTOR) constraints.push(where("investorVisible", "==", true));
+
+  let fallbackUnsubscribe = () => {};
+  const primaryUnsubscribe = onSnapshot(
+    query(collection(db, "meetings"), ...constraints, orderBy("startAt", "desc"), limit(50)),
     (snapshot) => callback(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))),
-    onError
+    (error) => {
+      if (!isIndexUnavailable(error)) {
+        onError?.(error);
+        return;
+      }
+      fallbackUnsubscribe = onSnapshot(
+        query(collection(db, "meetings"), ...constraints),
+        (snapshot) => callback(snapshot.docs
+          .map((item) => ({ id: item.id, ...item.data() }))
+          .sort((a, b) => meetingTimeValue(b.startAt) - meetingTimeValue(a.startAt))
+          .slice(0, 50)),
+        onError
+      );
+    }
   );
+  return () => { primaryUnsubscribe(); fallbackUnsubscribe(); };
 }
 
 export async function updateMeeting(meeting, payload, currentUser, linkedRecord = null) {
