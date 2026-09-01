@@ -125,9 +125,8 @@ Published Monthly Reports remain visible only as historical documents. They do n
 1. Run **Full Portfolio Reset**.
 2. Investor portfolio becomes blank.
 3. Upload the new verified Client Wise Valuation Report or other supported source file.
-   - Normal Fundbazaar daily updates should use a real `Client Wise Valuation Report.xlsx` workbook.
-   - For the first upload of a completely blank/newly reset Investor only, a readable legacy Fundbazaar `Client Wise Valuation Report.xls` / `HTML-XLS` export is accepted as a bootstrap source. GrowVest parses it, requires the Investor mapping again, and verifies that no prior resettable portfolio state remains before commit.
-   - After that first successful bootstrap import, subsequent Fundbazaar updates must use `.xlsx`.
+   - Fundbazaar Client Wise Valuation may be uploaded in a structurally recognised `.xls`, `.xlsx`, `.csv` or Excel-readable HTML-XLS format. Format acceptance is no longer limited to the first/reset import.
+   - Investor mapping and duplicate fingerprint protections still apply after reset.
 4. Map the Investor again.
 5. Create the fresh Portfolio Master through the normal import commit.
 6. Create the first new snapshot.
@@ -151,8 +150,8 @@ No corrected snapshot is created by Full Portfolio Reset itself.
 10. Start a new Monthly Report before re-upload and confirm current portfolio values remain blank/zero with the Portfolio Master verification warning instead of using the old report/profile portfolio as an opening corpus.
 11. Upload the same verified source file again and confirm duplicate fingerprint protection does not block it because the old fingerprint was released.
 12. Confirm the Investor must be mapped again and the new upload creates a fresh first snapshot.
-13. For a reset Investor, upload a readable Fundbazaar Client Wise Valuation `.xls` / HTML-XLS export and confirm it is accepted for this first bootstrap import.
-14. After the first import succeeds, try another legacy `.xls` / HTML-XLS Fundbazaar update and confirm GrowVest requires `Client Wise Valuation Report.xlsx` for the ongoing update.
+13. For a reset Investor, upload a readable Fundbazaar Client Wise Valuation `.xls` / HTML-XLS export and confirm it is accepted after the Investor is mapped again.
+14. After the first import succeeds, upload a later valid `.xls` / HTML-XLS Client Wise Valuation and confirm it is accepted as an ongoing daily update; the same already-successfully-imported file should still be protected by fingerprint duplicate detection.
 15. Immediately after Full Reset with no Fundbazaar mapping, open Daily Portfolio Update and confirm `Expected = 0`, `Received = 0`, `Need Attention = 0`, `Missing = 0`, and the Received helper says **Not started** rather than `100% coverage`.
 16. Confirm old zero-import Fundbazaar `.xls` preview/error attempts are not shown as Daily Coverage exceptions.
 17. Confirm **Recent applied portfolio batches** contains only batches that actually updated a portfolio; old `0 imported / N issues` attempts are absent.

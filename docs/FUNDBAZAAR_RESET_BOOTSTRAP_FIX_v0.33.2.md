@@ -1,3 +1,5 @@
+> **Superseded compatibility rule (31 Aug 2026):** The bootstrap-only limitation described below is historical. `PROVIDER_FORMAT_COMPATIBILITY_HOTFIX_v0.33.2.md` now allows a structurally valid Fundbazaar Client Wise Valuation `.xls` / HTML-XLS for normal ongoing updates as well as first/reset imports.
+
 # Fundbazaar Reset Bootstrap Fix - v0.33.2
 
 ## Issue

@@ -82,7 +82,7 @@ export default function PortfolioImportRecoveryDialog({ batchId, investors = [],
           ? `Import corrected and applied to ${selectedInvestor?.fullName || "the selected investor"}.`
           : "Import rolled back and reprocessed successfully.");
       } else {
-        setNotice(recovery.status === "legacy_cleaned" ? "Legacy wrong import cleaned successfully. You can now upload the correct Client Wise Valuation Report.xlsx." : "Import rollback completed successfully.");
+        setNotice(recovery.status === "legacy_cleaned" ? "Legacy wrong import cleaned successfully. You can now upload the correct Client Wise Valuation Report (.xls/.xlsx)." : "Import rollback completed successfully.");
       }
       setSelectedFile(null);
       setAction("");

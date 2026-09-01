@@ -11,10 +11,6 @@ import {
 import { normaliseExternalName, stableHash } from "@/lib/server/portfolioImportParser";
 import { buildDailyPortfolioCoverage } from "@/lib/server/portfolioCoverage";
 import {
-  loadPortfolioResetContext,
-  portfolioContextHasResettableState
-} from "@/lib/server/portfolioReset";
-import {
   createPortfolioSnapshot,
   getAccessibleInvestor,
   indiaDateKey,
@@ -32,25 +28,14 @@ function panMappingDocumentId(pan = "") {
   return pan ? `${PORTFOLIO_SOURCES.FUNDBAZAAR}_pan_${stableHash(String(pan).toUpperCase(), 32)}` : "";
 }
 
-async function assertFundbazaarValuationFormat({ file, investor, batchId }) {
+async function assertFundbazaarValuationFormat({ file }) {
   if (file.reportType !== PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_CLIENT_VALUATION) {
-    throw new Error("Fundbazaar Portfolio Ledger is not applicable. Upload Client Wise Valuation Report.xlsx instead.");
+    throw new Error("Fundbazaar Portfolio Ledger is not applicable. Upload the Client Wise Valuation report instead.");
   }
 
-  if (/\.xlsx$/i.test(file.fileName || "")) return;
-
-  const legacyBootstrap = file.fundbazaarBootstrapOnly === true
-    && ["HTML-XLS", "XLS"].includes(String(file.fileFormat || "").toUpperCase());
-  if (!legacyBootstrap) {
-    throw new Error("Fundbazaar portfolio updates require Client Wise Valuation Report.xlsx.");
-  }
-
-  const context = await loadPortfolioResetContext(investor);
-  const hasPreviousPortfolioState = portfolioContextHasResettableState(context, {
-    excludeImportBatchIds: [batchId]
-  });
-  if (hasPreviousPortfolioState) {
-    throw new Error("This Fundbazaar XLS/HTML-XLS file is allowed only for the first upload of a completely blank or newly reset portfolio. This investor already has portfolio data/history, so use Client Wise Valuation Report.xlsx for the ongoing update.");
+  const format = String(file.fileFormat || "").toUpperCase();
+  if (!["XLSX", "XLS", "CSV", "HTML-XLS"].includes(format)) {
+    throw new Error("Fundbazaar Client Wise Valuation must be a readable XLS, XLSX, CSV or HTML-XLS export.");
   }
 }
 
@@ -789,7 +774,7 @@ async function commitBajajFile({ actor, batchId, file, fileRef, investor, invest
 
 async function commitAngelOneFile({ actor, batchId, file, fileRef, investor, investorId, writer }) {
   if (file.reportType !== PORTFOLIO_REPORT_TYPES.ANGEL_ONE_DP_STATEMENT) {
-    throw new Error("This Angel One report type is not enabled yet. Upload the DP Transaction Cum Holding statement PDF.");
+    throw new Error("This Angel One report type is not enabled yet. Upload a supported DP Transaction Cum Holding PDF/XLS/XLSX/CSV report.");
   }
 
   const source = PORTFOLIO_SOURCES.ANGEL_ONE;

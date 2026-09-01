@@ -150,7 +150,6 @@ function publicFileResult(fileRef, detected, extra = {}) {
     holdingSnapshot: detected.holdingSnapshot === true,
     brokerAccount: detected.brokerAccount || null,
     dpTransactionCount: Array.isArray(detected.dpTransactions) ? detected.dpTransactions.length : Number(detected.summary?.dpTransactionCount || 0),
-    fundbazaarBootstrapOnly: detected.fundbazaarBootstrapOnly === true,
     error: detected.error || "",
     ...extra
   };
@@ -256,7 +255,6 @@ export async function POST(request) {
           holdingSnapshot: detected.holdingSnapshot === true,
           brokerAccount: detected.brokerAccount || null,
           dpTransactions: detected.dpTransactions || [],
-          fundbazaarBootstrapOnly: detected.fundbazaarBootstrapOnly === true,
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp()
         };
@@ -366,7 +364,6 @@ export async function POST(request) {
         holdingSnapshot: detected.holdingSnapshot === true,
         brokerAccount: detected.brokerAccount || null,
         dpTransactions: detected.dpTransactions || [],
-        fundbazaarBootstrapOnly: detected.fundbazaarBootstrapOnly === true,
         trades: detected.trades || [],
         duplicateOfImportId: fingerprintSnapshot.exists ? fingerprintSnapshot.data()?.batchId || "" : "",
         duplicateImportedAt: fingerprintSnapshot.exists ? fingerprintSnapshot.data()?.importedAt || null : null,

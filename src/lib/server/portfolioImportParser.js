@@ -176,6 +176,17 @@ const BAJAJ_INTRADAY_ALIASES = {
   notes: ["Notes", "Remark", "Remarks"]
 };
 
+const ANGEL_ONE_DP_ALIASES = {
+  date: ["Date", "Transaction Date", "Txn Date"],
+  scriptName: ["SCRIPT NAME", "Script Name", "Scrip Name", "Security Name", "Instrument"],
+  description: ["DESCRIPTION", "Description", "Transaction Description", "Narration"],
+  debit: ["DEBIT", "Debit", "Debit Qty", "Debit Quantity"],
+  credit: ["CREDIT", "Credit", "Credit Qty", "Credit Quantity"],
+  balance: ["BALANCE", "Balance", "Closing Balance", "Balance Qty", "Balance Quantity"],
+  amount: ["AMOUNT", "Amount", "Value", "Holding Value"]
+};
+
+
 
 const ULIP_ALIASES = {
   investorName: ["Investor Name", "Client Name", "Policy Holder", "Policyholder Name", "Life Assured", "Name"],
@@ -2089,7 +2100,27 @@ function detectMatrixReport(matrix = [], sheetName = "") {
 
   if (hasTerms(terms, ["scheme name", "folio no", "net investment", "current value", "xirr"], 4)
     || hasTerms(terms, ["transaction date", "transaction type", "nav rate", "balance units", "scheme name"], 4)) {
-    return { source: PORTFOLIO_SOURCES.FUNDBAZAAR, reportType: PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_LEDGER, adapterStatus: PORTFOLIO_ADAPTER_STATUS.UNSUPPORTED, confidence: 0.98, sheetName, error: "Fundbazaar Portfolio Ledger is not applicable for GrowVest daily portfolio updates. Upload Client Wise Valuation Report.xlsx instead." };
+    return { source: PORTFOLIO_SOURCES.FUNDBAZAAR, reportType: PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_LEDGER, adapterStatus: PORTFOLIO_ADAPTER_STATUS.UNSUPPORTED, confidence: 0.98, sheetName, error: "Fundbazaar Portfolio Ledger is not applicable for GrowVest daily portfolio updates. Upload the Client Wise Valuation report instead." };
+  }
+
+  const angelBrand = sheet.includes("angel") || [...terms].some((term) => term.includes("angel one") || term.includes("angelone in"));
+  const angelStatementSignature = [...terms].some((term) => term.includes("statement of dp transaction cum holding"));
+  const angelDematSignature = [...terms].some((term) => term === "demat id" || term.startsWith("demat id "));
+  const angelDpCandidate = findStructuredTable(
+    matrix,
+    ANGEL_ONE_DP_ALIASES,
+    ["date", "scriptName", "description", "debit", "credit", "balance", "amount"],
+    5
+  );
+  if (angelDpCandidate && (angelBrand || angelStatementSignature || angelDematSignature)) {
+    return {
+      source: PORTFOLIO_SOURCES.ANGEL_ONE,
+      reportType: PORTFOLIO_REPORT_TYPES.ANGEL_ONE_DP_STATEMENT,
+      adapterStatus: PORTFOLIO_ADAPTER_STATUS.READY,
+      confidence: angelBrand || angelStatementSignature ? 0.99 : 0.94,
+      sheetName,
+      angelDpTable: angelDpCandidate
+    };
   }
 
   const bajajDeliveryCandidate = findStructuredTable(
@@ -2359,6 +2390,203 @@ function angelStatementDate(value = "") {
   return sourceDate(text);
 }
 
+function matrixRowText(row = []) {
+  return (row || []).map((value) => String(value ?? "").trim()).filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+}
+
+function angelMatrixMetadata(matrix = []) {
+  let externalClientName = "";
+  let externalClientCode = "";
+  let statementDate = "";
+  let reportPeriodStart = "";
+  let reportPeriodEnd = "";
+
+  for (const row of matrix.slice(0, 80)) {
+    const cells = (row || []).map((value) => String(value ?? "").trim());
+    const text = matrixRowText(row);
+    const demat = text.match(/Demat\s*ID\s*:?\s*([0-9]{8,})/i);
+    if (demat?.[1]) externalClientCode = demat[1];
+    const name = text.match(/(?:^|\s)Name\s*:\s*(.+?)(?=\s+(?:Address|Date|Demat\s*ID)\s*:|$)/i);
+    if (name?.[1] && !/script name/i.test(name[1])) externalClientName = name[1].trim();
+    const date = text.match(/(?:^|\s)Date\s*:\s*([A-Za-z]{3,9}\s+\d{1,2}\s+\d{4}|\d{1,2}[\/-]\d{1,2}[\/-]\d{4})/i);
+    if (date?.[1]) statementDate = sourceDate(date[1].trim());
+    const period = text.match(/Statement of DP Transaction Cum Holding for the Period\s*:\s*(.+?)\s+TO\s+(.+?)(?=\s{2,}|$)/i);
+    if (period) {
+      reportPeriodStart = sourceDate(period[1].trim());
+      reportPeriodEnd = sourceDate(period[2].trim());
+    }
+
+    cells.forEach((cell, index) => {
+      const normalized = normaliseHeader(cell);
+      const next = nextNonEmptyValue(row, index);
+      if (!externalClientCode && ["demat id", "bo id", "beneficiary id"].includes(normalized)) {
+        const code = String(next || "").replace(/\D/g, "");
+        if (code.length >= 8) externalClientCode = code;
+      }
+      if (!externalClientName && ["name", "client name", "beneficiary name", "account holder"].includes(normalized) && next) {
+        externalClientName = String(next).trim();
+      }
+      if (!statementDate && ["date", "statement date", "report date"].includes(normalized) && next) statementDate = sourceDate(next);
+    });
+  }
+
+  return { externalClientName, externalClientCode, statementDate, reportPeriodStart, reportPeriodEnd };
+}
+
+function parseAngelOneDpMatrix(matrix = [], sheetName = "Spreadsheet") {
+  const candidate = findStructuredTable(
+    matrix,
+    ANGEL_ONE_DP_ALIASES,
+    ["date", "scriptName", "description", "debit", "credit", "balance", "amount"],
+    5
+  );
+  if (!candidate) throw new Error("Angel One DP spreadsheet was detected, but the Date / Script / Description / Debit / Credit / Balance / Amount table could not be read safely.");
+
+  const metadata = angelMatrixMetadata(matrix);
+  if (!metadata.externalClientName || !metadata.externalClientCode) {
+    throw new Error("Angel One DP spreadsheet was detected, but Investor Name or Demat ID could not be read safely.");
+  }
+
+  const holdings = [];
+  const dpTransactions = [];
+  let currentInstrument = null;
+  let pendingInstrumentIsin = "";
+  let lastTransaction = null;
+  const map = candidate.map || {};
+
+  for (let rowIndex = candidate.headerIndex + 1; rowIndex < matrix.length; rowIndex += 1) {
+    const row = matrix[rowIndex] || [];
+    const text = matrixRowText(row);
+    if (!text) continue;
+    if (/^TOTAL(?:\s|$)|^END REPORT/i.test(text)) continue;
+
+    const isinCell = row.find((value) => /^[A-Z]{2}[A-Z0-9]{10}$/.test(String(value || "").trim().toUpperCase()));
+    const scriptValue = String(mappedValue(row, map, "scriptName") || "").trim();
+    if (isinCell) {
+      const isin = String(isinCell).trim().toUpperCase();
+      const instrumentName = scriptValue && !/^OPENING BALANCE|CLOSING BALANCE$/i.test(scriptValue) ? scriptValue : "";
+      currentInstrument = { isin, instrumentName: instrumentName || isin };
+      pendingInstrumentIsin = instrumentName ? "" : isin;
+      lastTransaction = null;
+      continue;
+    }
+    if (pendingInstrumentIsin && scriptValue && !/^OPENING BALANCE|CLOSING BALANCE$/i.test(scriptValue)) {
+      currentInstrument = { isin: pendingInstrumentIsin, instrumentName: scriptValue };
+      pendingInstrumentIsin = "";
+    }
+
+    const description = String(mappedValue(row, map, "description") || "").trim();
+    if (currentInstrument && /CLOSING\s+BALANCE/i.test(`${description} ${text}`)) {
+      const quantity = sourceNumber(mappedValue(row, map, "balance"));
+      const currentValue = sourceNumber(mappedValue(row, map, "amount"));
+      if (quantity > 0 || currentValue > 0) {
+        const currentRate = quantity > 0 && currentValue > 0 ? currentValue / quantity : 0;
+        holdings.push({
+          source: PORTFOLIO_SOURCES.ANGEL_ONE,
+          provider: "Angel One",
+          productType: PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY,
+          assetClass: "Equity",
+          investmentMode: "Delivery",
+          instrumentName: currentInstrument.instrumentName,
+          stockName: currentInstrument.instrumentName,
+          symbol: "",
+          isin: currentInstrument.isin,
+          exchange: "",
+          quantity: Number(quantity.toFixed(6)),
+          averageBuyRate: 0,
+          totalInvested: 0,
+          investedAmount: 0,
+          currentRate: Number(currentRate.toFixed(6)),
+          currentValue: Number(currentValue.toFixed(2)),
+          gainLoss: 0,
+          returnPercentage: 0,
+          costBasisAvailable: false,
+          costBasisStatus: "pending",
+          valuationDate: metadata.reportPeriodEnd || metadata.statementDate,
+          notes: "Closing DP holding from Angel One statement"
+        });
+      }
+      lastTransaction = null;
+      continue;
+    }
+
+    const rawDate = String(mappedValue(row, map, "date") || "").trim();
+    const txDate = angelStatementDate(rawDate);
+    const looksLikeDate = /^\d{1,2}[\s\/-](?:[A-Za-z]{3}|\d{1,2})[\s\/-]\d{2,4}$/.test(rawDate) || /^\d{4}-\d{2}-\d{2}$/.test(rawDate);
+    if (currentInstrument && looksLikeDate) {
+      const transaction = {
+        source: PORTFOLIO_SOURCES.ANGEL_ONE,
+        provider: "Angel One",
+        transactionDate: txDate,
+        isin: currentInstrument.isin,
+        instrumentName: currentInstrument.instrumentName,
+        externalTransactionId: scriptValue,
+        description,
+        debitQuantity: Number(sourceNumber(mappedValue(row, map, "debit")).toFixed(6)),
+        creditQuantity: Number(sourceNumber(mappedValue(row, map, "credit")).toFixed(6)),
+        reportedBalance: Number(sourceNumber(mappedValue(row, map, "balance")).toFixed(6)),
+        amount: Number(sourceNumber(mappedValue(row, map, "amount")).toFixed(2))
+      };
+      dpTransactions.push(transaction);
+      lastTransaction = transaction;
+      continue;
+    }
+
+    if (lastTransaction && description && !/OPENING\s+BALANCE|CLOSING\s+BALANCE|DESCRIPTION/i.test(description)) {
+      lastTransaction.description = `${lastTransaction.description} ${description}`.replace(/\s+/g, " ").trim();
+    }
+  }
+
+  if (!holdings.length) throw new Error("Angel One DP spreadsheet was detected, but no closing holdings were found.");
+  const currentValue = holdings.reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
+  const totalQuantity = holdings.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+  return {
+    source: PORTFOLIO_SOURCES.ANGEL_ONE,
+    reportType: PORTFOLIO_REPORT_TYPES.ANGEL_ONE_DP_STATEMENT,
+    adapterStatus: PORTFOLIO_ADAPTER_STATUS.READY,
+    confidence: 0.99,
+    sheetName,
+    externalClientName: metadata.externalClientName,
+    normalizedExternalClientName: normaliseExternalName(metadata.externalClientName),
+    externalPan: "",
+    externalClientCode: metadata.externalClientCode,
+    reportPeriodStart: metadata.reportPeriodStart,
+    reportPeriodEnd: metadata.reportPeriodEnd,
+    holdings,
+    transactions: [],
+    trades: [],
+    dpTransactions,
+    holdingSnapshot: true,
+    completeSnapshot: true,
+    brokerAccount: {
+      broker: "Angel One",
+      accountType: "trading_demat",
+      accountReference: metadata.externalClientCode,
+      dematId: metadata.externalClientCode,
+      statementDate: metadata.statementDate,
+      reportPeriodStart: metadata.reportPeriodStart,
+      reportPeriodEnd: metadata.reportPeriodEnd
+    },
+    warnings: [
+      "Angel One DP statement provides closing quantity/value but not purchase cost. GrowVest preserves any known cost basis; new delivery holdings remain cost-basis pending until trade/cost data is supplied.",
+      "DP debit/credit rows are stored for reconciliation and are not treated as intraday P&L trades."
+    ],
+    summary: {
+      totalInvested: 0,
+      currentValue: Number(currentValue.toFixed(2)),
+      gainLoss: 0,
+      positionCount: holdings.length,
+      transactionCount: 0,
+      tradeCount: 0,
+      dpTransactionCount: dpTransactions.length,
+      closingQuantity: Number(totalQuantity.toFixed(6)),
+      valuationDate: metadata.reportPeriodEnd || metadata.statementDate,
+      costBasisComplete: false,
+      costBasisPendingCount: holdings.length
+    }
+  };
+}
+
 function parseAngelOneDpStatement(buffer) {
   const rows = pdfTextRows(buffer);
   const allText = rows.map(rowText).join("\n");
@@ -2560,6 +2788,10 @@ export async function detectPortfolioImportFile(file) {
   if (isHtml) {
     const matrix = htmlFundbazaarRows(buffer.toString("utf8"));
     const detection = detectMatrixReport(matrix, "HTML Export");
+    if (detection?.reportType === PORTFOLIO_REPORT_TYPES.ANGEL_ONE_DP_STATEMENT) {
+      const parsed = parseAngelOneDpMatrix(matrix, "HTML Export");
+      return { ...base, ...detection, ...parsed, adapterStatus: PORTFOLIO_ADAPTER_STATUS.READY, error: "" };
+    }
     if (detection?.reportType === PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_CLIENT_VALUATION) {
       const table = detection.fundbazaarTable;
       const parsed = parseFundbazaarRows(makeRows(matrix, table.headerIndex, table.headers));
@@ -2568,11 +2800,7 @@ export async function detectPortfolioImportFile(file) {
         ...detection,
         ...parsed,
         adapterStatus: PORTFOLIO_ADAPTER_STATUS.READY,
-        fundbazaarBootstrapOnly: true,
-        warnings: [
-          ...(parsed.warnings || []),
-          "Legacy Fundbazaar HTML-XLS is accepted only to establish a completely blank/newly reset portfolio. After the first successful import, use Client Wise Valuation Report.xlsx for normal daily updates."
-        ],
+        warnings: parsed.warnings || [],
         error: ""
       };
     }
@@ -2618,38 +2846,26 @@ export async function detectPortfolioImportFile(file) {
         if (detection.reportType === PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_CLIENT_VALUATION) {
           const table = detection.fundbazaarTable;
           const parsed = parseFundbazaarRows(makeRows(sheet.matrix, table.headerIndex, table.headers));
-          if (!/\.xlsx$/i.test(file.name)) {
-            if (/\.xls$/i.test(file.name)) {
-              return {
-                ...base,
-                ...detection,
-                ...parsed,
-                adapterStatus: PORTFOLIO_ADAPTER_STATUS.READY,
-                fundbazaarBootstrapOnly: true,
-                warnings: [
-                  ...(parsed.warnings || []),
-                  "Legacy Fundbazaar XLS is accepted only to establish a completely blank/newly reset portfolio. After the first successful import, use Client Wise Valuation Report.xlsx for normal daily updates."
-                ],
-                error: ""
-              };
-            }
-            return {
-              ...base,
-              ...detection,
-              ...parsed,
-              adapterStatus: PORTFOLIO_ADAPTER_STATUS.UNSUPPORTED,
-              error: "Fundbazaar daily import requires Client Wise Valuation Report.xlsx. The selected report is readable, but it is not an .xlsx workbook."
-            };
-          }
-          return { ...base, ...detection, ...parsed };
+          return {
+            ...base,
+            ...detection,
+            ...parsed,
+            adapterStatus: PORTFOLIO_ADAPTER_STATUS.READY,
+            warnings: parsed.warnings || [],
+            error: ""
+          };
         }
         if (detection.reportType === PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_LEDGER) {
           return {
             ...base,
             ...detection,
             adapterStatus: PORTFOLIO_ADAPTER_STATUS.UNSUPPORTED,
-            error: "Fundbazaar Portfolio Ledger is not applicable. Upload Client Wise Valuation Report.xlsx instead."
+            error: "Fundbazaar Portfolio Ledger is not applicable. Upload the Client Wise Valuation report instead."
           };
+        }
+        if (detection.reportType === PORTFOLIO_REPORT_TYPES.ANGEL_ONE_DP_STATEMENT) {
+          const parsed = parseAngelOneDpMatrix(sheet.matrix, sheet.sheetName);
+          return { ...base, ...detection, ...parsed, adapterStatus: PORTFOLIO_ADAPTER_STATUS.READY, error: "" };
         }
         if (detection.reportType === PORTFOLIO_REPORT_TYPES.GROWVEST_STANDARD
           && detection.adapterStatus === PORTFOLIO_ADAPTER_STATUS.READY) {

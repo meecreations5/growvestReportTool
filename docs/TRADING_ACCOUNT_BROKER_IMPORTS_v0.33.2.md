@@ -33,11 +33,11 @@ The native holding report does **not** contain purchase cost/average buy price. 
 
 Existing Bajaj Intraday/Trade Book support remains separate in `tradingTransactions`. Intraday turnover and realised P&L do not inflate the long-term Portfolio Master corpus.
 
-### Angel One - DP Transaction Cum Holding Statement PDF
+### Angel One - DP Transaction Cum Holding Statement PDF / XLS / XLSX / CSV
 
 Validated against the supplied digital Angel One DP Transaction Cum Holding statement.
 
-The digital PDF adapter extracts:
+The supplied digital PDF adapter extracts:
 
 - Investor name
 - Demat ID
@@ -57,7 +57,9 @@ Therefore:
 - GrowVest does not infer realized P&L, intraday trading or purchase cost from DP descriptions;
 - the statement-reported closing balance is authoritative even if individual DP rows cannot be arithmetically reconciled in isolation.
 
-The current Angel One adapter supports **digital/text PDFs** matching the supplied statement style. Image-only/scanned PDFs are intentionally not OCR'd in this phase.
+The Angel One adapter supports **digital/text PDFs** matching the supplied statement style and spreadsheet equivalents (`.xls`, `.xlsx`, `.csv`, including Excel-readable HTML-XLS) when the same DP statement structure is safely recognised. Image-only/scanned PDFs are intentionally not OCR'd in this phase.
+
+The supplied source used for exact validation is the digital PDF. The spreadsheet adapter is structure-based; if a future Angel One portal spreadsheet uses a materially different native layout, GrowVest will send it to review instead of guessing. See `PROVIDER_FORMAT_COMPATIBILITY_HOTFIX_v0.33.2.md`.
 
 ## Data model
 
@@ -168,7 +170,7 @@ These should be added as separate adapters so GrowVest never guesses financial d
 
 ### Angel One DP statement
 
-1. Upload the supplied digital DP Transaction Cum Holding PDF.
+1. Upload the supplied digital DP Transaction Cum Holding PDF or a recognised spreadsheet equivalent.
 2. Confirm detection = Angel One / DP Transaction Cum Holding.
 3. Confirm Investor name and Demat ID are extracted.
 4. Confirm closing LEAP INDIA-EQ holding = 44 and closing value = Rs 7,005 for the supplied test statement.

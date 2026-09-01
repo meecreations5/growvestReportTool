@@ -102,7 +102,7 @@ export default function TradingAccountCentre() {
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         <div className="rounded-xl border border-slate-200 p-4"><p className="font-bold text-slate-900">Bajaj Broking</p><p className="mt-1 text-xs leading-5 text-slate-500">Client Holding Report XLS/XLSX → authoritative delivery quantity and current value snapshot. Purchase cost is preserved when known and never fabricated.</p></div>
         <div className="rounded-xl border border-slate-200 p-4"><p className="font-bold text-slate-900">Bajaj Intraday / Trade Book</p><p className="mt-1 text-xs leading-5 text-slate-500">Intraday trades → turnover, realized P&amp;L and charges. This activity stays outside long-term Bucket List corpus.</p></div>
-        <div className="rounded-xl border border-slate-200 p-4"><p className="font-bold text-slate-900">Angel One</p><p className="mt-1 text-xs leading-5 text-slate-500">Digital DP Transaction Cum Holding PDF → DP credit/debit movement plus authoritative closing delivery holding quantity/value.</p></div>
+        <div className="rounded-xl border border-slate-200 p-4"><p className="font-bold text-slate-900">Angel One</p><p className="mt-1 text-xs leading-5 text-slate-500">DP Transaction Cum Holding PDF/XLS/XLSX/CSV → DP credit/debit movement plus authoritative closing delivery holding quantity/value.</p></div>
       </div>
       <div className="mt-4 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600"><Banknote className="mr-1 inline" size={14} /> Ledger, Contract Note, broker P&amp;L, margin and position reports are intentionally not inferred from these two source formats. They can be added as separate native adapters in the next trading-account phase.</div>
     </Card>

@@ -468,7 +468,7 @@ export async function POST(request, { params }) {
 
     if (["reprocess", "correct_investor"].includes(action)) {
       if (file.reportType === "fundbazaar_portfolio_ledger") {
-        return Response.json({ error: "Fundbazaar Portfolio Ledger is no longer applicable. Roll back/remove this import, then upload Client Wise Valuation Report.xlsx." }, { status: 409 });
+        return Response.json({ error: "Fundbazaar Portfolio Ledger is no longer applicable. Roll back/remove this import, then upload a Client Wise Valuation report (.xls/.xlsx)." }, { status: 409 });
       }
       const targetInvestorId = action === "correct_investor"
         ? String(payload?.targetInvestorId || "")
