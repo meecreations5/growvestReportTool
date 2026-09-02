@@ -20,7 +20,8 @@ import {
   CandlestickChart,
   ListChecks,
   CakeSlice,
-  Settings2
+  Settings2,
+  ShieldCheck
 } from "lucide-react";
 import { ADMIN_ROLES, STAFF_ROLES } from "./roles";
 
@@ -54,6 +55,7 @@ export const NAV_GROUPS = [
     items: [
       { label: "Portfolio Overview", href: "/portfolio", icon: WalletCards, roles: STAFF_ROLES, permission: "portfolio" },
       { label: "Trading Accounts", href: "/portfolio/trading", icon: CandlestickChart, roles: STAFF_ROLES, permission: "portfolio" },
+      { label: "Insurance & Protection", href: "/insurance", icon: ShieldCheck, roles: STAFF_ROLES, permission: "insurance" },
       { label: "Daily Portfolio Update", href: "/portfolio/daily-update", icon: FileUp, roles: STAFF_ROLES, permission: "portfolio" },
       { label: "Portfolio Administration", href: "/portfolio/administration", icon: Settings2, roles: ADMIN_ROLES, permission: "portfolio" },
       { label: "Monthly Reports", href: "/reports", icon: FileBarChart, roles: STAFF_ROLES, permission: "reports" },

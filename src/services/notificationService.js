@@ -98,6 +98,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES = {
     reports: true,
     meetings: true,
     documents: true,
+    insurance: true,
     general: true
   }
 };

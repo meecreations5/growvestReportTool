@@ -293,6 +293,7 @@ function renderableReportData(report = {}) {
     templateAppliedAt: report.templateAppliedAt || null,
     summary: report.summary || {},
     holdings: report.holdings || [],
+    protectionSnapshot: report.protectionSnapshot || null,
     financialPlan: report.financialPlan || {},
     advisorNote: report.advisorNote || {},
     advisorInsights: report.advisorInsights || {},
@@ -434,6 +435,26 @@ function normaliseReportPayload(payload, currentUser, status) {
     templateAppliedAt: payload.templateAppliedAt || null,
     summary,
     holdings: normaliseHoldings(payload.holdings, summary.totalCorpus),
+    protectionSnapshot: payload.protectionSnapshot ? {
+      asOfDate: payload.protectionSnapshot.asOfDate || payload.statementDate || "",
+      generatedAt: payload.protectionSnapshot.generatedAt || null,
+      summary: {
+        activePolicyCount: Number(payload.protectionSnapshot.summary?.activePolicyCount || 0),
+        totalPolicyCount: Number(payload.protectionSnapshot.summary?.totalPolicyCount || 0),
+        lifeCover: Number(payload.protectionSnapshot.summary?.lifeCover || 0),
+        healthCover: Number(payload.protectionSnapshot.summary?.healthCover || 0),
+        vehiclePolicyCount: Number(payload.protectionSnapshot.summary?.vehiclePolicyCount || 0),
+        homePolicyCount: Number(payload.protectionSnapshot.summary?.homePolicyCount || 0),
+        policiesExpiringWithin30Days: Number(payload.protectionSnapshot.summary?.policiesExpiringWithin30Days || 0),
+        premiumsDueWithin30Days: Number(payload.protectionSnapshot.summary?.premiumsDueWithin30Days || 0),
+        nextDue: payload.protectionSnapshot.summary?.nextDue || null,
+        upcomingDueItems: (payload.protectionSnapshot.summary?.upcomingDueItems || []).slice(0, 12),
+        overdueDueItems: (payload.protectionSnapshot.summary?.overdueDueItems || []).slice(0, 12)
+      },
+      policies: (payload.protectionSnapshot.policies || []).slice(0, 50).map((item) => ({
+        id: item.id || "", insuranceType: item.insuranceType || "Other", productName: item.productName || "Insurance Policy", insurer: item.insurer || "", policyNumber: item.policyNumber || "", policyHolder: item.policyHolder || "", insuredSubject: item.insuredSubject || "", coverAmount: Number(item.coverAmount || 0), premiumAmount: Number(item.premiumAmount || 0), premiumFrequency: item.premiumFrequency || "", policyExpiryDate: item.policyExpiryDate || "", nextPremiumDueDate: item.nextPremiumDueDate || "", policyStatus: item.policyStatus || "Active", nextDueType: item.nextDueType || "", nextDueDate: item.nextDueDate || "", nextDueDays: item.nextDueDays === null || item.nextDueDays === undefined ? null : Number(item.nextDueDays)
+      }))
+    } : null,
     financialPlan: normaliseFinancialPlan(payload.financialPlan),
     advisorNote: {
       content: payload.advisorNote?.content || "",

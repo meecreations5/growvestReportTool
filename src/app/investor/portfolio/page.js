@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase/client";
 import InvestorPageHeader from "@/components/investor/InvestorPageHeader";
 import InvestorPortfolioPanel from "@/components/portfolio/InvestorPortfolioPanel";
+import InvestorProtectionSnapshotCard from "@/components/insurance/InvestorProtectionSnapshotCard";
 
 export default function InvestorPortfolioPage() {
   const { profile } = useAuth();
@@ -30,5 +31,5 @@ export default function InvestorPortfolioPage() {
     return () => { active = false; };
   }, [profile?.investorId]);
 
-  return <div className="grid gap-5 sm:gap-6"><InvestorPageHeader eyebrow="Your Wealth" title="Portfolio" description="Your latest GrowVest portfolio snapshot, source valuation dates and investment holdings. Values reflect the most recent verified imports and are not necessarily live market prices." />{error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}{loading ? <div className="grid gap-4"><div className="gv-skeleton h-32 rounded-2xl" /><div className="gv-skeleton h-80 rounded-2xl" /></div> : investor ? <InvestorPortfolioPanel investor={investor} portal /> : <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">Investor profile not found.</div>}</div>;
+  return <div className="grid gap-5 sm:gap-6"><InvestorPageHeader eyebrow="Your Wealth" title="Portfolio" description="Your latest GrowVest investment portfolio and protection snapshot. Insurance cover is shown separately and never added to your investment corpus or Bucket List values." />{error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}{loading ? <div className="grid gap-4"><div className="gv-skeleton h-32 rounded-2xl" /><div className="gv-skeleton h-80 rounded-2xl" /></div> : investor ? <><InvestorProtectionSnapshotCard investorId={investor.id} portal title="Your protection snapshot" /><InvestorPortfolioPanel investor={investor} portal /></> : <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">Investor profile not found.</div>}</div>;
 }

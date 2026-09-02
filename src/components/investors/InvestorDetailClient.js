@@ -43,6 +43,8 @@ import InvestorDocumentsPanel from "@/components/investors/InvestorDocumentsPane
 import InvestorPortalAccessCard from "@/components/investors/InvestorPortalAccessCard";
 import InvestorLifecycleCard from "@/components/investors/InvestorLifecycleCard";
 import InvestorPortfolioPanel from "@/components/portfolio/InvestorPortfolioPanel";
+import InsuranceProtectionPanel from "@/components/insurance/InsuranceProtectionPanel";
+import InvestorProtectionSnapshotCard from "@/components/insurance/InvestorProtectionSnapshotCard";
 import ActionStatusBadge from "@/components/actions/ActionStatusBadge";
 import WithdrawalCashNeedsPanel from "@/components/actions/WithdrawalCashNeedsPanel";
 import InvestorReportsPanel from "@/components/reports/InvestorReportsPanel";
@@ -64,6 +66,20 @@ import { subscribeInvestorMeetings } from "@/services/meetingService";
 import { subscribeInvestorReports } from "@/services/reportService";
 import { subscribeInvestorActions } from "@/services/actionService";
 import { ACTION_TERMINAL_STATUSES, isStructuredWithdrawalAction } from "@/lib/constants/actions";
+
+const INVESTOR_PROFILE_TABS = new Set([
+  "overview",
+  "goals",
+  "portfolio",
+  "protection",
+  "withdrawals",
+  "reports",
+  "actions",
+  "meetings",
+  "assessment",
+  "access",
+  "activity"
+]);
 
 function investorGoals(investor) {
   if (Array.isArray(investor?.bucketList) && investor.bucketList.length) return investor.bucketList;
@@ -387,7 +403,7 @@ function LoadingProfile() {
   );
 }
 
-export default function InvestorDetailClient({ investorId }) {
+export default function InvestorDetailClient({ investorId, initialTab = "overview" }) {
   const { profile } = useAuth();
   const [investor, setInvestor] = useState(null);
   const [versions, setVersions] = useState([]);
@@ -396,7 +412,11 @@ export default function InvestorDetailClient({ investorId }) {
   const [actions, setActions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState(INVESTOR_PROFILE_TABS.has(initialTab) ? initialTab : "overview");
+
+  useEffect(() => {
+    if (INVESTOR_PROFILE_TABS.has(initialTab)) setTab(initialTab);
+  }, [initialTab]);
 
   useEffect(() => subscribeInvestor(
     investorId,
@@ -511,6 +531,7 @@ export default function InvestorDetailClient({ investorId }) {
     { value: "overview", label: "Overview", icon: LayoutDashboard },
     { value: "goals", label: "Goals & Bucket List", icon: Target, count: goals.length },
     { value: "portfolio", label: "Portfolio", icon: WalletCards },
+    { value: "protection", label: "Insurance & Protection", icon: ShieldCheck },
     { value: "withdrawals", label: "Withdrawals & Cash Needs", icon: CircleDollarSign, count: actions.filter(isStructuredWithdrawalAction).length },
     { value: "reports", label: "Monthly Reports", icon: FileBarChart, count: reports.length },
     { value: "actions", label: "Advisor Follow-up", icon: ListChecks, count: actions.filter((item) => !ACTION_TERMINAL_STATUSES.includes(item.status)).length },
@@ -795,6 +816,13 @@ export default function InvestorDetailClient({ investorId }) {
               )}
             </Card>
 
+            <InvestorProtectionSnapshotCard
+              investorId={investor.id}
+              compact
+              title="Protection at a glance"
+              onOpenProtection={() => setTab("protection")}
+            />
+
             <Card className="p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -858,6 +886,11 @@ export default function InvestorDetailClient({ investorId }) {
 
       {tab === "portfolio" ? (
         <div className="grid gap-5">
+          <InvestorProtectionSnapshotCard
+            investorId={investor.id}
+            title="Protection alongside the investment portfolio"
+            onOpenProtection={() => setTab("protection")}
+          />
           <InvestorPortfolioPanel investor={investor} editable />
 
           {investments.length ? (
@@ -906,6 +939,8 @@ export default function InvestorDetailClient({ investorId }) {
           </Card>
         </div>
       ) : null}
+
+      {tab === "protection" ? <InsuranceProtectionPanel investor={investor} editable /> : null}
 
       {tab === "reports" ? <InvestorReportsPanel investorId={investor.id} /> : null}
 

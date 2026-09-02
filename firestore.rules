@@ -666,6 +666,21 @@ service cloud.firestore {
       allow read, create, update, delete: if false;
     }
 
+    // Insurance & Protection is server-managed. Browser clients use authenticated
+    // API routes so policy identity, renewal links and reminder/audit fields cannot
+    // be forged or broadly queried.
+    match /insurancePolicies/{policyId} {
+      allow read, create, update, delete: if false;
+    }
+
+    match /insurancePolicyEvents/{eventId} {
+      allow read, create, update, delete: if false;
+    }
+
+    match /insuranceReminderEvents/{eventId} {
+      allow read, create, update, delete: if false;
+    }
+
     // Portfolio data is written only by authenticated server APIs. Clients may read
     // records that belong to them (investors) or to their assigned book (staff).
     match /portfolioPositions/{positionId} {

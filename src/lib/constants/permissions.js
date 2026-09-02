@@ -116,6 +116,17 @@ export const PERMISSION_GROUPS = [
         }
       },
       {
+        key: "insurance",
+        label: "Insurance & Protection",
+        description: "Maintain Investor life, health, vehicle, home and other protection policies, renewals and reminders.",
+        access: {
+          [USER_ROLES.SUPER_ADMIN]: ACCESS_LEVELS.FULL,
+          [USER_ROLES.ADMIN]: ACCESS_LEVELS.FULL,
+          [USER_ROLES.ADVISOR]: ACCESS_LEVELS.ASSIGNED,
+          [USER_ROLES.INVESTOR]: ACCESS_LEVELS.OWN
+        }
+      },
+      {
         key: "portfolio",
         label: "Daily Portfolio",
         description: "Update and review investor portfolio positions, valuations and daily snapshots.",

@@ -14,6 +14,7 @@ function notificationCategory(eventType = "") {
   if (value.includes("report")) return "reports";
   if (value.includes("meeting") || value.includes("mom") || value.includes("action")) return "meetings";
   if (value.includes("document")) return "documents";
+  if (value.includes("insurance")) return "insurance";
   return "general";
 }
 
@@ -33,6 +34,12 @@ function pushCopy(category, notification) {
     return {
       title: "Document update",
       body: "A secure document update is available in your GrowVest Investor App."
+    };
+  }
+  if (category === "insurance") {
+    return {
+      title: safeText(notification.title, "Insurance renewal reminder", 90),
+      body: "An insurance premium or renewal reminder is available in your GrowVest Investor App."
     };
   }
   if (category === "meetings") {

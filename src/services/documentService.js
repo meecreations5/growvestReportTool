@@ -76,7 +76,7 @@ export function subscribeInvestorPortalDocuments(investorId, callback, onError) 
   );
 }
 
-export async function requestInvestorDocument(investor, currentUser, { title, documentType, notes = "", dueDate = "" }) {
+export async function requestInvestorDocument(investor, currentUser, { title, documentType, notes = "", dueDate = "", insurancePolicyId = "", insurancePolicyNumber = "", sourceType = "" }) {
   if (!investor?.id || !currentUser?.id) throw new Error("Investor and staff profile are required.");
   if (!title?.trim()) throw new Error("Document title is required.");
   const batch = writeBatch(db);
@@ -91,6 +91,9 @@ export async function requestInvestorDocument(investor, currentUser, { title, do
     documentType: documentType || "Other",
     notes: notes.trim(),
     dueDate: dueDate || "",
+    insurancePolicyId: insurancePolicyId || null,
+    insurancePolicyNumber: insurancePolicyNumber || "",
+    sourceType: sourceType || "",
     status: "requested",
     investorVisible: true,
     storagePath: null,

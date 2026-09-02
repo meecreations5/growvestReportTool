@@ -17,6 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { subscribeInvestors } from "@/services/assessmentService";
 import { getDataImport, linkDataImportToReport } from "@/services/dataImportService";
 import { getPortfolioReportSource, updatePortfolioGoal } from "@/services/portfolioService";
+import { getInsuranceProtectionSnapshot } from "@/services/insuranceService";
 import { getInvestorProfileActionsForReportOnce, getOpenInvestorActionsOnce } from "@/services/actionService";
 import {
   getLatestInvestorReport,
@@ -518,6 +519,25 @@ export default function ReportForm({ reportId = null }) {
     applyDataImport();
     return () => { active = false; };
   }, [investors, loading, reportId, router, searchParams]);
+  useEffect(() => {
+    let active = true;
+    async function loadProtectionSnapshot() {
+      if (!form.investorId || !form.statementDate || form.status === "locked") return;
+      // Published/completed historical report snapshots remain frozen. Drafts refresh
+      // when the Investor or portfolio cutoff date changes.
+      if (form.status === "completed" && form.protectionSnapshot?.generatedAt) return;
+      try {
+        const snapshot = await getInsuranceProtectionSnapshot(form.investorId, form.statementDate);
+        if (!active) return;
+        setForm((current) => ({ ...current, protectionSnapshot: snapshot }));
+      } catch (nextError) {
+        console.warn("Insurance protection snapshot could not be loaded for the report", nextError);
+      }
+    }
+    loadProtectionSnapshot();
+    return () => { active = false; };
+  }, [form.investorId, form.statementDate, form.status]);
+
   const isLocked = form.status === "locked";
 
   const investorComplete = Boolean(form.investorId);

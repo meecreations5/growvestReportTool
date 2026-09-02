@@ -28,7 +28,7 @@ function walk(directory) {
 }
 
 const packageJson = JSON.parse(read("package.json"));
-assert(packageJson.version === "0.33.2", "package.json version is 0.33.2");
+assert(packageJson.version === "0.33.3", "package.json version is 0.33.3");
 
 const forbiddenTopLevel = [".env", ".env.local", ".git", ".next", "node_modules"];
 for (const item of forbiddenTopLevel) {
@@ -291,6 +291,47 @@ assert(portfolioCleanup.includes("cleanupBatchId") && portfolioCleanup.includes(
 
 const reportPublish = read("src/app/api/reports/[reportId]/publish/route.js");
 assert(reportPublish.includes("nextPublishedVersion") && reportPublish.includes("activePublishedVersionId") && reportPublish.includes("reportVersions"), "published Monthly Reports retain immutable version history");
+
+const insuranceConstants = read("src/lib/constants/insurance.js");
+const insuranceServer = read("src/lib/server/insuranceServer.js");
+const insuranceRoute = read("src/app/api/insurance/route.js");
+const insuranceImportRoute = read("src/app/api/insurance/import/route.js");
+const insuranceReminderCron = read("src/app/api/cron/insurance-reminders/route.js");
+const insuranceService = read("src/services/insuranceService.js");
+const insuranceCentre = read("src/components/insurance/InsuranceProtectionCentre.js");
+const insurancePanel = read("src/components/insurance/InsuranceProtectionPanel.js");
+const insuranceForm = read("src/components/insurance/InsurancePolicyForm.js");
+const investorProtectionSnapshot = read("src/components/insurance/InvestorProtectionSnapshotCard.js");
+const investorPortalPortfolio = read("src/app/investor/portfolio/page.js");
+const investorDetailPage = read("src/app/(portal)/investors/[investorId]/page.js");
+const insuranceIntegrationDoc = read("docs/INSURANCE_PROFILE_AND_PORTFOLIO_INTEGRATION_v0.33.3.md");
+const insuranceWorkflowDoc = read("docs/INVESTOR_INSURANCE_PROTECTION_v0.33.3.md");
+const insuranceManifest = read("docs/INSURANCE_PROTECTION_CODE_MANIFEST_v0.33.3.md");
+const insuranceRulesStart = firestoreRules.indexOf("match /insurancePolicies/{policyId}");
+const insuranceRulesEnd = firestoreRules.indexOf("match /insurancePolicyEvents/{eventId}");
+const insurancePolicyRules = insuranceRulesStart >= 0 && insuranceRulesEnd > insuranceRulesStart ? firestoreRules.slice(insuranceRulesStart, insuranceRulesEnd) : "";
+assert(insuranceConstants.includes('"Term Life"') && insuranceConstants.includes('"Health"') && insuranceConstants.includes('"Vehicle"') && insuranceConstants.includes('"Home"') && insuranceConstants.includes('"Travel"') && insuranceConstants.includes('"Cyber"') && insuranceConstants.includes("[60, 30, 15, 7, 1]"), "Insurance master supports standard life/health/vehicle/home/other policy types with 60/30/15/7/1 reminders");
+assert(insuranceServer.includes("buildInsuranceProtectionSnapshot") && insuranceServer.includes("parseInsuranceWorkbook") && insuranceServer.includes("insurancePolicyIdentity"), "Insurance server normalises policies, parses the Excel schema and builds a protection-only report snapshot");
+assert(insuranceRoute.includes("verifyAppRequest(request)") && insuranceRoute.includes("verifyStaffRequest(request)") && insuranceRoute.includes('action === "renew"') && insuranceRoute.includes("renewedFromPolicyId") && insuranceRoute.includes('policyStatus: "Renewed"'), "Insurance API is authenticated and preserves renewal history by creating a linked renewed policy");
+assert(insuranceImportRoute.includes("verifyStaffRequest(request)") && insuranceImportRoute.includes('action === "preview"') && insuranceImportRoute.includes('action !== "commit"') && insuranceImportRoute.includes("8 * 1024 * 1024"), "Insurance Excel import is staff-only, preview-first and file-size bounded");
+assert(insuranceReminderCron.includes("CRON_SECRET") && insuranceReminderCron.includes("insuranceReminderEvents") && insuranceReminderCron.includes('eventType: "insurance_due_reminder"') && insuranceReminderCron.includes("insuranceDueDates") && insuranceConstants.includes('kind: "own_damage"') && insuranceConstants.includes('kind: "third_party"'), "Insurance reminder cron is secret-protected, idempotent and covers premium/renewal/motor OD/TP dates");
+assert(insuranceService.includes("getInsurancePolicies") && insuranceService.includes("previewInsuranceWorkbook") && insuranceService.includes("importInsuranceWorkbook"), "Insurance client service exposes authenticated read/write and preview/import operations");
+assert(insuranceCentre.includes("GrowVest_Insurance_Policy_Template_v0.33.3.xlsx") && insuranceCentre.includes("GrowVest_Insurance_Policy_Filled_Sample_v0.33.3.xlsx") && insuranceCentre.includes("GrowVest_Manual_Investment_and_Insurance_Guide_v0.33.3.docx") && insuranceCentre.includes("Preview & validate"), "Insurance workspace exposes the blank template, filled example, guide and preview-first import workflow");
+assert(insurancePanel.includes("Insurance & Protection") && insurancePanel.includes("Cover amounts are intentionally excluded") && insurancePanel.includes("Renew") && insurancePanel.includes("Policy document"), "Insurance panel separates protection cover from investment corpus and supports renewals/documents");
+assert(insuranceForm.includes("Own Damage expiry") && insuranceForm.includes("Third Party expiry") && insuranceForm.includes("Covered members / family floater details") && insuranceForm.includes("Nominee / beneficiary"), "Manual insurance form contains standard type-specific health, motor and life fields");
+assert(navigation.includes('label: "Insurance & Protection"') && navigation.includes('href: "/insurance"') && investorDetail.includes('value: "protection"'), "Insurance & Protection is reachable from staff Portfolio navigation and Investor Profile");
+const investorNavigation = read("src/lib/constants/investorNavigation.js");
+assert(investorNavigation.includes('href: "/investor/insurance"') && fs.existsSync(path.join(root, "src", "app", "investor", "insurance", "page.js")), "Investor Portal includes a dedicated read-only Insurance & Protection page");
+assert(insurancePolicyRules.includes("allow read, create, update, delete: if false") && firestoreRules.includes("match /insurancePolicyEvents/{eventId}") && firestoreRules.includes("match /insuranceReminderEvents/{eventId}"), "Insurance financial/protection collections are server-managed and browser-inaccessible");
+assert(reportForm.includes("getInsuranceProtectionSnapshot") && investorPermissionReportService.includes("protectionSnapshot") && monthlyWealthReport.includes("Protection Snapshot") && reportPdf.includes("addProtectionPage") && monthlyPrintReport.includes("INSURANCE & PROTECTION"), "Monthly Report web/print/PDF flows include a frozen Insurance Protection Snapshot without changing portfolio corpus");
+assert(fs.existsSync(path.join(root, "public", "templates", "GrowVest_Insurance_Policy_Template_v0.33.3.xlsx")) && fs.existsSync(path.join(root, "public", "templates", "GrowVest_Insurance_Policy_Filled_Sample_v0.33.3.xlsx")) && fs.existsSync(path.join(root, "public", "guides", "GrowVest_Manual_Investment_and_Insurance_Guide_v0.33.3.docx")), "Insurance template, filled sample and explanatory guide are packaged with the application");
+assert(insuranceWorkflowDoc.includes("Insurance cover is never added to investment corpus") && insuranceWorkflowDoc.includes("60, 30, 15, 7 and 1") && insuranceWorkflowDoc.includes("renewal creates a new policy record"), "Insurance workflow documentation records corpus separation, reminder cadence and immutable renewal history");
+assert(insuranceManifest.includes("src/app/api/insurance/route.js") && insuranceManifest.includes("firestore.rules") && insuranceManifest.includes("MonthlyWealthReport.js"), "Insurance code manifest covers APIs, security rules and Monthly Report integration");
+assert(insuranceServer.includes("buildInsurancePortfolioOverview") && insuranceRoute.includes('searchParams.get("scope") === "portfolio"') && insuranceService.includes("getInsurancePortfolioOverview"), "Insurance exposes a staff-scoped consolidated protection overview for the Portfolio module");
+assert(portfolioOverview.includes("Insurance & Protection across the portfolio") && portfolioOverview.includes("Investor protection coverage") && portfolioOverview.includes("getInsurancePortfolioOverview") && portfolioOverview.includes("Protection values are kept completely outside Current Portfolio Value"), "Portfolio Overview surfaces aggregate protection and keeps it explicitly outside investment AUM");
+assert(investorProtectionSnapshot.includes("Protection cover is shown alongside wealth") && investorProtectionSnapshot.includes("getInsuranceProtectionSnapshot") && investorDetail.includes("InvestorProtectionSnapshotCard") && investorPortalPortfolio.includes("InvestorProtectionSnapshotCard"), "Investor Profile, staff Portfolio and Investor Portal Portfolio all surface the reusable Protection Snapshot");
+assert(investorDetailPage.includes("searchParams") && investorDetailPage.includes('"protection"') && investorDetailPage.includes('"portfolio"') && investorDetail.includes("initialTab"), "Investor Profile direct links can open Portfolio or Insurance & Protection tabs");
+assert(insuranceIntegrationDoc.includes("Investor Profile") && insuranceIntegrationDoc.includes("Portfolio Overview") && (insuranceIntegrationDoc.includes("excluded from Current Portfolio Value") || insuranceIntegrationDoc.includes("excluded from Current Portfolio Value, AUM")), "Insurance Profile/Portfolio integration is documented with corpus separation and UAT");
 
 const secureCompare = read("src/lib/server/secureCompare.js");
 assert(secureCompare.includes("MIN_SERVER_SECRET_LENGTH = 32"), "cron/webhook authentication rejects short server secrets");

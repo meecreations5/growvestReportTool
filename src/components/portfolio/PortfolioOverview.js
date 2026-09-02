@@ -5,11 +5,16 @@ import Link from "next/link";
 import {
   AlertTriangle,
   BadgeCheck,
+  BellRing,
+  CalendarClock,
   CandlestickChart,
   Clock3,
   FileUp,
+  HeartPulse,
   Loader2,
   Settings2,
+  ShieldCheck,
+  Umbrella,
   UsersRound,
   WalletCards
 } from "lucide-react";
@@ -24,16 +29,30 @@ import {
   PORTFOLIO_RECONCILIATION_STATUS,
   PORTFOLIO_SOURCE_LABELS
 } from "@/lib/constants/portfolio";
-import { formatCurrency } from "@/lib/utils/format";
+import { formatCurrency, formatDate } from "@/lib/utils/format";
 import {
   getDailyPortfolioCoverage,
   getPortfolioReconciliation
 } from "@/services/portfolioService";
+import { getInsurancePortfolioOverview } from "@/services/insuranceService";
 
 function statusClasses(status) {
   if (status === PORTFOLIO_RECONCILIATION_STATUS.VERIFIED) return "bg-emerald-50 text-emerald-700 ring-emerald-200";
   if ([PORTFOLIO_RECONCILIATION_STATUS.MISMATCH, PORTFOLIO_RECONCILIATION_STATUS.OWNERSHIP_CONFLICT].includes(status)) return "bg-red-50 text-red-700 ring-red-200";
   return "bg-amber-50 text-amber-800 ring-amber-200";
+}
+
+function protectionDueText(due) {
+  if (!due?.date) return "No due date";
+  const days = due.daysUntil;
+  const timing = days === null || days === undefined
+    ? ""
+    : days < 0
+      ? `${Math.abs(days)}d overdue`
+      : days === 0
+        ? "Today"
+        : `in ${days}d`;
+  return `${due.label || "Next due"} · ${formatDate(due.date)}${timing ? ` · ${timing}` : ""}`;
 }
 
 export default function PortfolioOverview() {
@@ -42,6 +61,9 @@ export default function PortfolioOverview() {
   const [coverage, setCoverage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [protection, setProtection] = useState(null);
+  const [protectionLoading, setProtectionLoading] = useState(true);
+  const [protectionError, setProtectionError] = useState("");
   const canAdminister = ADMIN_ROLES.includes(profile?.role);
 
   useEffect(() => {
@@ -61,6 +83,17 @@ export default function PortfolioOverview() {
     }).finally(() => {
       if (active) setLoading(false);
     });
+
+    setProtectionLoading(true);
+    setProtectionError("");
+    getInsurancePortfolioOverview().then((result) => {
+      if (active) setProtection(result);
+    }).catch((nextError) => {
+      if (active) setProtectionError(nextError?.message || "Unable to load Insurance & Protection overview.");
+    }).finally(() => {
+      if (active) setProtectionLoading(false);
+    });
+
     return () => { active = false; };
   }, [profile?.id, canAdminister]);
 
@@ -107,6 +140,37 @@ export default function PortfolioOverview() {
       <MetricCard label="Updated Today" value={coverage?.updatedCount ?? (loading ? "—" : 0)} helper={`${coverage?.missingCount || 0} Fundbazaar missing`} icon={BadgeCheck} tone={coverage?.missingCount ? "amber" : "green"} />
       <MetricCard label="Needs Portfolio Review" value={Number(summary.investors || 0) - Number(summary.verified || 0)} helper={`${staleCount} stale/missing · ${summary.mismatch || 0} mismatch`} icon={AlertTriangle} tone={Number(summary.investors || 0) - Number(summary.verified || 0) ? "amber" : "green"} />
     </div>
+
+    <Card className="overflow-hidden">
+      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 p-5 sm:flex-row sm:items-start">
+        <div className="flex gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-700"><ShieldCheck size={21} /></span>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-700">Protection alongside wealth</p>
+            <h2 className="mt-1 font-heading text-xl font-bold text-slate-950">Insurance & Protection across the portfolio</h2>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">Life, health, vehicle, home and other covers are visible here for planning and renewal control. Protection values are kept completely outside Current Portfolio Value, AUM and Bucket List corpus.</p>
+          </div>
+        </div>
+        <Link href="/insurance" className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-blue-700 hover:bg-blue-100">Manage Insurance & Protection</Link>
+      </div>
+
+      {protectionError ? <div className="m-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">{protectionError}</div> : null}
+
+      <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        {[
+          ["Investors protected", protectionLoading && !protection ? "—" : protection?.summary?.investorsWithProtection || 0, UsersRound, "bg-blue-50 text-blue-700"],
+          ["Active policies", protectionLoading && !protection ? "—" : protection?.summary?.activePolicyCount || 0, ShieldCheck, "bg-blue-50 text-blue-700"],
+          ["Life cover", protectionLoading && !protection ? "—" : formatCurrency(protection?.summary?.lifeCover || 0), Umbrella, "bg-violet-50 text-violet-700"],
+          ["Health cover", protectionLoading && !protection ? "—" : formatCurrency(protection?.summary?.healthCover || 0), HeartPulse, "bg-emerald-50 text-emerald-700"],
+          ["Expiring ≤30 days", protectionLoading && !protection ? "—" : protection?.summary?.policiesExpiringWithin30Days || 0, CalendarClock, "bg-amber-50 text-amber-700"],
+          ["Premiums due ≤30 days", protectionLoading && !protection ? "—" : protection?.summary?.premiumsDueWithin30Days || 0, BellRing, "bg-amber-50 text-amber-700"]
+        ].map(([label, value, Icon, tone]) => <div key={label} className="rounded-xl border border-slate-200 bg-white p-4"><span className={`grid h-9 w-9 place-items-center rounded-lg ${tone}`}><Icon size={17} /></span><p className="mt-3 text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">{label}</p><p className="mt-1 font-heading text-xl font-bold text-slate-950 tabular-nums">{value}</p></div>)}
+      </div>
+
+      {protection?.attentionItems?.length ? <div className="border-t border-slate-200 p-5"><div className="flex items-end justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-amber-700">Upcoming protection attention</p><h3 className="mt-1 font-heading text-lg font-bold text-slate-950">Premiums and renewals due within 30 days</h3></div><span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">{protection.summary?.attentionItemCount || protection.attentionItems.length} due item(s)</span></div><div className="mt-4 grid gap-2 lg:grid-cols-2">{protection.attentionItems.slice(0, 6).map((item, index) => <Link key={`${item.investorId}-${item.policyId}-${item.kind}-${index}`} href={`/investors/${item.investorId}?tab=protection`} className="rounded-xl border border-slate-200 p-3 transition hover:border-blue-200 hover:bg-blue-50/30"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-950">{item.investorName}</p><p className="mt-0.5 truncate text-xs font-semibold text-blue-700">{item.productName} · {item.insuranceType}</p></div><span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${Number(item.daysUntil) < 0 ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}>{Number(item.daysUntil) < 0 ? `${Math.abs(Number(item.daysUntil))}d overdue` : Number(item.daysUntil) === 0 ? "Today" : `${item.daysUntil}d`}</span></div><p className="mt-2 text-xs text-slate-500">{item.label} · {formatDate(item.date)} · Policy {item.policyNumber || "—"}</p></Link>)}</div></div> : !protectionLoading && !protectionError ? <div className="border-t border-slate-200 p-5 text-sm font-semibold text-emerald-700">No insurance premium or renewal is due within the next 30 days.</div> : null}
+    </Card>
+
+    {protection?.rows?.length ? <Card className="overflow-hidden"><div className="flex flex-col justify-between gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-end"><div><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-blue-700">Investor protection coverage</p><h2 className="mt-1 font-heading text-xl font-bold text-slate-950">Protection within the consolidated portfolio view</h2><p className="mt-1 text-sm text-slate-500">Each investor's protection is visible next to the portfolio without being counted as an investment asset.</p></div><Link href="/insurance" className="text-sm font-bold text-blue-700">Open full insurance workspace →</Link></div><div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400"><th className="px-5 py-3">Investor</th><th className="px-5 py-3 text-right">Policies</th><th className="px-5 py-3 text-right">Life cover</th><th className="px-5 py-3 text-right">Health cover</th><th className="px-5 py-3">Next premium / renewal</th></tr></thead><tbody>{protection.rows.slice(0, 10).map((row) => <tr key={row.investorId} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60"><td className="px-5 py-3.5"><Link href={`/investors/${row.investorId}?tab=protection`} className="font-bold text-slate-950 hover:text-blue-700">{row.investorName}</Link><p className="mt-0.5 text-xs text-slate-400">{row.clientCode || "Client code pending"}</p></td><td className="px-5 py-3.5 text-right font-bold text-slate-800 tabular-nums">{row.activePolicyCount}</td><td className="px-5 py-3.5 text-right font-bold text-slate-800 tabular-nums">{formatCurrency(row.lifeCover)}</td><td className="px-5 py-3.5 text-right font-bold text-slate-800 tabular-nums">{formatCurrency(row.healthCover)}</td><td className={`px-5 py-3.5 text-xs font-semibold ${row.nextDue?.daysUntil !== null && row.nextDue?.daysUntil !== undefined && row.nextDue.daysUntil <= 30 ? "text-amber-700" : "text-slate-600"}`}>{protectionDueText(row.nextDue)}</td></tr>)}</tbody></table></div>{protection.rows.length > 10 ? <div className="border-t border-slate-200 p-4 text-center"><Link href="/insurance" className="text-sm font-bold text-blue-700">View all {protection.rows.length} investors with protection →</Link></div> : null}</Card> : null}
 
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
       <Card className="overflow-hidden"><div className="border-b border-slate-200 p-5"><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-violet-700">Portfolio health</p><h2 className="mt-1 font-heading text-xl font-bold text-slate-950">Exceptions needing staff attention</h2><p className="mt-1 text-sm text-slate-500">This is a health summary, not another workflow module. Resolve the underlying issue through Daily Portfolio Update or the investor's Portfolio Administration page.</p></div>{loading && !reconciliation ? <div className="grid min-h-52 place-items-center text-sm font-semibold text-slate-500"><Loader2 className="animate-spin" /></div> : exceptions.length ? <div className="divide-y divide-slate-100">{exceptions.map((row) => <div key={row.investorId} className="p-4 sm:p-5"><div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start"><div><p className="font-bold text-slate-950">{row.investorName}</p><p className="mt-0.5 text-xs text-slate-500">{row.clientCode || "No client code"} · {formatCurrency(row.portfolioValue)}</p></div><span className={`inline-flex self-start rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${statusClasses(row.reconciliationStatus)}`}>{PORTFOLIO_RECONCILIATION_LABELS[row.reconciliationStatus] || "Needs Review"}</span></div><p className="mt-2 text-xs leading-5 text-slate-600">{row.issues?.[0]?.description || `${row.issueCount || 0} portfolio issue(s) require review.`}</p><Link href={`/investors/${row.investorId}?tab=portfolio`} className="mt-2 inline-flex text-xs font-bold text-blue-700">Open Investor Portfolio →</Link></div>)}</div> : <div className="p-6"><EmptyState title="Portfolio health is clear" description="No current portfolio exceptions require staff attention." /></div>}</Card>

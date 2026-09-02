@@ -753,6 +753,45 @@ function addCommentaryPage(doc, fonts, report, template, theme) {
   });
 }
 
+function addProtectionPage(doc, fonts, report, template, theme) {
+  const protection = report.protectionSnapshot || null;
+  const policies = protection?.policies || [];
+  const summary = protection?.summary || {};
+  if (!protection || (!policies.length && !Number(summary.activePolicyCount || 0))) return;
+  const page = addPage(doc, fonts, report, template, theme, "Insurance & Protection");
+  page.drawText("PROTECTION SNAPSHOT", { x: PDF_MARGIN, y: 713, size: 8, font: fonts.bold, color: theme.primary });
+  page.drawText("Protection cover is separate from investment portfolio corpus.", { x: PDF_MARGIN, y: 694, size: 7.2, font: fonts.regular, color: MUTED });
+  const gap = 10;
+  const width = (CONTENT_WIDTH - gap * 3) / 4;
+  [
+    ["Active Policies", String(Number(summary.activePolicyCount || 0))],
+    ["Life Cover", compactMoney(summary.lifeCover || 0)],
+    ["Health Cover", compactMoney(summary.healthCover || 0)],
+    ["Due <=30 Days", String(Number(summary.policiesExpiringWithin30Days || 0) + Number(summary.premiumsDueWithin30Days || 0))]
+  ].forEach(([label, value], index) => drawMetricCard(page, fonts, theme, { x: PDF_MARGIN + index * (width + gap), y: 585, width, label, value }));
+
+  let y = 548;
+  const rowHeight = 46;
+  if (!policies.length) {
+    drawEmptyState(page, fonts, "No active insurance policy details were included in this reporting snapshot.", 500);
+    return;
+  }
+  page.drawRectangle({ x: PDF_MARGIN, y: y - 3, width: CONTENT_WIDTH, height: 22, color: LIGHT });
+  const headers = [["TYPE", PDF_MARGIN + 8], ["POLICY", 135], ["COVER", 340], ["NEXT DUE", 420], ["STATUS", 510]];
+  headers.forEach(([label, x]) => page.drawText(label, { x, y: y + 5, size: 6.3, font: fonts.bold, color: MUTED }));
+  y -= 30;
+  policies.slice(0, 9).forEach((item) => {
+    page.drawLine({ start: { x: PDF_MARGIN, y: y - 8 }, end: { x: PDF_MARGIN + CONTENT_WIDTH, y: y - 8 }, thickness: 0.5, color: BORDER });
+    drawTextBlock(page, item.insuranceType || "Other", { x: PDF_MARGIN + 8, y: y + 13, width: 70, font: fonts.bold, size: 7.2, color: INK, maxLines: 2, lineHeight: 9 });
+    drawTextBlock(page, `${item.productName || "Insurance Policy"}\n${item.insurer || ""} | ${item.policyNumber || ""}`, { x: 135, y: y + 13, width: 190, font: fonts.regular, size: 7, color: INK, maxLines: 3, lineHeight: 9 });
+    drawRightText(page, compactMoney(item.coverAmount || 0), { right: 405, y: y + 8, font: fonts.bold, size: 7.2, color: INK, maxWidth: 65 });
+    drawTextBlock(page, item.nextDueDate ? `${item.nextDueType || "Due"}\n${dateText(item.nextDueDate)}` : "-", { x: 420, y: y + 13, width: 82, font: fonts.regular, size: 6.8, color: MUTED, maxLines: 2, lineHeight: 9 });
+    drawTextBlock(page, item.policyStatus || "Active", { x: 510, y: y + 9, width: 52, font: fonts.bold, size: 6.7, color: INK, maxLines: 2, lineHeight: 9 });
+    y -= rowHeight;
+  });
+  if (policies.length > 9) page.drawText(`+ ${policies.length - 9} additional active policy record(s) in the GrowVest portal.`, { x: PDF_MARGIN, y: 90, size: 7.2, font: fonts.regular, color: MUTED });
+}
+
 function addFinancialPlanPage(doc, fonts, report, template, theme) {
   const plan = report.financialPlan || {};
   const allocations = plan.surplusAllocations || [];
@@ -914,7 +953,10 @@ export async function generateMonthlyReportPdf(report, { history = [] } = {}) {
       addTradingSummaryPage(doc, fonts, normalizedReport, template, theme);
     },
     transactions: () => addTransactionsPages(doc, fonts, normalizedReport, template, theme),
-    commentary: () => addCommentaryPage(doc, fonts, normalizedReport, template, theme),
+    commentary: () => {
+      addProtectionPage(doc, fonts, normalizedReport, template, theme);
+      addCommentaryPage(doc, fonts, normalizedReport, template, theme);
+    },
     actions: () => {
       addFinancialPlanPage(doc, fonts, normalizedReport, template, theme);
       addActionsPages(doc, fonts, normalizedReport, template, theme);

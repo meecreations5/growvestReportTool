@@ -29,6 +29,7 @@ const PUSH_CATEGORIES = [
   { key: "reports", label: "Reports", description: "New monthly reports and published revisions." },
   { key: "meetings", label: "Meetings & MOM", description: "Review schedules, reminders and meeting summaries." },
   { key: "documents", label: "Documents", description: "New documents and document-status updates." },
+  { key: "insurance", label: "Insurance & renewals", description: "Premium, renewal and policy expiry reminders." },
   { key: "general", label: "General updates", description: "Important GrowVest service announcements." }
 ];
 
@@ -37,6 +38,7 @@ function iconFor(item) {
   if (type.includes("report")) return FileBarChart2;
   if (type.includes("meeting") || type.includes("mom")) return CalendarClock;
   if (type.includes("document")) return FileText;
+  if (type.includes("insurance")) return ShieldCheck;
   if (type.includes("announcement")) return Megaphone;
   return BellRing;
 }
@@ -66,7 +68,7 @@ function pushDescription(notifications) {
   if (!notifications.pushSupported) return "This browser does not support web push notifications.";
   if (!notifications.pushConfigured) return "Web Push is not configured for this deployment yet.";
   if (notifications.pushPermission === "denied") return "Notifications are blocked. Enable them from the browser or phone site settings.";
-  if (notifications.pushEnabled) return "Receive report, meeting and document alerts even when the GrowVest app is closed.";
+  if (notifications.pushEnabled) return "Receive report, meeting, insurance and document alerts even when the GrowVest app is closed.";
   return "Enable alerts on this phone or computer for important Investor Portal updates.";
 }
 

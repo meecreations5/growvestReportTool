@@ -467,6 +467,12 @@ export function createReportFromInvestor(investor, month = new Date().getMonth()
       investmentGain: 0
     },
     holdings,
+    protectionSnapshot: {
+      asOfDate: getReportPeriodCutoffDate(year, month),
+      generatedAt: null,
+      summary: { activePolicyCount: 0, totalPolicyCount: 0, lifeCover: 0, healthCover: 0, vehiclePolicyCount: 0, homePolicyCount: 0, policiesExpiringWithin30Days: 0, premiumsDueWithin30Days: 0, nextDue: null, upcomingDueItems: [], overdueDueItems: [] },
+      policies: []
+    },
     financialPlan: {
       monthlySurplus: Number(investor?.personalProfile?.monthlySurplus || 0),
       surplusMode: investor?.personalProfile?.monthlySurplusMode || "fixed",

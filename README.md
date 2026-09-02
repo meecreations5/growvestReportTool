@@ -1,3 +1,16 @@
+## Version 0.33.3 - Investor Insurance & Protection Management
+
+- Added **Insurance & Protection** as a separate protection layer inside Portfolio Management and Investor Profile without adding insurance cover to investment AUM/corpus.
+- Supports Term/Whole Life/Endowment/ULIP Insurance, Health/Critical Illness/Personal Accident, Vehicle, Home, Travel, Cyber and Other policies with standard and type-specific fields.
+- Added manual policy entry/editing, policy status controls, secure policy-document upload, renewal history and a dedicated read-only Investor Portal page.
+- Renewal creates a new linked policy and retains the previous policy as `Renewed` instead of overwriting history.
+- Added a production Insurance Excel template, filled illustrative sample and explanatory Manual Investment & Insurance guide with preview-first import.
+- Added configurable automatic reminders with the standard **60/30/15/7/1-day** cadence for premium due, renewal/expiry and separate Vehicle Own Damage / Third Party expiry dates.
+- Added a `CRON_SECRET`-protected daily `/api/cron/insurance-reminders` endpoint with deterministic reminder-event de-duplication and Advisor/Investor notifications.
+- Monthly Reports now persist and render a separate **Protection Snapshot** in web, print and generated PDF output.
+- Insurance Firestore collections remain server-managed and are not directly readable/writable by browser clients.
+- See `docs/INVESTOR_INSURANCE_PROTECTION_v0.33.3.md` and `docs/INSURANCE_PROTECTION_CODE_MANIFEST_v0.33.3.md` for workflow, deployment and UAT.
+
 # GrowVest Investor & Monthly Report Tool
 
 Standalone Next.js application for GrowVest investor operations, portfolio management, daily imports, goals/bucket lists, MOMs, investor actions and monthly portfolio reporting.
@@ -679,3 +692,7 @@ Monthly Reports now default to the previous completed calendar month, automatica
 ## v0.33.2 Profile Withdrawal + Report Delete workflow
 
 The Investor Profile is now the single source for planned Mutual Fund withdrawals/cash needs, including multiple funds per Bucket List and per-fund SIP Continue/Pause/Stop instructions. Draft Monthly Reports auto-fetch these Profile actions as read-only context, actual completion updates Portfolio Master, and provider redemptions reconcile against provisional action transactions to prevent double counting. Monthly Reports can also be deleted through a controlled, audited server workflow without deleting Portfolio Master, Bucket Lists, Investor Actions or financial transactions. See `docs/PROFILE_WITHDRAWAL_REPORT_DELETE_WORKFLOW_v0.33.2.md`.
+
+## v0.33.3 - Insurance integrated into Investor Profile and Portfolio
+
+Insurance & Protection is now surfaced directly inside the Investor Profile Overview, the Investor Portfolio, the Investor Portal Portfolio, and the consolidated Portfolio Overview. Portfolio Management now shows aggregate life/health cover, active policy counts, upcoming premium/renewal attention and investor-level protection rows while keeping every insurance cover amount outside investment AUM/current value/Bucket List corpus. Direct Investor links using `?tab=portfolio` or `?tab=protection` now open the requested profile section. See `docs/INSURANCE_PROFILE_AND_PORTFOLIO_INTEGRATION_v0.33.3.md`.

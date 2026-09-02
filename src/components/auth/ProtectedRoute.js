@@ -15,6 +15,7 @@ const ROUTE_PERMISSIONS = [
   ["/market-commentary", "commentary"],
   ["/email-delivery", "delivery"],
   ["/data-imports", "imports"],
+  ["/insurance", "insurance"],
   ["/servicing", "servicing"],
   ["/investors", "investors"],
   ["/meetings", "meetings"],

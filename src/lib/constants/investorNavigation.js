@@ -1,8 +1,9 @@
-import { BellRing, CalendarClock, FileBarChart2, Files, KeyRound, LayoutDashboard, ListChecks, Target, UserRound, WalletCards, CircleDollarSign } from "lucide-react";
+import { BellRing, CalendarClock, FileBarChart2, Files, KeyRound, LayoutDashboard, ListChecks, Target, UserRound, WalletCards, CircleDollarSign, ShieldCheck } from "lucide-react";
 
 export const INVESTOR_NAV_ITEMS = [
   { label: "Home", href: "/investor/dashboard", icon: LayoutDashboard, mobile: true },
   { label: "Portfolio", href: "/investor/portfolio", icon: WalletCards, mobile: true },
+  { label: "Insurance", href: "/investor/insurance", icon: ShieldCheck },
   { label: "Reports", href: "/investor/reports", icon: FileBarChart2, mobile: true },
   { label: "Goals", href: "/investor/goals", icon: Target, mobile: true },
   { label: "Advisor Follow-up", href: "/investor/actions", icon: ListChecks },

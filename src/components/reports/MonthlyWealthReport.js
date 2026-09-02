@@ -186,6 +186,9 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
   const goals = report.goals || [];
   const hasGoals = goals.length > 0;
   const tradingSummary = report.tradingSummary || null;
+  const protectionSnapshot = report.protectionSnapshot || null;
+  const protectionSummary = protectionSnapshot?.summary || {};
+  const protectionPolicies = protectionSnapshot?.policies || [];
   const financialPlan = report.financialPlan || {};
   const surplusAllocations = financialPlan.surplusAllocations || [];
   const loans = financialPlan.loans || [];
@@ -499,6 +502,12 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
           </>
         ) : <div className="m-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">No transaction-level data was recorded for this report.</div>}
       </SectionCard>
+
+      {protectionSnapshot && (protectionPolicies.length || Number(protectionSummary.activePolicyCount || 0) > 0) ? <SectionCard id="report-protection" style={sectionStyle("commentary", -2)} className="scroll-mt-32 p-5 sm:p-6">
+        <div><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">Insurance & Protection</p><h2 className="mt-1 text-lg font-black text-slate-950">Protection Snapshot</h2><p className="mt-1 text-sm text-slate-400">Protection coverage is tracked separately and is not included in the investment portfolio corpus.</p></div>
+        <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">{[["Active Policies", Number(protectionSummary.activePolicyCount || 0)], ["Life Cover", compactCurrency(protectionSummary.lifeCover || 0)], ["Health Cover", compactCurrency(protectionSummary.healthCover || 0)], ["Due ≤30 Days", Number(protectionSummary.policiesExpiringWithin30Days || 0) + Number(protectionSummary.premiumsDueWithin30Days || 0)]].map(([label,value]) => <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-2 text-xl font-black text-slate-950">{value}</p></div>)}</div>
+        {protectionPolicies.length ? <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200"><table className="min-w-[760px] w-full text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr>{["Type", "Policy", "Cover", "Premium", "Next Due", "Status"].map((label) => <th key={label} className="px-4 py-3 font-bold">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{protectionPolicies.slice(0,12).map((item) => <tr key={item.id || item.policyNumber}><td className="px-4 py-3 font-semibold text-slate-700">{item.insuranceType}</td><td className="px-4 py-3"><p className="font-bold text-slate-950">{item.productName}</p><p className="text-xs text-slate-400">{item.insurer} · {item.policyNumber}</p></td><td className="px-4 py-3 font-bold">{compactCurrency(item.coverAmount || 0)}</td><td className="px-4 py-3">{compactCurrency(item.premiumAmount || 0)}{item.premiumFrequency ? ` · ${item.premiumFrequency}` : ""}</td><td className="px-4 py-3">{item.nextDueDate ? `${item.nextDueType || "Due"} · ${formatDate(item.nextDueDate)}` : "—"}</td><td className="px-4 py-3 font-semibold">{item.policyStatus || "Active"}</td></tr>)}</tbody></table></div> : null}
+      </SectionCard> : null}
 
       {(Number(financialPlan.monthlySurplus || 0) > 0 || surplusAllocations.length || loans.length) ? <SectionCard id="report-financial-plan" style={sectionStyle("commentary", -1)} className="scroll-mt-32 p-5 sm:p-6">
         <div><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">Cash Flow & Debt</p><h2 className="mt-1 text-lg font-black text-slate-950">Surplus Allocation & Loan Position</h2><p className="mt-1 text-sm text-slate-400">Planning information as captured in the investor profile and reviewed for this report.</p></div>

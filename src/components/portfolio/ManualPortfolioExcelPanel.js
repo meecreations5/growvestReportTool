@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FileSpreadsheet, Loader2, Upload } from "lucide-react";
+import { Download, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { inputClassName } from "@/components/ui/Field";
@@ -53,6 +53,7 @@ export default function ManualPortfolioExcelPanel({ investorId, onImported }) {
 
   return <Card className="p-5 sm:p-6">
     <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-700">Manual account management</p><h2 className="mt-1 font-heading text-2xl font-bold text-slate-950">Upload Manual Investment Excel</h2><p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">Use this for investments GrowVest maintains manually instead of receiving through a provider import. The investor is already selected. Upload the simplified Manual Investments sheet; optional transaction history can be included in the Transactions (Optional) sheet.</p></div><Button type="button" variant="secondary" onClick={downloadTemplate} disabled={Boolean(busy)}>{busy === "template" ? <Loader2 size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />} Download Manual Investment Template</Button></div>
+    <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold"><a href="/templates/GrowVest_Manual_Investment_Filled_Sample_v0.33.2.xlsx" download className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-blue-700"><Download size={14}/> Filled sample with actual-style data</a><a href="/guides/GrowVest_Manual_Investment_and_Insurance_Guide_v0.33.3.docx" download className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-slate-700"><Download size={14}/> Explanatory guide</a></div>
     {error ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div> : null}
     {notice ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{notice}</div> : null}
     <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px_auto] lg:items-end">
