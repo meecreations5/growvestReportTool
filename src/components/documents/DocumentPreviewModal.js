@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Download, FileText, X } from "lucide-react";
+import { Download, FileText, LoaderCircle, X } from "lucide-react";
 
 function isImage(preview = {}) {
   const mime = String(preview.mimeType || "").toLowerCase();
@@ -33,7 +33,7 @@ export default function DocumentPreviewModal({ preview, onClose, onDownload }) {
     };
   }, [preview, onClose]);
 
-  if (!preview?.url || typeof document === "undefined") return null;
+  if (!preview || typeof document === "undefined") return null;
 
   return createPortal((
     <div className="fixed inset-0 z-[260] flex items-end justify-center bg-slate-950/70 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={`Preview ${preview.fileName || "document"}`}>
@@ -62,12 +62,20 @@ export default function DocumentPreviewModal({ preview, onClose, onDownload }) {
         </header>
 
         <div className="min-h-0 flex-1 bg-slate-100 p-2 sm:p-4">
-          {isImage(preview) ? (
+          {preview.loading ? (
+            <div className="grid h-full place-items-center rounded-xl border border-slate-200 bg-white p-6 text-center">
+              <div>
+                <LoaderCircle size={32} className="mx-auto animate-spin text-blue-600" />
+                <p className="mt-4 font-semibold text-slate-800">Opening secure document…</p>
+                <p className="mt-1 text-sm text-slate-500">The preview will appear here as soon as the file is ready.</p>
+              </div>
+            </div>
+          ) : isImage(preview) && preview.url ? (
             <div className="grid h-full place-items-center overflow-auto rounded-xl bg-white p-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={preview.url} alt={preview.title || preview.fileName || "Investor document"} className="max-h-full max-w-full object-contain" />
             </div>
-          ) : isPdf(preview) ? (
+          ) : isPdf(preview) && preview.url ? (
             <div className="h-full overflow-hidden rounded-xl border border-slate-200 bg-white">
               <iframe src={preview.url} title={preview.fileName || "Investor PDF document"} className="h-full w-full bg-white" />
             </div>

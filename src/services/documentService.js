@@ -10,8 +10,9 @@ import {
   where,
   writeBatch
 } from "firebase/firestore";
-import { deleteObject, getBlob, ref, uploadBytes } from "firebase/storage";
+import { deleteObject, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "@/lib/firebase/client";
+import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
 import { notifyInvestorDocumentUploaded } from "@/services/communicationService";
 import { refreshInvestorStatusSummary } from "@/services/investorStatusService";
 
@@ -200,9 +201,55 @@ export async function updateInvestorDocumentStatus(documentRecord, currentUser, 
   try { await refreshInvestorStatusSummary(documentRecord.investorId); } catch (error) { console.warn("Investor status summary could not be refreshed", error); }
 }
 
-export async function downloadInvestorDocument(documentRecord) {
-  if (!documentRecord?.storagePath) throw new Error("No file has been uploaded for this document.");
-  const blob = await getBlob(ref(storage, documentRecord.storagePath));
+async function fetchInvestorDocumentBlob(documentRecord, { signal } = {}) {
+  if (!documentRecord?.id || !documentRecord?.storagePath) {
+    throw new Error("No file has been uploaded for this document.");
+  }
+
+  const headers = await authenticatedApiHeaders();
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeoutId = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 45000);
+  const abortFromCaller = () => controller.abort();
+  signal?.addEventListener("abort", abortFromCaller, { once: true });
+
+  try {
+    const response = await fetch(`/api/investor-documents/${encodeURIComponent(documentRecord.id)}/file`, {
+      method: "GET",
+      headers,
+      signal: controller.signal,
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || "The document could not be loaded.");
+    }
+
+    const sourceBlob = await response.blob();
+    const mimeType = documentRecord.mimeType || sourceBlob.type || response.headers.get("content-type") || "application/octet-stream";
+    const blob = sourceBlob.type === mimeType
+      ? sourceBlob
+      : sourceBlob.slice(0, sourceBlob.size, mimeType);
+
+    return { blob, mimeType };
+  } catch (error) {
+    if (controller.signal.aborted) {
+      if (signal?.aborted) throw error;
+      if (timedOut) throw new Error("The document is taking too long to open. Please try again.");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+    signal?.removeEventListener("abort", abortFromCaller);
+  }
+}
+
+export async function downloadInvestorDocument(documentRecord, options = {}) {
+  const { blob } = await fetchInvestorDocumentBlob(documentRecord, options);
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -213,23 +260,15 @@ export async function downloadInvestorDocument(documentRecord) {
   URL.revokeObjectURL(url);
 }
 
-export async function viewInvestorDocument(documentRecord) {
-  if (!documentRecord?.storagePath) throw new Error("No file has been uploaded for this document.");
-
-  const sourceBlob = await getBlob(ref(storage, documentRecord.storagePath));
-  const mimeType = documentRecord.mimeType || sourceBlob.type || "application/octet-stream";
-  // Preserve the verified metadata MIME type. Some Storage downloads can lose
-  // their content type, which makes browser PDF preview render as a blank/black page.
-  const previewBlob = sourceBlob.type === mimeType
-    ? sourceBlob
-    : sourceBlob.slice(0, sourceBlob.size, mimeType);
-  const url = URL.createObjectURL(previewBlob);
+export async function viewInvestorDocument(documentRecord, options = {}) {
+  const { blob, mimeType } = await fetchInvestorDocumentBlob(documentRecord, options);
+  const url = URL.createObjectURL(blob);
 
   return {
     url,
     mimeType,
     fileName: documentRecord.fileName || "GrowVest-document",
-    sizeBytes: documentRecord.sizeBytes || previewBlob.size || 0
+    sizeBytes: documentRecord.sizeBytes || blob.size || 0
   };
 }
 

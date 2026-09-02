@@ -6,12 +6,12 @@ The Investor Profile **Access & Documents** tab keeps Download and now opens upl
 
 - Staff can use **View** before or after verification without leaving the Investor Profile.
 - Investors can use the same popup from **Investor Portal → Documents**.
-- The preview reads the existing protected Firebase Storage object and creates only a temporary browser Object URL.
-- PDF MIME type is preserved before preview so the browser does not fall back to an empty/black standalone tab.
+- The preview reads the existing protected Firebase Storage object through an authenticated same-origin server endpoint, then creates only a temporary browser Object URL. This avoids browser Firebase Storage/CORS stalls while preserving GrowVest access checks.
+- The popup opens immediately with a secure loading state while the file is fetched. PDF MIME type is preserved before preview so the browser does not fall back to an empty/black standalone tab.
 - Closing the popup releases the temporary Object URL.
 - Download remains available inside the popup and on the document card.
 
-No public document URL is created and document ownership/verification state is not changed by viewing.
+No public document URL is created, the file response is private/no-store, and document ownership/verification state is not changed by viewing.
 
 ## 2. Manual Investment Template incorporated into GrowVest
 

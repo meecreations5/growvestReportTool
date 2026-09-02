@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   Download,
@@ -52,6 +52,7 @@ export default function InvestorDocumentsPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [preview, setPreview] = useState(null);
+  const previewAbortRef = useRef(null);
 
   useEffect(() => {
     if (!profile?.investorId) return () => {};
@@ -81,6 +82,10 @@ export default function InvestorDocumentsPage() {
     if (preview?.url) URL.revokeObjectURL(preview.url);
   }, [preview?.url]);
 
+  useEffect(() => () => {
+    previewAbortRef.current?.abort();
+  }, []);
+
   const counts = useMemo(
     () => ({
       requested: documents.filter((item) => item.status === "requested" || item.status === "rejected" || item.status === "expired").length,
@@ -92,7 +97,8 @@ export default function InvestorDocumentsPage() {
 
   async function handleUpload(item, file) {
     if (!file) return;
-    setWorkingId(item.id);
+    const actionKey = `upload:${item.id}`;
+    setWorkingId(actionKey);
     setError("");
     setNotice("");
 
@@ -102,12 +108,13 @@ export default function InvestorDocumentsPage() {
     } catch (nextError) {
       setError(nextError?.message || "The document could not be uploaded.");
     } finally {
-      setWorkingId("");
+      setWorkingId((current) => current === actionKey ? "" : current);
     }
   }
 
   async function handleDownload(item) {
-    setWorkingId(item.id);
+    const actionKey = `download:${item.id}`;
+    setWorkingId(actionKey);
     setError("");
 
     try {
@@ -115,22 +122,43 @@ export default function InvestorDocumentsPage() {
     } catch (nextError) {
       setError(nextError?.message || "The document could not be downloaded.");
     } finally {
-      setWorkingId("");
+      setWorkingId((current) => current === actionKey ? "" : current);
     }
   }
 
   async function handleView(item) {
-    setWorkingId(item.id);
+    const actionKey = `view:${item.id}`;
+    previewAbortRef.current?.abort();
+    const controller = new AbortController();
+    previewAbortRef.current = controller;
+    setWorkingId(actionKey);
     setError("");
+    setPreview({
+      loading: true,
+      title: item.title || item.documentType || "Document",
+      fileName: item.fileName || "GrowVest-document",
+      mimeType: item.mimeType || "",
+      documentRecord: item
+    });
 
     try {
-      const securePreview = await viewInvestorDocument(item);
-      setPreview({ ...securePreview, title: item.title || item.documentType || "Document", documentRecord: item });
+      const securePreview = await viewInvestorDocument(item, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      setPreview({ ...securePreview, loading: false, title: item.title || item.documentType || "Document", documentRecord: item });
     } catch (nextError) {
+      if (controller.signal.aborted) return;
+      setPreview(null);
       setError(nextError?.message || "The document could not be opened.");
     } finally {
-      setWorkingId("");
+      if (previewAbortRef.current === controller) previewAbortRef.current = null;
+      setWorkingId((current) => current === actionKey ? "" : current);
     }
+  }
+
+  function closePreview() {
+    previewAbortRef.current?.abort();
+    previewAbortRef.current = null;
+    setPreview(null);
   }
 
   return (
@@ -192,7 +220,10 @@ export default function InvestorDocumentsPage() {
 
       <section className="grid gap-4 md:grid-cols-2">
         {documents.map((item) => {
-          const isWorking = workingId === item.id;
+          const isWorking = workingId.endsWith(`:${item.id}`);
+          const isUploading = workingId === `upload:${item.id}`;
+          const isViewing = workingId === `view:${item.id}`;
+          const isDownloading = workingId === `download:${item.id}`;
           const needsUpload = !item.storagePath || ["requested", "rejected", "expired"].includes(item.status);
 
           return (
@@ -245,7 +276,7 @@ export default function InvestorDocumentsPage() {
               <div className={`mt-5 grid gap-2 ${item.storagePath ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-1"}`}>
                 <label className="inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl bg-[var(--gv-blue)] px-3 text-sm font-bold text-white transition hover:bg-[var(--gv-blue-strong)]">
                   <Upload size={17} />
-                  {isWorking ? "Uploading…" : needsUpload ? "Upload document" : "Replace file"}
+                  {isUploading ? "Uploading…" : needsUpload ? "Upload document" : "Replace file"}
                   <input
                     type="file"
                     accept="application/pdf,image/jpeg,image/png"
@@ -265,7 +296,7 @@ export default function InvestorDocumentsPage() {
                     disabled={isWorking}
                     className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-sm font-bold text-blue-700 transition hover:bg-blue-100 disabled:opacity-60"
                   >
-                    <Eye size={17} /> View
+                    <Eye size={17} /> {isViewing ? "Opening…" : "View"}
                   </button>
                 ) : null}
 
@@ -276,7 +307,7 @@ export default function InvestorDocumentsPage() {
                     disabled={isWorking}
                     className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
                   >
-                    <Download size={17} /> Download
+                    <Download size={17} /> {isDownloading ? "Downloading…" : "Download"}
                   </button>
                 ) : null}
               </div>
@@ -304,7 +335,7 @@ export default function InvestorDocumentsPage() {
 
       <DocumentPreviewModal
         preview={preview}
-        onClose={() => setPreview(null)}
+        onClose={closePreview}
         onDownload={() => preview?.documentRecord ? handleDownload(preview.documentRecord) : null}
       />
     </div>
