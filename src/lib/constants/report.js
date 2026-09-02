@@ -3,6 +3,14 @@ import {
   createReportTemplateSnapshot,
   getSystemReportTemplate
 } from "@/lib/constants/reportTemplates";
+import {
+  GENERAL_WEALTH_BUCKET_ID,
+  GENERAL_WEALTH_BUCKET_NAME,
+  defaultWealthPercentage,
+  normalisePortfolioGoalAllocations,
+  portfolioBucketLabel,
+  specificGoalAllocations
+} from "@/lib/portfolioGoalAllocation";
 
 export const REPORT_STATUS = {
   DRAFT: "draft",
@@ -76,6 +84,26 @@ export function getMonthLabel(month) {
 
 export function getReportMonthKey(year, month) {
   return `${Number(year)}-${String(Number(month)).padStart(2, "0")}`;
+}
+
+export function getDefaultReportPeriod(referenceDate = new Date()) {
+  const reference = referenceDate instanceof Date ? new Date(referenceDate) : new Date(referenceDate);
+  const year = reference.getFullYear();
+  const monthIndex = reference.getMonth();
+  const previous = new Date(year, monthIndex - 1, 1);
+  return { month: previous.getMonth() + 1, year: previous.getFullYear() };
+}
+
+export function getReportPeriodEndDate(year, month) {
+  const end = new Date(Number(year), Number(month), 0);
+  return `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`;
+}
+
+export function getReportPeriodCutoffDate(year, month, referenceDate = new Date()) {
+  const periodEnd = getReportPeriodEndDate(year, month);
+  const reference = referenceDate instanceof Date ? referenceDate : new Date(referenceDate);
+  const today = `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}-${String(reference.getDate()).padStart(2, "0")}`;
+  return periodEnd > today ? today : periodEnd;
 }
 
 export function calculatePercentage(value, total) {
@@ -212,11 +240,11 @@ export function buildPortfolioReportVerification(portfolioSource, asOfDate) {
   let generalWealthHoldings = 0;
   let invalidGoalAllocationCount = 0;
   positions.forEach((position) => {
-    const allocations = Array.isArray(position.goalAllocations) ? position.goalAllocations : [];
-    const assignedPercentage = allocations.reduce((sum, item) => sum + Math.max(0, Number(item?.percentage || 0)), 0);
-    if (assignedPercentage > 100.01) invalidGoalAllocationCount += 1;
-    if (assignedPercentage > 0) assignedHoldings += 1;
-    else generalWealthHoldings += 1;
+    const rawAllocations = Array.isArray(position.goalAllocations) ? position.goalAllocations : [];
+    const rawPercentage = rawAllocations.reduce((sum, item) => sum + Math.max(0, Number(item?.percentage || 0)), 0);
+    if (rawPercentage > 100.01) invalidGoalAllocationCount += 1;
+    if (specificGoalAllocations(rawAllocations).length) assignedHoldings += 1;
+    if (defaultWealthPercentage(rawAllocations) > 0.0001) generalWealthHoldings += 1;
   });
   checks.push(verificationCheck(
     "goal_mapping",
@@ -224,7 +252,7 @@ export function buildPortfolioReportVerification(portfolioSource, asOfDate) {
     invalidGoalAllocationCount ? "block" : "pass",
     invalidGoalAllocationCount
       ? `${invalidGoalAllocationCount} holding${invalidGoalAllocationCount === 1 ? " has" : "s have"} goal allocation above 100%.`
-      : `${assignedHoldings} holding${assignedHoldings === 1 ? " is" : "s are"} goal-linked; ${generalWealthHoldings} remain in General Wealth / Unassigned.`
+      : `${assignedHoldings} holding${assignedHoldings === 1 ? " has" : "s have"} a specific Bucket List link; ${generalWealthHoldings} holding${generalWealthHoldings === 1 ? " has" : "s have"} some or all value in General Wealth (Default).`
   ));
 
   checks.push(verificationCheck(
@@ -397,7 +425,15 @@ export function createReportFromInvestor(investor, month = new Date().getMonth()
     reportMonth: Number(month),
     reportYear: Number(year),
     reportMonthKey: getReportMonthKey(year, month),
-    statementDate: "",
+    statementDate: getReportPeriodCutoffDate(year, month),
+    reportingPeriod: {
+      monthKey: getReportMonthKey(year, month),
+      startDate: `${year}-${String(month).padStart(2, "0")}-01`,
+      endDate: getReportPeriodEndDate(year, month),
+      portfolioCutoffDate: getReportPeriodCutoffDate(year, month)
+    },
+    monthlyChanges: [],
+    profileActions: [],
     title: `Monthly Portfolio Report — ${getMonthLabel(month)} ${year}`,
     status: REPORT_STATUS.DRAFT,
     investorVisible: false,
@@ -425,7 +461,9 @@ export function createReportFromInvestor(investor, month = new Date().getMonth()
       lifetimeTarget,
       overallProgress: calculatePercentage(totalCorpus, lifetimeTarget),
       monthlySip,
+      openingValue: 0,
       newMoneyAdded: 0,
+      totalWithdrawals: 0,
       investmentGain: 0
     },
     holdings,
@@ -478,6 +516,134 @@ export function createReportFromInvestor(investor, month = new Date().getMonth()
     disclaimer: DEFAULT_REPORT_DISCLAIMER
   };
 }
+function reportPositionKey(position = {}) {
+  const direct = position.positionId || position.id;
+  if (direct) return `id:${direct}`;
+  const isin = String(position.isin || "").trim().toUpperCase();
+  const folio = String(position.folioNo || "").trim().toUpperCase();
+  if (isin) return `isin:${isin}|${folio}`;
+  const symbol = String(position.symbol || "").trim().toUpperCase();
+  if (symbol) return `symbol:${symbol}`;
+  const name = String(position.instrumentName || position.schemeName || position.stockName || position.fundName || "Investment").trim().toLowerCase();
+  return `name:${name}|${folio}`;
+}
+
+function confirmedPortfolioTransaction(item = {}) {
+  const status = String(item.financialImpactStatus || item.transactionStatus || "").toLowerCase();
+  return !["planned", "pending", "in_progress", "awaiting_portfolio_confirmation"].includes(status);
+}
+
+function portfolioTransactionFlow(item = {}) {
+  if (!confirmedPortfolioTransaction(item)) return "planned";
+  const type = String(item.transactionType || item.type || "").toLowerCase();
+  const cashFlowType = String(item.cashFlowType || "").toLowerCase();
+  if (cashFlowType === "withdrawal") return "withdrawal";
+  if (cashFlowType === "new_money") return "new_money";
+  if (cashFlowType === "internal") return "internal";
+  if (/switch\s*in|switch\s*out|transfer\s*in|transfer\s*out/.test(type)) return "internal";
+  if (/redemption|redeem|withdraw/.test(type)) return "withdrawal";
+  if (/sip|purchase|lump\s*sum|investment|deposit|fresh\s*buy|contribution/.test(type)) return "new_money";
+  return "review";
+}
+
+function summarisePortfolioCashFlows(transactions = []) {
+  return transactions.reduce((total, item) => {
+    const amount = Math.abs(Number(item.amount || 0));
+    const flow = portfolioTransactionFlow(item);
+    if (!amount) return total;
+    if (flow === "withdrawal") total.withdrawals += amount;
+    else if (flow === "new_money") total.newMoney += amount;
+    else if (flow === "internal") {
+      total.internalMovement += amount;
+      total.internalCount += 1;
+    }
+    return total;
+  }, { newMoney: 0, withdrawals: 0, internalMovement: 0, internalCount: 0 });
+}
+
+function buildMonthlyPortfolioChanges({ positions = [], openingPositions = [], transactions = [], flowSummary = {} } = {}) {
+  const changes = [];
+  const openingMap = new Map(openingPositions.map((item) => [reportPositionKey(item), item]));
+  const currentMap = new Map(positions.map((item) => [reportPositionKey(item), item]));
+
+  positions.forEach((position) => {
+    const previous = openingMap.get(reportPositionKey(position));
+    const name = position.instrumentName || position.schemeName || position.stockName || position.fundName || "Investment";
+    if (!previous) {
+      changes.push({
+        id: `new-${reportPositionKey(position)}`,
+        type: "new_investment",
+        title: "New investment",
+        description: name,
+        amount: Number(position.currentValue || 0),
+        date: position.valuationDate || position.navDate || "",
+        status: "actual"
+      });
+      return;
+    }
+    const previousSip = Number(previous.monthlySip || 0);
+    const currentSip = Number(position.monthlySip || 0);
+    if (Math.abs(currentSip - previousSip) >= 0.01) {
+      changes.push({
+        id: `sip-${reportPositionKey(position)}`,
+        type: currentSip > previousSip ? "sip_increased" : currentSip > 0 ? "sip_reduced" : "sip_stopped",
+        title: currentSip > previousSip ? "SIP increased" : currentSip > 0 ? "SIP reduced" : "SIP stopped",
+        description: name,
+        previousAmount: previousSip,
+        amount: currentSip,
+        status: "actual"
+      });
+    }
+  });
+
+  openingPositions.forEach((position) => {
+    if (currentMap.has(reportPositionKey(position))) return;
+    changes.push({
+      id: `exit-${reportPositionKey(position)}`,
+      type: "investment_exited",
+      title: "Investment exited",
+      description: position.instrumentName || position.schemeName || position.stockName || position.fundName || "Investment",
+      previousAmount: Number(position.currentValue || 0),
+      amount: 0,
+      status: "actual"
+    });
+  });
+
+  const confirmedActionCashFlows = transactions.filter((item) => item.source === "investor_action_confirmation" && confirmedPortfolioTransaction(item));
+  let actionNewMoney = 0;
+  let actionWithdrawals = 0;
+  confirmedActionCashFlows.forEach((item) => {
+    const flow = portfolioTransactionFlow(item);
+    const amount = Math.abs(Number(item.amount || 0));
+    if (!amount || !["new_money", "withdrawal"].includes(flow)) return;
+    if (flow === "new_money") actionNewMoney += amount;
+    if (flow === "withdrawal") actionWithdrawals += amount;
+    changes.unshift({
+      id: `action-cash-${item.sourceActionId || item.id}`,
+      type: flow === "withdrawal" ? "money_withdrawn" : "money_added",
+      title: item.transactionType || (flow === "withdrawal" ? "Money withdrawn" : "Money added"),
+      description: [item.instrumentName || "Portfolio", item.notes || "Confirmed external cash movement"].filter(Boolean).join(" · "),
+      amount,
+      date: item.transactionDate || "",
+      status: "actual"
+    });
+  });
+
+  const otherNewMoney = Math.max(0, Number(flowSummary.newMoney || 0) - actionNewMoney);
+  const otherWithdrawals = Math.max(0, Number(flowSummary.withdrawals || 0) - actionWithdrawals);
+  if (otherNewMoney > 0) {
+    changes.unshift({ id: "actual-money-added", type: "money_added", title: "Money added", description: "Confirmed external investment during the reporting month", amount: otherNewMoney, status: "actual" });
+  }
+  if (otherWithdrawals > 0) {
+    changes.unshift({ id: "actual-money-withdrawn", type: "money_withdrawn", title: "Money withdrawn", description: "Confirmed money taken out of the portfolio during the reporting month", amount: otherWithdrawals, status: "actual" });
+  }
+  if (Number(flowSummary.internalCount || 0) > 0) {
+    changes.push({ id: "actual-internal-reallocation", type: "internal_reallocation", title: "Internal reallocation", description: `${flowSummary.internalCount} confirmed switch / transfer movement${flowSummary.internalCount === 1 ? "" : "s"}`, amount: Number(flowSummary.internalMovement || 0), status: "actual" });
+  }
+
+  return changes.slice(0, 24);
+}
+
 export function createReportFromPortfolioSource(investor, portfolioSource, month = new Date().getMonth() + 1, year = new Date().getFullYear()) {
   const base = createReportFromInvestor(investor, month, year);
   const snapshot = portfolioSource?.snapshot || null;
@@ -496,17 +662,14 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
   const portfolioGainLoss = Number(snapshot.summary?.gainLoss ?? (totalCorpus - totalInvested));
   const monthlySip = Number(snapshot.summary?.monthlySip || positions.reduce((sum, item) => sum + Number(item.monthlySip || 0), 0));
   const portfolioTransactions = Array.isArray(portfolioSource?.transactions) ? portfolioSource.transactions : [];
+  const openingPositions = Array.isArray(portfolioSource?.openingPositions) ? portfolioSource.openingPositions : [];
   const portfolioVerification = buildPortfolioReportVerification(portfolioSource, reportAsOfDate);
   const hasOpeningSnapshot = Boolean(portfolioSource?.openingSnapshot);
   const openingSnapshotValue = Number(portfolioSource?.openingSnapshot?.summary?.currentValue || 0);
-  const flowSummary = portfolioTransactions.reduce((total, item) => {
-    const type = String(item.transactionType || item.type || "").toLowerCase();
-    const amount = Math.abs(Number(item.amount || 0));
-    const cashFlowType = String(item.cashFlowType || "").toLowerCase();
-    if (cashFlowType === "withdrawal" || (!cashFlowType && /redemption|withdraw/.test(type))) total.withdrawals += amount;
-    else if (cashFlowType === "new_money" || (!cashFlowType && amount > 0 && !/switch\s*in|switch\s*out|sell|redemption|withdraw/.test(type))) total.newMoney += amount;
-    return total;
-  }, { newMoney: 0, withdrawals: 0 });
+  // Only confirmed portfolio transactions affect Money Added / Withdrawn and
+  // Portfolio Gain/Loss. Investor requests and planned actions are deliberately
+  // excluded until an actual transaction appears in Portfolio Master.
+  const flowSummary = summarisePortfolioCashFlows(portfolioTransactions);
   // If there is no prior verified snapshot, market movement cannot be separated
   // reliably from the opening corpus. Infer an opening baseline from known cash
   // flows and leave investment gain at zero rather than overstating performance.
@@ -561,9 +724,10 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
   });
 
   const funds = positions.map((position, index) => {
-    const goal = Array.isArray(position.goalAllocations) ? position.goalAllocations.find((item) => item?.goalId) : null;
+    const goalAllocations = normalisePortfolioGoalAllocations(position.goalAllocations);
+    const goal = goalAllocations.find((item) => item?.goalId) || goalAllocations.find((item) => !item?.goalId);
     const productType = position.productType || "other";
-    const investmentTypeLabel = productType === "mutual_fund"
+    const investmentTypeLabel = position.investmentTypeLabel || (productType === "mutual_fund"
       ? "Mutual Fund"
       : productType === "stock_delivery"
         ? "Direct Equity"
@@ -579,7 +743,7 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
                   ? "Gold"
                   : productType === "real_estate"
                     ? "Real Estate"
-                    : "Other";
+                    : "Other");
     const investmentType = position.investmentMode
       || (productType === "stock_delivery" ? "Delivery" : productType === "ulip" ? "ULIP" : "Flexible");
     return {
@@ -588,7 +752,9 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
       instrumentName: position.instrumentName || position.schemeName || position.stockName || position.fundName || "Investment",
       assetClass: position.assetClass || "Other",
       goalId: goal?.goalId || "",
-      goalName: goal?.goalName || "",
+      goalName: goal?.goalName || GENERAL_WEALTH_BUCKET_NAME,
+      bucketLabel: portfolioBucketLabel(goalAllocations),
+      goalAllocations,
       monthlySip: Number(position.monthlySip || 0),
       currentValue: Number(position.currentValue || 0),
       type: investmentType,
@@ -632,9 +798,11 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
   const allocatedCorpus = Array.isArray(snapshot.goalTotals) && snapshot.goalTotals.length
     ? snapshot.goalTotals.reduce((sum, goal) => sum + Number(goal.currentValue || 0), 0)
     : positions.reduce((sum, position) => {
-        const allocated = (position.goalAllocations || []).reduce((value, item) => value + Number(item.percentage || 0), 0);
+        const allocated = specificGoalAllocations(position.goalAllocations).reduce((value, item) => value + Number(item.percentage || 0), 0);
         return sum + Number(position.currentValue || 0) * Math.min(100, allocated) / 100;
       }, 0);
+  const generalWealthCorpus = Number(snapshot.summary?.generalWealthCorpus ?? Math.max(0, totalCorpus - allocatedCorpus));
+  const monthlyChanges = buildMonthlyPortfolioChanges({ positions, openingPositions, transactions: portfolioTransactions, flowSummary });
 
   return {
     ...base,
@@ -645,6 +813,14 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
     portfolioSourceFreshness: snapshot.sourceFreshness || [],
     portfolioVerification,
     reportGenerationSource: "portfolio_master",
+    reportingPeriod: {
+      monthKey: getReportMonthKey(year, month),
+      startDate: `${year}-${String(month).padStart(2, "0")}-01`,
+      endDate: getReportPeriodEndDate(year, month),
+      portfolioCutoffDate: reportAsOfDate
+    },
+    monthlyChanges,
+    defaultPortfolioBucket: { id: GENERAL_WEALTH_BUCKET_ID, name: GENERAL_WEALTH_BUCKET_NAME },
     tradingSummary: portfolioSource?.tradingSummary ? {
       monthKey: portfolioSource.tradingSummary.monthKey || `${year}-${String(month).padStart(2, "0")}`,
       totalTrades: Number(portfolioSource.tradingSummary.totalTrades || 0),
@@ -661,7 +837,7 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
       totalCorpus: Number(totalCorpus.toFixed(2)),
       totalInvested: Number(totalInvested.toFixed(2)),
       portfolioGainLoss: Number(portfolioGainLoss.toFixed(2)),
-      generalWealthCorpus: Number(Math.max(0, totalCorpus - allocatedCorpus).toFixed(2)),
+      generalWealthCorpus: Number(generalWealthCorpus.toFixed(2)),
       lifetimeTarget,
       overallProgress: lifetimeTarget > 0 ? calculatePercentage(goalCurrentCorpus, lifetimeTarget) : 0,
       monthlySip: Number(monthlySip.toFixed(2)),
@@ -678,6 +854,8 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
       transactionType: item.transactionType || item.investmentMode || "Investment",
       instrumentName: item.instrumentName || item.schemeName || "Investment",
       amount: Number(item.amount || 0),
+      cashFlowType: item.cashFlowType || portfolioTransactionFlow(item),
+      financialImpactStatus: item.financialImpactStatus || "confirmed",
       notes: item.provider ? `${item.provider}${item.folioNo ? ` · Folio ${item.folioNo}` : ""}` : ""
     })),
     holdings,

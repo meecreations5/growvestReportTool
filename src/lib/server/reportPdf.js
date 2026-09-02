@@ -294,11 +294,12 @@ function addExecutiveSummary(doc, fonts, report, template, theme) {
   page.drawRectangle({ x: PDF_MARGIN + 20, y: 614, width: CONTENT_WIDTH - 40, height: 6, color: rgb(0.17, 0.19, 0.24) });
   page.drawRectangle({ x: PDF_MARGIN + 20, y: 614, width: (CONTENT_WIDTH - 40) * Math.min(100, Math.max(0, Number(summary.overallProgress || 0))) / 100, height: 6, color: theme.primary });
 
-  const cardGap = 16;
-  const cardWidth = (CONTENT_WIDTH - cardGap * 2) / 3;
-  drawMetricCard(page, fonts, theme, { x: PDF_MARGIN, y: 490, width: cardWidth, label: "Total Monthly SIP", value: compactMoney(summary.monthlySip), note: "Running this month" });
-  drawMetricCard(page, fonts, theme, { x: PDF_MARGIN + cardWidth + cardGap, y: 490, width: cardWidth, label: "New Money Added", value: compactMoney(summary.newMoneyAdded), note: "Contributions received", accent: theme.secondary });
-  drawMetricCard(page, fonts, theme, { x: PDF_MARGIN + (cardWidth + cardGap) * 2, y: 490, width: cardWidth, label: "Investment Gain", value: compactMoney(summary.investmentGain), note: "Portfolio movement", accent: Number(summary.investmentGain || 0) >= 0 ? theme.success : theme.danger });
+  const cardGap = 10;
+  const cardWidth = (CONTENT_WIDTH - cardGap * 3) / 4;
+  drawMetricCard(page, fonts, theme, { x: PDF_MARGIN, y: 490, width: cardWidth, label: "Monthly SIP", value: compactMoney(summary.monthlySip), note: "Current running SIP" });
+  drawMetricCard(page, fonts, theme, { x: PDF_MARGIN + (cardWidth + cardGap), y: 490, width: cardWidth, label: "Money Added", value: compactMoney(summary.newMoneyAdded), note: "Confirmed inflow", accent: theme.secondary });
+  drawMetricCard(page, fonts, theme, { x: PDF_MARGIN + (cardWidth + cardGap) * 2, y: 490, width: cardWidth, label: "Money Withdrawn", value: compactMoney(summary.totalWithdrawals), note: "Confirmed outflow", accent: theme.warning });
+  drawMetricCard(page, fonts, theme, { x: PDF_MARGIN + (cardWidth + cardGap) * 3, y: 490, width: cardWidth, label: "Portfolio Gain / Loss", value: compactMoney(summary.investmentGain), note: "Performance only", accent: Number(summary.investmentGain || 0) >= 0 ? theme.success : theme.danger });
 
   drawSectionTitle(page, fonts, "Portfolio composition", 447, theme);
   const holdings = (report.holdings || []).slice(0, 8);
@@ -372,21 +373,19 @@ function addPerformancePage(doc, fonts, report, template, theme, history) {
   drawTrendChart(page, fonts, theme, trend, { x: PDF_MARGIN, y: 430, width: CONTENT_WIDTH, height: 280 });
 
   const previous = previousReportFor(report, history);
-  const currentValue = Number(report.summary?.totalCorpus || 0);
-  const previousValue = Number(previous?.summary?.totalCorpus || 0);
-  const change = currentValue - previousValue;
-  const changePercentage = previousValue > 0 ? change / previousValue * 100 : 0;
+  const portfolioGainLoss = Number(report.summary?.investmentGain || 0);
   const highlights = deriveReportHighlights(report).slice(0, 4);
   if (previous) {
     highlights.unshift({
-      id: "month-change",
-      title: "Month-on-month movement",
-      description: `${change >= 0 ? "Increased" : "Decreased"} by ${compactMoney(Math.abs(change))} (${changePercentage >= 0 ? "+" : ""}${changePercentage.toFixed(1)}%).`
+      id: "portfolio-gain-loss",
+      title: "Portfolio gain / loss",
+      description: `${portfolioGainLoss >= 0 ? "Gain" : "Loss"} of ${compactMoney(Math.abs(portfolioGainLoss))} from investment performance, excluding confirmed money added or withdrawn.`
     });
   }
   const cards = highlights.slice(0, 4);
   if (!cards.length) {
     drawEmptyState(page, fonts, "Monthly performance highlights were not recorded for this report.", 350);
+    addMonthlyChangesPage(doc, fonts, report, template, theme);
     return;
   }
   page.drawText("THIS MONTH AT A GLANCE", { x: PDF_MARGIN, y: 395, size: 8, font: fonts.bold, color: MUTED });
@@ -402,6 +401,29 @@ function addPerformancePage(doc, fonts, report, template, theme, history) {
     page.drawRectangle({ x: x + 14, y: y + cardHeight - 25, width: 35, height: 3, color: index === 0 ? theme.secondary : theme.primary });
     drawTextBlock(page, item.title || "Portfolio update", { x: x + 14, y: y + cardHeight - 45, width: cardWidth - 28, font: fonts.bold, size: 10, color: INK, maxLines: 2, lineHeight: 12 });
     drawTextBlock(page, item.description || "", { x: x + 14, y: y + cardHeight - 72, width: cardWidth - 28, font: fonts.regular, size: 8.2, color: MUTED, maxLines: 3, lineHeight: 11 });
+  });
+  addMonthlyChangesPage(doc, fonts, report, template, theme);
+}
+
+function addMonthlyChangesPage(doc, fonts, report, template, theme) {
+  const changes = Array.isArray(report.monthlyChanges) ? report.monthlyChanges : [];
+  if (!changes.length) return;
+  const pages = [];
+  for (let index = 0; index < changes.length; index += 8) pages.push(changes.slice(index, index + 8));
+  pages.forEach((items, pageIndex) => {
+    const page = addPage(doc, fonts, report, template, theme, pageIndex === 0 ? "What changed this month" : "What changed this month - continued");
+    drawTextBlock(page, "Confirmed Portfolio Master activity only. Planned investor requests are shown separately and do not affect report cash-flow figures until provider activity or an explicitly confirmed external cash movement exists.", { x: PDF_MARGIN, y: 695, width: CONTENT_WIDTH, font: fonts.regular, size: 8.2, color: MUTED, lineHeight: 11, maxLines: 3 });
+    let y = 635;
+    items.forEach((item) => {
+      drawPanel(page, { x: PDF_MARGIN, y: y - 62, width: CONTENT_WIDTH, height: 54, fill: LIGHT, border: BORDER });
+      drawTextBlock(page, item.title || "Portfolio change", { x: PDF_MARGIN + 14, y: y - 28, width: 170, font: fonts.bold, size: 9, color: INK, maxLines: 1, lineHeight: 10 });
+      drawTextBlock(page, item.description || "Confirmed portfolio activity", { x: PDF_MARGIN + 190, y: y - 26, width: 210, font: fonts.regular, size: 7.3, color: MUTED, maxLines: 2, lineHeight: 9 });
+      const amount = Number(item.amount || 0);
+      const previousAmount = Number(item.previousAmount || 0);
+      const amountText = amount || previousAmount ? `${previousAmount && amount ? `${compactMoney(previousAmount)} -> ` : ""}${compactMoney(amount)}` : "-";
+      drawRightText(page, amountText, { right: PDF_MARGIN + CONTENT_WIDTH - 14, y: y - 29, font: fonts.bold, size: 8, color: item.type === "money_withdrawn" ? theme.danger : theme.primary, maxWidth: 120 });
+      y -= 69;
+    });
   });
 }
 
@@ -439,7 +461,7 @@ function addGoalsPages(doc, fonts, report, template, theme) {
     drawPanel(page, { x: PDF_MARGIN, y: 470, width: CONTENT_WIDTH, height: 210, fill: LIGHT, border: theme.primary });
     page.drawText("GENERAL WEALTH CORPUS", { x: PDF_MARGIN + 18, y: 645, size: 8, font: fonts.bold, color: theme.primary });
     page.drawText(compactMoney(report.summary?.generalWealthCorpus || report.summary?.totalCorpus || 0), { x: PDF_MARGIN + 18, y: 603, size: 24, font: fonts.bold, color: INK });
-    drawTextBlock(page, "No specific financial goal is currently assigned. The portfolio remains tracked as General Wealth and can be allocated to financial goals or Bucket List items later.", { x: PDF_MARGIN + 18, y: 565, width: CONTENT_WIDTH - 36, font: fonts.regular, size: 9.5, color: MUTED, lineHeight: 14, maxLines: 5 });
+    drawTextBlock(page, "Investments not linked to a specific Bucket List are mapped to General Wealth (Default). They can later be reassigned to a specific Bucket List without changing the underlying investment record.", { x: PDF_MARGIN + 18, y: 565, width: CONTENT_WIDTH - 36, font: fonts.regular, size: 9.5, color: MUTED, lineHeight: 14, maxLines: 5 });
     return;
   }
   const pageSize = 6;
@@ -608,7 +630,7 @@ function addHoldingsPages(doc, fonts, report, template, theme) {
     const values = [
       { text: item.instrumentName || "Investment", bold: true, maxLines: 2 },
       { text: item.assetClass || "Other" },
-      { text: item.goalName || "General Wealth", maxLines: 2 },
+      { text: item.bucketLabel || item.goalName || "General Wealth (Default)", maxLines: 2 },
       { text: Number(item.monthlySip || 0) ? compactMoney(item.monthlySip) : "-", align: "right" },
       { text: compactMoney(item.currentValue), align: "right", bold: true },
       { text: `${weight.toFixed(1)}%`, align: "right" },
@@ -617,7 +639,7 @@ function addHoldingsPages(doc, fonts, report, template, theme) {
     const prepared = prepareTableRow(fonts, columns, values, 6.5, 2);
     if (!page || y - prepared.rowHeight < CONTENT_BOTTOM + 18) {
       page = addPage(doc, fonts, report, template, theme, index === 0 ? "Detailed holdings" : "Detailed holdings - continued");
-      page.drawText("Every investment in your portfolio, its goal or General Wealth assignment, and its current value.", { x: PDF_MARGIN, y: 713, size: 8, font: fonts.regular, color: MUTED });
+      page.drawText("Every investment in your portfolio, its Bucket List or General Wealth (Default) assignment, and its current value.", { x: PDF_MARGIN, y: 713, size: 8, font: fonts.regular, color: MUTED });
       y = drawTableHeader(page, fonts, theme, columns, 684);
       rowIndex = 0;
     }
@@ -764,15 +786,15 @@ function addFinancialPlanPage(doc, fonts, report, template, theme) {
 }
 
 function addActionsPages(doc, fonts, report, template, theme) {
-  const actions = report.nextSteps || [];
+  const actions = [...(report.profileActions || []).map((item) => ({ ...item, reportActionSource: "Investor Profile" })), ...(report.nextSteps || []).map((item) => ({ ...item, reportActionSource: "Advisor Recommendation" }))];
   const chunks = [];
   for (let index = 0; index < actions.length; index += 6) chunks.push(actions.slice(index, index + 6));
   if (!chunks.length) chunks.push([]);
   chunks.forEach((items, pageIndex) => {
-    const page = addPage(doc, fonts, report, template, theme, pageIndex === 0 ? "Recommended actions and next review" : "Recommended actions - continued");
+    const page = addPage(doc, fonts, report, template, theme, pageIndex === 0 ? "Upcoming / planned actions and next review" : "Upcoming / planned actions - continued");
     let y = 693;
     if (!items.length) {
-      drawEmptyState(page, fonts, "No Advisor-recommended actions were recorded for this month.", 650);
+      drawEmptyState(page, fonts, "No planned or follow-up actions were recorded for this month.", 650);
       y = 270;
     } else {
       items.forEach((item, index) => {
@@ -784,7 +806,13 @@ function addActionsPages(doc, fonts, report, template, theme) {
         page.drawText(number, { x: PDF_MARGIN + 20 - numberWidth / 2, y: itemY + 42, size: 7.5, font: fonts.bold, color: WHITE });
         drawTextBlock(page, item.title || item.description || "Action item", { x: PDF_MARGIN + 40, y: itemY + 50, width: 310, font: fonts.bold, size: 9.3, color: INK, lineHeight: 11, maxLines: 2 });
         drawTextBlock(page, item.description && item.description !== item.title ? item.description : "", { x: PDF_MARGIN + 40, y: itemY + 27, width: 310, font: fonts.regular, size: 7.2, color: MUTED, lineHeight: 9, maxLines: 2 });
-        const meta = [item.recommendationType || "Portfolio Review", item.owner || "Advisor", item.priority || "Planned", item.status || "Recommended", `Decision ${item.investorDecision || "Pending Discussion"}`, item.sourceReportMonthKey ? `From ${item.sourceReportMonthKey}` : "", item.dueDate ? `Due ${dateText(item.dueDate)}` : ""].filter(Boolean).join(" | ");
+        const impact = item.financialImpactStatus === "awaiting_portfolio_confirmation"
+          ? "Awaiting portfolio confirmation"
+          : item.financialImpactType && item.financialImpactType !== "none"
+            ? "Planned only"
+            : "Non-financial";
+        const requestMeta = [Number(item.requestedAmount || 0) ? `Requested ${compactMoney(item.requestedAmount)}` : "", Number(item.requestedMonthlyAmount || 0) ? `Monthly ${compactMoney(item.requestedMonthlyAmount)}` : "", item.requestedEffectiveDate ? `Preferred ${dateText(item.requestedEffectiveDate)}` : "", item.requestedTargetGoalName ? `Target ${item.requestedTargetGoalName}` : "", item.requestedAccountReference ? `Account ${item.requestedAccountReference}` : ""].filter(Boolean).join(" | ");
+        const meta = [item.reportActionSource || "Advisor Recommendation", item.recommendationType || item.requestType || "Portfolio Review", item.owner || "Advisor", item.priority || "Planned", item.status || "Recommended", impact, requestMeta, `Decision ${item.investorDecision || "Pending Discussion"}`, item.sourceReportMonthKey ? `From ${item.sourceReportMonthKey}` : "", item.dueDate ? `Due ${dateText(item.dueDate)}` : ""].filter(Boolean).join(" | ");
         drawTextBlock(page, meta, { x: 400, y: itemY + 46, width: 135, font: fonts.regular, size: 6.3, color: MUTED, align: "right", lineHeight: 8, maxLines: 3 });
         y -= 82;
       });

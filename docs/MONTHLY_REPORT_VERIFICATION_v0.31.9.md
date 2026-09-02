@@ -12,7 +12,7 @@ Before the Portfolio Data step is considered complete, GrowVest checks:
 - snapshot and provider/source freshness;
 - opening snapshot availability for monthly movement calculation;
 - new and exited holdings compared with the opening snapshot;
-- Goal/Bucket List allocation validity (General Wealth / Unassigned remains valid);
+- Goal/Bucket List allocation validity (General Wealth (Default) remains valid);
 - monthly investment transaction availability for fresh-money/withdrawal separation.
 
 Data up to 7 days old is considered fresh. Data older than 7 days is flagged for staff review. Data older than 31 days blocks report completion until Portfolio Master is refreshed.

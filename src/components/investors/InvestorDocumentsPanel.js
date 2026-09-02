@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   Download,
+  Eye,
   FileClock,
   FilePlus2,
   FileText,
@@ -17,9 +18,11 @@ import {
   requestInvestorDocument,
   subscribeInvestorDocuments,
   updateInvestorDocumentStatus,
-  uploadInvestorDocument
+  uploadInvestorDocument,
+  viewInvestorDocument
 } from "@/services/documentService";
 import { INVESTOR_REQUIRED_DOCUMENTS, documentChecklist } from "@/lib/investor/profileStatus";
+import DocumentPreviewModal from "@/components/documents/DocumentPreviewModal";
 
 const documentTypes = [
   ...INVESTOR_REQUIRED_DOCUMENTS,
@@ -56,6 +59,7 @@ export default function InvestorDocumentsPanel({ investor }) {
   const [workingId, setWorkingId] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [preview, setPreview] = useState(null);
 
   useEffect(() => {
     if (!investor?.id) return () => {};
@@ -72,6 +76,10 @@ export default function InvestorDocumentsPanel({ investor }) {
       }
     );
   }, [investor?.id]);
+
+  useEffect(() => () => {
+    if (preview?.url) URL.revokeObjectURL(preview.url);
+  }, [preview?.url]);
 
   const checklist = useMemo(() => documentChecklist(documents), [documents]);
 
@@ -136,6 +144,21 @@ export default function InvestorDocumentsPanel({ investor }) {
       setNotice(`Document marked ${status}.`);
     } catch (nextError) {
       setError(nextError?.message || "The document status could not be updated.");
+    } finally {
+      setWorkingId("");
+    }
+  }
+
+  async function view(item) {
+    setWorkingId(item.id);
+    setError("");
+    setNotice("");
+
+    try {
+      const securePreview = await viewInvestorDocument(item);
+      setPreview({ ...securePreview, title: item.title || item.documentType || "Document", documentRecord: item });
+    } catch (nextError) {
+      setError(nextError?.message || "The document could not be opened.");
     } finally {
       setWorkingId("");
     }
@@ -331,6 +354,17 @@ export default function InvestorDocumentsPanel({ investor }) {
                     {item.storagePath ? (
                       <button
                         type="button"
+                        onClick={() => view(item)}
+                        disabled={isWorking}
+                        className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"
+                      >
+                        <Eye size={14} /> {isWorking ? "Opening…" : "View"}
+                      </button>
+                    ) : null}
+
+                    {item.storagePath ? (
+                      <button
+                        type="button"
                         onClick={() => downloadInvestorDocument(item)}
                         className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
                       >
@@ -385,6 +419,12 @@ export default function InvestorDocumentsPanel({ investor }) {
           ) : null}
         </div>
       </div>
+
+      <DocumentPreviewModal
+        preview={preview}
+        onClose={() => setPreview(null)}
+        onDownload={() => preview?.documentRecord ? downloadInvestorDocument(preview.documentRecord) : null}
+      />
     </section>
   );
 }

@@ -5,14 +5,16 @@ import { doc, getDoc } from "firebase/firestore";
 import { CheckCircle2, Clock3, ListChecks, MessageCircleMore, Plus, Search, Target } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase/client";
-import { formatDate } from "@/lib/utils/format";
-import { ACTION_SOURCE_LABELS, ACTION_TERMINAL_STATUSES } from "@/lib/constants/actions";
+import { formatCurrency, formatDate } from "@/lib/utils/format";
+import { ACTION_SOURCE_LABELS, ACTION_TERMINAL_STATUSES, isActionOpen } from "@/lib/constants/actions";
 import { subscribeInvestorPortfolio } from "@/services/portfolioService";
 import { subscribeInvestorActions, updateInvestorAction } from "@/services/actionService";
 import InvestorPageHeader from "@/components/investor/InvestorPageHeader";
 import ActionStatusBadge from "@/components/actions/ActionStatusBadge";
 import ActionRequestDialog from "@/components/actions/ActionRequestDialog";
 import ActionTimeline from "@/components/actions/ActionTimeline";
+import WithdrawalActionSummary from "@/components/actions/WithdrawalActionSummary";
+import WithdrawalCashNeedsPanel from "@/components/actions/WithdrawalCashNeedsPanel";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import { Field, inputClassName } from "@/components/ui/Field";
@@ -77,13 +79,13 @@ export default function InvestorActionsPanel() {
   const visible = useMemo(() => actions.filter((item) => {
     const text = `${item.title || ""} ${item.description || ""} ${item.requestType || ""} ${item.relatedInvestmentName || ""} ${item.relatedGoalName || ""}`.toLowerCase();
     if (!text.includes(search.trim().toLowerCase())) return false;
-    if (filter === "open") return !ACTION_TERMINAL_STATUSES.includes(item.status);
+    if (filter === "open") return isActionOpen(item);
     if (filter === "completed") return item.status === "Completed";
     if (filter === "decision") return ["Recommended", "Discussion Required", "Under Review"].includes(item.status) && item.investorDecision === "Pending Discussion";
     return true;
   }), [actions, filter, search]);
 
-  const openCount = actions.filter((item) => !ACTION_TERMINAL_STATUSES.includes(item.status)).length;
+  const openCount = actions.filter((item) => isActionOpen(item)).length;
   const completedCount = actions.filter((item) => item.status === "Completed").length;
   const decisionCount = actions.filter((item) => ["Recommended", "Discussion Required", "Under Review"].includes(item.status) && item.investorDecision === "Pending Discussion").length;
 
@@ -107,6 +109,8 @@ export default function InvestorActionsPanel() {
     <div className="grid gap-5 pb-24 lg:pb-0">
       <InvestorPageHeader eyebrow="Advisor follow-up" title="Actions & Requests" description="See recommendations, track progress and send requests to your GrowVest Advisor." action={<Button type="button" onClick={() => { setInitial({}); setDialogOpen(true); }}><Plus size={16} /> New Request</Button>} />
 
+      {investor ? <WithdrawalCashNeedsPanel investor={investor} embedded /> : null}
+
       <section className="grid grid-cols-3 gap-3">
         {[["Open", openCount], ["Your decision", decisionCount], ["Completed", completedCount]].map(([label, value]) => <article key={label} className="rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm"><p className="font-heading text-2xl font-bold text-slate-950">{value}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">{label}</p></article>)}
       </section>
@@ -124,12 +128,12 @@ export default function InvestorActionsPanel() {
       <section className="grid gap-3">
         {visible.length ? visible.map((action) => {
           const selected = selectedId === action.id;
-          const terminal = ACTION_TERMINAL_STATUSES.includes(action.status);
+          const terminal = !isActionOpen(action);
           const needsDecision = ["Recommended", "Under Review", "Discussion Required"].includes(action.status)
             && (action.investorDecision || "Pending Discussion") === "Pending Discussion";
           return <article key={action.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="font-heading text-lg font-bold text-slate-950">{action.title}</h2><ActionStatusBadge status={action.status} /></div><p className="mt-1 text-xs font-semibold text-blue-700">{action.requestType || action.recommendationType || "Portfolio Review"} · {contextText(action)}</p>{action.description ? <p className="mt-3 text-sm leading-6 text-slate-600">{action.description}</p> : null}</div>
+              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="font-heading text-lg font-bold text-slate-950">{action.title}</h2><ActionStatusBadge status={action.status} /></div><p className="mt-1 text-xs font-semibold text-blue-700">{action.requestType || action.recommendationType || "Portfolio Review"} · {contextText(action)}</p>{action.description ? <p className="mt-3 text-sm leading-6 text-slate-600">{action.description}</p> : null}<WithdrawalActionSummary action={action} />{Number(action.requestedAmount || 0) || Number(action.requestedMonthlyAmount || 0) || Number(action.requestedUnits || 0) || action.requestedEffectiveDate || action.requestedTargetGoalName || action.requestedAccountReference || action.requestedChangeDetails ? <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-600">{Number(action.requestedAmount || 0) ? <span className="rounded-full bg-slate-100 px-2.5 py-1">Amount {formatCurrency(action.requestedAmount)}</span> : null}{Number(action.requestedMonthlyAmount || 0) ? <span className="rounded-full bg-slate-100 px-2.5 py-1">Monthly {formatCurrency(action.requestedMonthlyAmount)}</span> : null}{Number(action.requestedUnits || 0) ? <span className="rounded-full bg-slate-100 px-2.5 py-1">Units {Number(action.requestedUnits).toLocaleString("en-IN")}</span> : null}{action.requestedEffectiveDate ? <span className="rounded-full bg-slate-100 px-2.5 py-1">Preferred {formatDate(action.requestedEffectiveDate)}</span> : null}{action.requestedTargetGoalName ? <span className="rounded-full bg-violet-50 px-2.5 py-1 text-violet-700">Target {action.requestedTargetGoalName}</span> : null}{action.requestedAccountReference ? <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">Account {action.requestedAccountReference}</span> : null}{action.requestedChangeDetails ? <span className="w-full rounded-lg bg-amber-50 px-3 py-2 text-amber-800">{action.requestedChangeDetails}</span> : null}</div> : null}</div>
               <div className="shrink-0 text-left sm:text-right"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Due</p><p className="mt-1 text-sm font-semibold text-slate-700">{action.dueDate ? formatDate(action.dueDate) : "Next review"}</p></div>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-4"><div><p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Owner</p><p className="mt-1 text-xs font-bold text-slate-700">{action.owner || "Advisor"}</p></div><div><p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Your decision</p><p className="mt-1 text-xs font-bold text-slate-700">{action.investorDecision || "Pending Discussion"}</p></div><div><p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Source</p><p className="mt-1 text-xs font-bold text-slate-700">{ACTION_SOURCE_LABELS[action.sourceType] || "GrowVest"}</p></div><div><p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Reference</p><p className="mt-1 text-xs font-bold text-slate-700">{action.actionCode || "—"}</p></div></div>

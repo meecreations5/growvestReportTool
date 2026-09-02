@@ -11,6 +11,8 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/client";
 import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
+import { normalisePortfolioGoalAllocations, portfolioAllocationStatus } from "@/lib/portfolioGoalAllocation";
+import { dedupeActionWithdrawalTransactions } from "@/lib/portfolioCashFlow";
 
 function rows(snapshot) {
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
@@ -102,7 +104,10 @@ export function subscribeInvestorPortfolio(investorId, currentUser, callback, on
   }
   return onSnapshot(
     query(collection(db, "portfolioPositions"), where("investorId", "==", investorId), ...(currentUser?.role === "advisor" ? [where("advisorUid", "==", currentUser.id)] : [])),
-    (snapshot) => callback(rows(snapshot).filter((item) => !["inactive", "exited"].includes(item.status)).sort((a, b) => Number(b.currentValue || 0) - Number(a.currentValue || 0))),
+    (snapshot) => callback(rows(snapshot)
+      .filter((item) => !["inactive", "exited"].includes(item.status))
+      .map((item) => ({ ...item, goalAllocations: normalisePortfolioGoalAllocations(item.goalAllocations), allocationStatus: portfolioAllocationStatus(item.goalAllocations) }))
+      .sort((a, b) => Number(b.currentValue || 0) - Number(a.currentValue || 0))),
     onError
   );
 }
@@ -406,6 +411,95 @@ export async function getPortfolioReportSource(investorId, asOfDate, currentUser
     }
   }
 
+  // A completed Profile withdrawal creates a provisional transaction so the
+  // Portfolio Master and report can update immediately. Once a provider later
+  // supplies the same redemption, prefer that provider transaction and remove
+  // only the matching provisional action row from report cash-flow maths.
+  transactions = dedupeActionWithdrawalTransactions(transactions);
+
+  // Manual PMS cash ledger entries are true investor-level cash flows when
+  // they represent contributions/withdrawals. Purchases, sale proceeds,
+  // dividends, charges and internal transfers are deliberately excluded here.
+  let manualCashRows = [];
+  if (monthStart) {
+    try {
+      const cashResult = await getDocs(query(
+        collection(db, "manualPortfolioCashLedger"),
+        where("investorId", "==", investorId),
+        ...ownership,
+        where("entryDate", ">=", monthStart),
+        where("entryDate", "<=", asOfDate),
+        orderBy("entryDate", "asc")
+      ));
+      manualCashRows = rows(cashResult);
+    } catch (error) {
+      if (!isIndexUnavailableError(error)) throw error;
+      const fallbackCash = await getDocs(query(collection(db, "manualPortfolioCashLedger"), where("investorId", "==", investorId), ...ownership));
+      manualCashRows = rows(fallbackCash)
+        .filter((item) => String(item.entryDate || "") >= monthStart && String(item.entryDate || "") <= asOfDate)
+        .sort((a, b) => dateSortValue(a.entryDate) - dateSortValue(b.entryDate));
+    }
+  }
+  const manualCashFlows = manualCashRows.flatMap((item) => {
+    const type = String(item.entryType || "").trim().toLowerCase();
+    const amount = Math.abs(Number(item.amount || item.signedAmount || 0));
+    if (!amount) return [];
+    let cashFlowType = "";
+    if (type.includes("opening cash") || type.includes("contribution") || type.includes("investor deposit")) cashFlowType = "new_money";
+    else if (type.includes("withdrawal") || type.includes("investor withdrawal")) cashFlowType = "withdrawal";
+    else if (type.includes("transfer in") || type.includes("transfer out")) cashFlowType = "internal";
+    else return [];
+    return [{
+      id: `manual_cash_${item.id}`,
+      investorId,
+      source: "manual",
+      manualPortfolioCashFlow: true,
+      transactionDate: item.entryDate,
+      transactionType: `Manual cash - ${item.entryType || cashFlowType}`,
+      cashFlowType,
+      amount,
+      notes: item.notes || item.reference || ""
+    }];
+  });
+
+  // If a provider/broker does not expose a usable cash-ledger transaction,
+  // staff may explicitly confirm an actual external cash movement from an
+  // Investor Action. This is opt-in and is excluded when the provider
+  // transaction is already captured, preventing double counting.
+  let confirmedActionCashFlows = [];
+  if (monthStart) {
+    const actionResult = await getDocs(query(collection(db, "investorActions"), where("investorId", "==", investorId), ...ownership));
+    confirmedActionCashFlows = rows(actionResult).flatMap((item) => {
+      if (item.financialImpactStatus !== "confirmed" || item.financialConfirmationMode !== "manual_cash_movement") return [];
+      const transactionDate = String(item.actualFinancialDate || "");
+      if (!transactionDate || transactionDate < monthStart || transactionDate > asOfDate) return [];
+      const amount = Math.abs(Number(item.actualFinancialAmount || 0));
+      if (!amount) return [];
+      const cashFlowType = item.financialImpactType === "external_inflow"
+        ? "new_money"
+        : item.financialImpactType === "external_outflow"
+          ? "withdrawal"
+          : "";
+      if (!cashFlowType) return [];
+      return [{
+        id: `action_cash_${item.id}`,
+        investorId,
+        source: "investor_action_confirmation",
+        sourceActionId: item.id,
+        transactionDate,
+        transactionType: item.requestType || item.recommendationType || (cashFlowType === "withdrawal" ? "Confirmed Withdrawal" : "Confirmed Investment"),
+        instrumentName: item.relatedInvestmentName || item.requestedAccountReference || "Portfolio",
+        cashFlowType,
+        financialImpactStatus: "confirmed",
+        amount,
+        notes: [item.requestedAccountReference, item.actualFinancialReference, item.portfolioConfirmationNote].filter(Boolean).join(" · ")
+      }];
+    });
+  }
+
+  transactions = [...transactions, ...manualCashFlows, ...confirmedActionCashFlows]
+    .sort((a, b) => dateSortValue(a.transactionDate) - dateSortValue(b.transactionDate));
+
   const tradingRef = monthKey ? doc(db, "tradingMonthlySummaries", `${investorId}_${monthKey}`) : null;
   const tradingDoc = tradingRef ? await getDoc(tradingRef) : null;
   const tradingSummary = tradingDoc?.exists() ? { id: tradingDoc.id, ...tradingDoc.data() } : null;
@@ -413,8 +507,8 @@ export async function getPortfolioReportSource(investorId, asOfDate, currentUser
     asOfDate,
     snapshot,
     openingSnapshot,
-    positions: rows(positionResult),
-    openingPositions,
+    positions: rows(positionResult).map((item) => ({ ...item, goalAllocations: normalisePortfolioGoalAllocations(item.goalAllocations), allocationStatus: portfolioAllocationStatus(item.goalAllocations) })),
+    openingPositions: openingPositions.map((item) => ({ ...item, goalAllocations: normalisePortfolioGoalAllocations(item.goalAllocations), allocationStatus: portfolioAllocationStatus(item.goalAllocations) })),
     transactions,
     tradingSummary
   };

@@ -4,6 +4,11 @@ import {
   PORTFOLIO_RECONCILIATION_THRESHOLDS,
   PORTFOLIO_SOURCE_LABELS
 } from "@/lib/constants/portfolio";
+import {
+  GENERAL_WEALTH_BUCKET_NAME,
+  normalisePortfolioGoalAllocations,
+  primaryPortfolioBucket
+} from "@/lib/portfolioGoalAllocation";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const QUANTITY_EPSILON = 0.000001;
@@ -77,14 +82,18 @@ function identityKey(position = {}) {
 }
 
 function goalPercentage(position = {}) {
-  return (Array.isArray(position.goalAllocations) ? position.goalAllocations : [])
+  return normalisePortfolioGoalAllocations(position.goalAllocations)
+    .filter((item) => item?.goalId)
+    .reduce((sum, item) => sum + Math.max(0, Math.min(100, number(item?.percentage))), 0);
+}
+
+function bucketPercentage(position = {}) {
+  return normalisePortfolioGoalAllocations(position.goalAllocations)
     .reduce((sum, item) => sum + Math.max(0, Math.min(100, number(item?.percentage))), 0);
 }
 
 function goalName(position = {}) {
-  const allocation = (Array.isArray(position.goalAllocations) ? position.goalAllocations : [])
-    .find((item) => item?.goalId && number(item?.percentage) > 0);
-  return allocation?.goalName || "";
+  return primaryPortfolioBucket(position.goalAllocations)?.goalName || GENERAL_WEALTH_BUCKET_NAME;
 }
 
 function assetClass(position = {}) {
@@ -211,15 +220,15 @@ function concentrationSummary(positions = [], totalValue = 0) {
   const byAsset = new Map();
   const byGoal = new Map();
   let largestHolding = null;
-  let unassignedValue = 0;
+  let generalWealthValue = 0;
 
   positions.forEach((position) => {
     const value = number(position.currentValue);
     const asset = assetClass(position);
     byAsset.set(asset, number(byAsset.get(asset)) + value);
     const linkedGoal = goalName(position);
-    if (linkedGoal) byGoal.set(linkedGoal, number(byGoal.get(linkedGoal)) + value);
-    else unassignedValue += value;
+    if (linkedGoal && linkedGoal !== GENERAL_WEALTH_BUCKET_NAME) byGoal.set(linkedGoal, number(byGoal.get(linkedGoal)) + value);
+    else generalWealthValue += value;
     if (!largestHolding || value > largestHolding.currentValue) {
       largestHolding = {
         positionId: positionId(position),
@@ -251,8 +260,11 @@ function concentrationSummary(positions = [], totalValue = 0) {
       currentValue: round(largestGoalValue),
       percentage: total > 0 ? round(largestGoalValue / total * 100, 1) : 0
     } : null,
-    unassignedValue: round(unassignedValue),
-    unassignedPercentage: total > 0 ? round(unassignedValue / total * 100, 1) : 0,
+    generalWealthValue: round(generalWealthValue),
+    generalWealthPercentage: total > 0 ? round(generalWealthValue / total * 100, 1) : 0,
+    // Legacy keys remain during the UI/API transition, but General Wealth is a valid default bucket, not an unassigned error.
+    unassignedValue: 0,
+    unassignedPercentage: 0,
     assetClasses: Object.fromEntries([...byAsset.entries()].map(([key, value]) => [key, round(value)]))
   };
 }
@@ -302,7 +314,8 @@ export function buildPortfolioIntelligence({
       productType: item.productType || PORTFOLIO_PRODUCT_TYPES.OTHER,
       currentValue: round(item.currentValue),
       goalName: goalName(item),
-      goalAssigned: goalPercentage(item) > 0
+      goalAssigned: goalPercentage(item) > 0,
+      bucketAssigned: bucketPercentage(item) >= 99.9999
     }));
 
   const exitedHoldings = previous
@@ -365,15 +378,16 @@ export function buildPortfolioIntelligence({
   const staleSources = freshness.filter((item) => ["stale", "critical"].includes(item.freshnessStatus));
   const agingSources = freshness.filter((item) => item.freshnessStatus === "aging");
 
-  const unassignedHoldings = current
+  const generalWealthHoldings = current
     .filter((item) => goalPercentage(item) <= 0)
     .map((item) => ({
       positionId: positionId(item),
       instrumentName: positionName(item),
       currentValue: round(item.currentValue),
-      source: item.source || ""
+      source: item.source || "",
+      bucketName: GENERAL_WEALTH_BUCKET_NAME
     }));
-  const newUnassignedHoldings = newHoldings.filter((item) => !item.goalAssigned);
+  const newGeneralWealthHoldings = newHoldings.filter((item) => !item.goalAssigned);
 
   const flows = transactions.reduce((totals, transaction) => {
     const result = transactionFlow(transaction);
@@ -461,13 +475,13 @@ export function buildPortfolioIntelligence({
       { count: flows.reviewCount, amount: round(flows.reviewAmount) }
     ));
   }
-  if (newUnassignedHoldings.length) {
+  if (newGeneralWealthHoldings.length) {
     issues.push(issue(
-      "new_unassigned_holdings",
+      "new_general_wealth_holdings",
       "info",
-      "New holdings need Goal/Bucket review",
-      `${newUnassignedHoldings.length} new holding${newUnassignedHoldings.length === 1 ? " is" : "s are"} currently in General Wealth / Unassigned.`,
-      { count: newUnassignedHoldings.length }
+      "New holdings assigned to General Wealth",
+      `${newGeneralWealthHoldings.length} new holding${newGeneralWealthHoldings.length === 1 ? " is" : "s are"} mapped to the default General Wealth bucket until staff links them to a specific Bucket List goal.`,
+      { count: newGeneralWealthHoldings.length }
     ));
   }
 
@@ -488,8 +502,10 @@ export function buildPortfolioIntelligence({
       newHoldings: previousSnapshotDate ? newHoldings.length : 0,
       exitedHoldings: previousSnapshotDate ? exitedHoldings.length : 0,
       partialExits: previousSnapshotDate ? partialExits.length : 0,
-      unassignedHoldings: unassignedHoldings.length,
-      newUnassignedHoldings: previousSnapshotDate ? newUnassignedHoldings.length : 0,
+      generalWealthHoldings: generalWealthHoldings.length,
+      newGeneralWealthHoldings: previousSnapshotDate ? newGeneralWealthHoldings.length : 0,
+      unassignedHoldings: 0,
+      newUnassignedHoldings: 0,
       duplicateGroups: duplicates.length,
       valuationMismatches: valuationMismatches.length,
       unexplainedQuantityChanges: unexplainedQuantityChanges.length,
@@ -518,7 +534,8 @@ export function buildPortfolioIntelligence({
     exitedHoldings: previousSnapshotDate ? exitedHoldings : [],
     partialExits: previousSnapshotDate ? partialExits : [],
     unexplainedQuantityChanges: previousSnapshotDate ? unexplainedQuantityChanges : [],
-    unassignedHoldings,
+    generalWealthHoldings,
+    unassignedHoldings: [],
     valuationMismatches,
     duplicates,
     priceMovements: previousSnapshotDate ? priceMovements.slice(0, 20) : [],

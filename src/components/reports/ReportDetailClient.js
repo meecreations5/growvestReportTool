@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -16,9 +17,12 @@ import {
   MoreHorizontal,
   Printer,
   RefreshCcw,
-  Send
+  Send,
+  Trash2,
+  X
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/contexts/PermissionContext";
 import {
   setReportInvestorVisibility,
   subscribeInvestorReports,
@@ -26,6 +30,7 @@ import {
   subscribeReportAcknowledgement
 } from "@/services/reportService";
 import {
+  deleteMonthlyReport,
   downloadReportPdf,
   generateReportPdf,
   publishReportVersion
@@ -59,7 +64,9 @@ function MetaItem({ label, value, tone = "default" }) {
 }
 
 export default function ReportDetailClient({ reportId }) {
+  const router = useRouter();
   const { profile } = useAuth();
+  const { accessLevel } = usePermissions();
   const [report, setReport] = useState(null);
   const [history, setHistory] = useState([]);
   const [acknowledgement, setAcknowledgement] = useState(null);
@@ -67,6 +74,9 @@ export default function ReportDetailClient({ reportId }) {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
 
   useEffect(
     () =>
@@ -112,6 +122,22 @@ export default function ReportDetailClient({ reportId }) {
           Number(report.version || 0) > Number(report.publishedSourceVersion || 0)
       ),
     [report]
+  );
+
+  const reportAccessLevel = accessLevel("reports");
+  const reportIsPublished = Boolean(
+    report?.investorVisible
+    || report?.publicationStatus === "published"
+    || report?.activePublishedVersionId
+    || Number(report?.publishedVersion || 0) > 0
+  );
+  const canDeleteReport = Boolean(
+    report
+    && (["super_admin", "admin"].includes(profile?.role)
+      || (profile?.role === "advisor"
+        && (reportIsPublished
+          ? reportAccessLevel === "full"
+          : ["manage", "full"].includes(reportAccessLevel))))
   );
 
   async function publishReport() {
@@ -178,6 +204,32 @@ export default function ReportDetailClient({ reportId }) {
       setNotice("Secure PDF download started.");
     } catch (nextError) {
       setError(nextError.message);
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function handleDeleteReport() {
+    if (!report || !canDeleteReport) return;
+    const reason = deleteReason.trim();
+    if (reason.length < 5) {
+      setError("Enter a reason for deleting this report.");
+      return;
+    }
+    if (deleteConfirmation.trim().toUpperCase() !== "DELETE") {
+      setError("Type DELETE to confirm report deletion.");
+      return;
+    }
+    setWorking(true);
+    setError("");
+    setNotice("");
+    try {
+      await deleteMonthlyReport(report.id, { reason, confirmation: "DELETE" });
+      setDeleteOpen(false);
+      router.replace("/reports");
+      router.refresh();
+    } catch (nextError) {
+      setError(nextError.message || "Unable to delete report.");
     } finally {
       setWorking(false);
     }
@@ -359,6 +411,16 @@ export default function ReportDetailClient({ reportId }) {
                     <EyeOff size={16} /> Unpublish Report
                   </button>
                 ) : null}
+                {canDeleteReport ? (
+                  <button
+                    type="button"
+                    onClick={() => { setDeleteReason(""); setDeleteConfirmation(""); setDeleteOpen(true); }}
+                    disabled={working}
+                    className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    <Trash2 size={16} /> Delete Report
+                  </button>
+                ) : null}
               </div>
             </details>
           </div>
@@ -440,6 +502,54 @@ export default function ReportDetailClient({ reportId }) {
           <ReportVersionHistory reportId={report.id} activeVersionId={report.activePublishedVersionId} />
         </div>
       </details>
+
+      {canDeleteReport ? (
+        <section className="rounded-xl border border-red-200 bg-red-50/40 p-4 shadow-sm lg:hidden">
+          <p className="text-sm font-bold text-red-900">Report management</p>
+          <p className="mt-1 text-xs leading-5 text-red-800">Delete only this report. Portfolio Master, Bucket Lists, Investor Profile actions and financial transactions remain unchanged.</p>
+          <button type="button" onClick={() => { setDeleteReason(""); setDeleteConfirmation(""); setDeleteOpen(true); }} disabled={working} className="mt-3 inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-bold text-red-700 disabled:opacity-50">
+            <Trash2 size={16} /> Delete Report
+          </button>
+        </section>
+      ) : null}
+
+      {deleteOpen ? (
+        <div className="fixed inset-0 z-[200] flex items-end justify-center bg-slate-950/60 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label="Delete Monthly Report">
+          <button type="button" className="absolute inset-0" aria-label="Close delete report dialog" onClick={() => working ? null : setDeleteOpen(false)} />
+          <section className="relative z-10 w-full max-w-xl rounded-t-[28px] bg-white p-5 shadow-2xl sm:rounded-2xl sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-red-50 text-red-700"><Trash2 size={20} /></span>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-red-700">Controlled report deletion</p>
+                  <h2 className="mt-1 font-heading text-xl font-bold text-slate-950">Delete {reportPeriod} Report?</h2>
+                </div>
+              </div>
+              <button type="button" onClick={() => setDeleteOpen(false)} disabled={working} className="grid h-10 w-10 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="Close"><X size={18} /></button>
+            </div>
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+              This removes the Monthly Report, its stored PDFs, published versions, acknowledgements/download records and Investor Portal visibility. Portfolio Master, Bucket Lists, Profile actions, completed withdrawals and financial transactions are preserved.
+            </div>
+            {reportIsPublished ? <p className="mt-3 text-xs font-semibold text-red-700">This report is published. Deleting it removes the live Investor Portal report immediately.</p> : null}
+            <div className="mt-5 grid gap-4">
+              <label className="grid gap-2">
+                <span className="text-xs font-bold text-slate-700">Reason for deletion</span>
+                <textarea rows={3} value={deleteReason} onChange={(event) => setDeleteReason(event.target.value)} className="min-h-24 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" placeholder="Why is this report being deleted?" />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-xs font-bold text-slate-700">Type DELETE to confirm</span>
+                <input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" placeholder="DELETE" />
+              </label>
+            </div>
+            <div className="mt-6 flex flex-col-reverse justify-end gap-2 sm:flex-row">
+              <button type="button" onClick={() => setDeleteOpen(false)} disabled={working} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 disabled:opacity-50">Cancel</button>
+              <button type="button" onClick={handleDeleteReport} disabled={working || deleteReason.trim().length < 5 || deleteConfirmation.trim().toUpperCase() !== "DELETE"} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-red-700 px-4 text-sm font-bold text-white hover:bg-red-800 disabled:opacity-50">
+                <Trash2 size={16} /> {working ? "Deleting..." : "Delete Report"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,.10)] backdrop-blur lg:hidden">
         <div className="mx-auto grid max-w-lg grid-cols-2 gap-2">

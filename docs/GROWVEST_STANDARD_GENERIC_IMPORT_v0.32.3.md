@@ -128,7 +128,7 @@ Goal assignment is planning metadata and is not overwritten by daily source valu
 
 - Existing position → existing Goal/Bucket assignment is preserved.
 - New position with an exact valid Goal/Bucket name → GrowVest can assign it at 100%.
-- New position with no goal → General Wealth / Unassigned.
+- New position with no goal → General Wealth (Default).
 - Unknown/ambiguous goal name → position remains unassigned and is marked for goal review.
 - Reprocess retains the original position allocation.
 - Correct Investor does not copy the old investor’s Goal/Bucket assignment to the new investor.

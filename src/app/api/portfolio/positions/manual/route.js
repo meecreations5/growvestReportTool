@@ -9,6 +9,7 @@ import {
 } from "@/lib/constants/portfolio";
 import { createPortfolioSnapshot, getAccessibleInvestor, indiaDateKey, positionDocumentId } from "@/lib/server/portfolioServer";
 import { stableHash } from "@/lib/server/portfolioImportParser";
+import { generalWealthAllocation, normalisePortfolioGoalAllocations, portfolioAllocationStatus } from "@/lib/portfolioGoalAllocation";
 
 export const runtime = "nodejs";
 
@@ -56,13 +57,13 @@ export async function POST(request) {
     const gainLoss = currentValue - totalInvested;
     const returnPercentage = totalInvested > 0 ? gainLoss / totalInvested * 100 : 0;
 
-    let goalAllocations = [];
+    let goalAllocations = [generalWealthAllocation()];
     const goalId = clean(payload.goalId);
     if (goalId) {
       const goals = Array.isArray(investor.bucketList) && investor.bucketList.length ? investor.bucketList : (investor.goals || []);
       const goal = goals.find((item) => String(item.id || item.goalId) === goalId);
       if (!goal) return Response.json({ error: "The selected Goal / Bucket List does not exist." }, { status: 400 });
-      goalAllocations = [{ goalId, goalName: goal.name || goal.goalName || "Goal", percentage: 100 }];
+      goalAllocations = normalisePortfolioGoalAllocations([{ goalId, goalName: goal.name || goal.goalName || "Goal", percentage: 100 }]);
     }
 
     const positionId = positionDocumentId({
@@ -123,7 +124,8 @@ export async function POST(request) {
       policyStatus: clean(payload.policyStatus) || (productType === PORTFOLIO_PRODUCT_TYPES.ULIP ? "Active" : ""),
       maturityDate: clean(payload.maturityDate),
       goalAllocations,
-      allocationStatus: goalAllocations.length ? "allocated" : "general_wealth",
+      allocationStatus: portfolioAllocationStatus(goalAllocations),
+      defaultBucketApplied: goalAllocations.some((item) => !item.goalId),
       notes: clean(payload.notes),
       status: "active",
       createdAt: existing.exists ? existing.data()?.createdAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),

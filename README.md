@@ -671,3 +671,11 @@ Advisor portfolio reads now include the advisor ownership constraint required by
 ## v0.33.2 Manual Portfolio Management workbook
 
 Portfolio Administration now supports one multi-sheet Excel workbook for multiple investors and multiple manually managed portfolio accounts. The workflow covers account master, current holdings, transactions, cash, income, corporate actions, charges, goal allocations, reconciliation and notes, while preserving existing Fundbazaar/Bajaj/ULIP flows. Account-level performance metrics and dated account snapshots preserve cash, realised/unrealised P&L, XIRR and asset allocation for later month/FY/since-inception reporting. See `docs/MANUAL_PORTFOLIO_MANAGEMENT_v0.33.2.md`.
+
+## v0.33.2 — Reporting Period & Planned/Actual Cash Flow
+
+Monthly Reports now default to the previous completed calendar month, automatically calculate Money Added, Money Withdrawn and Portfolio Gain/Loss from verified activity, and keep planned Investor Actions separate from actual cash flows. Trading Account Deposit/Withdrawal are explicit action types, SIP stop/pause/reduction remain SIP changes rather than withdrawals, and Advisors can optionally confirm an actual external cash movement only when a provider transaction is not already stored. See `docs/REPORTING_PERIOD_PLANNED_ACTUAL_CASH_FLOW_v0.33.2.md`.
+
+## v0.33.2 Profile Withdrawal + Report Delete workflow
+
+The Investor Profile is now the single source for planned Mutual Fund withdrawals/cash needs, including multiple funds per Bucket List and per-fund SIP Continue/Pause/Stop instructions. Draft Monthly Reports auto-fetch these Profile actions as read-only context, actual completion updates Portfolio Master, and provider redemptions reconcile against provisional action transactions to prevent double counting. Monthly Reports can also be deleted through a controlled, audited server workflow without deleting Portfolio Master, Bucket Lists, Investor Actions or financial transactions. See `docs/PROFILE_WITHDRAWAL_REPORT_DELETE_WORKFLOW_v0.33.2.md`.

@@ -13,6 +13,22 @@ export const ACTION_STATUSES = [
 
 export const ACTION_TERMINAL_STATUSES = ["Completed", "Rejected", "Cancelled"];
 
+export const ACTION_FINANCIAL_IMPACT_TYPES = {
+  NONE: "none",
+  EXTERNAL_INFLOW: "external_inflow",
+  EXTERNAL_OUTFLOW: "external_outflow",
+  INTERNAL_CHANGE: "internal_change"
+};
+
+export const ACTION_FINANCIAL_IMPACT_STATUSES = {
+  NOT_APPLICABLE: "not_applicable",
+  PLANNED: "planned",
+  IN_PROGRESS: "in_progress",
+  AWAITING_PORTFOLIO_CONFIRMATION: "awaiting_portfolio_confirmation",
+  CONFIRMED: "confirmed",
+  CANCELLED: "cancelled"
+};
+
 export const ACTION_PRIORITIES = ["High", "Medium", "Planned", "Low", "Future"];
 
 export const ACTION_OWNERS = ["Advisor", "Investor", "GrowVest", "Joint"];
@@ -25,15 +41,32 @@ export const INVESTOR_DECISIONS = [
   "Not Required"
 ];
 
+export const STRUCTURED_WITHDRAWAL_REQUEST_TYPE = "Portfolio Withdrawal / Redemption";
+export const WITHDRAWAL_MODES = ["partial", "full"];
+export const WITHDRAWAL_SIP_INSTRUCTIONS = ["continue", "pause", "stop"];
+
 export const INVESTOR_REQUEST_TYPES = [
+  STRUCTURED_WITHDRAWAL_REQUEST_TYPE,
   "Discuss Investment",
+  "Invest More",
+  "Start SIP",
   "Increase SIP",
+  "Reduce SIP",
+  "Pause SIP",
+  "Stop SIP",
+  "Start Lump Sum Investment",
+  "Trading Account Deposit",
+  "Trading Account Withdrawal",
+  "Partial Redemption",
+  "Full Redemption",
+  "Switch Investment",
+  "Goal / Bucket List Change",
+  "Correct Portfolio Information",
+  "Add Investment Information",
   "SIP Funding / Withdrawal",
   "SIP Funding Discussion",
-  "Start Lump Sum Investment",
   "Redemption Discussion",
   "Switch Fund Discussion",
-  "Goal / Bucket List Change",
   "Loan Prepayment Discussion",
   "Insurance Review",
   "Portfolio Rebalancing",
@@ -66,8 +99,42 @@ export const ACTION_STATUS_TONES = {
   Cancelled: "slate"
 };
 
-export function isActionOpen(status) {
-  return !ACTION_TERMINAL_STATUSES.includes(String(status || ""));
+export function actionFinancialImpactType(requestType = "") {
+  const type = String(requestType || "").trim();
+  if (["Invest More", "Start SIP", "Increase SIP", "Start Lump Sum Investment", "Trading Account Deposit"].includes(type)) {
+    return ACTION_FINANCIAL_IMPACT_TYPES.EXTERNAL_INFLOW;
+  }
+  if ([STRUCTURED_WITHDRAWAL_REQUEST_TYPE, "Partial Redemption", "Full Redemption", "Trading Account Withdrawal"].includes(type)) {
+    return ACTION_FINANCIAL_IMPACT_TYPES.EXTERNAL_OUTFLOW;
+  }
+  if (["Reduce SIP", "Pause SIP", "Stop SIP", "Switch Investment", "Switch Fund Discussion", "Goal / Bucket List Change", "Portfolio Rebalancing"].includes(type)) {
+    return ACTION_FINANCIAL_IMPACT_TYPES.INTERNAL_CHANGE;
+  }
+  return ACTION_FINANCIAL_IMPACT_TYPES.NONE;
+}
+
+export function actionFinancialImpactStatus(status = "", impactType = ACTION_FINANCIAL_IMPACT_TYPES.NONE, currentStatus = "") {
+  if (currentStatus === ACTION_FINANCIAL_IMPACT_STATUSES.CONFIRMED) return currentStatus;
+  if (impactType === ACTION_FINANCIAL_IMPACT_TYPES.NONE) return ACTION_FINANCIAL_IMPACT_STATUSES.NOT_APPLICABLE;
+  const workflowStatus = String(status || "");
+  if (["Rejected", "Cancelled"].includes(workflowStatus)) return ACTION_FINANCIAL_IMPACT_STATUSES.CANCELLED;
+  if (workflowStatus === "Completed") return ACTION_FINANCIAL_IMPACT_STATUSES.AWAITING_PORTFOLIO_CONFIRMATION;
+  if (workflowStatus === "In Progress") return ACTION_FINANCIAL_IMPACT_STATUSES.IN_PROGRESS;
+  return ACTION_FINANCIAL_IMPACT_STATUSES.PLANNED;
+}
+
+export function isStructuredWithdrawalAction(actionOrType = {}) {
+  const type = typeof actionOrType === "string"
+    ? actionOrType
+    : (actionOrType?.requestType || actionOrType?.recommendationType || "");
+  return String(type || "").trim() === STRUCTURED_WITHDRAWAL_REQUEST_TYPE;
+}
+
+export function isActionOpen(actionOrStatus) {
+  const action = actionOrStatus && typeof actionOrStatus === "object" ? actionOrStatus : { status: actionOrStatus };
+  const status = String(action.status || "");
+  if (status === "Completed" && action.financialImpactStatus === ACTION_FINANCIAL_IMPACT_STATUSES.AWAITING_PORTFOLIO_CONFIRMATION) return true;
+  return !ACTION_TERMINAL_STATUSES.includes(status);
 }
 
 export function actionDefaultTitle(requestType, contextName = "") {

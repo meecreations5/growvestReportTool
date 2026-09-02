@@ -7,6 +7,12 @@ import {
 } from "@/lib/constants/portfolio";
 import { stableHash } from "@/lib/server/portfolioImportParser";
 import { buildPortfolioIntelligence } from "@/lib/server/portfolioIntelligence";
+import {
+  GENERAL_WEALTH_BUCKET_ID,
+  GENERAL_WEALTH_BUCKET_NAME,
+  normalisePortfolioGoalAllocations,
+  portfolioAllocationStatus
+} from "@/lib/portfolioGoalAllocation";
 
 export function indiaDateKey(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -145,7 +151,12 @@ export async function createPortfolioSnapshot(investorId, actor, { snapshotDate 
   const positionsSnapshot = await adminDb.collection("portfolioPositions").where("investorId", "==", investorId).get();
   const positions = positionsSnapshot.docs
     .map((item) => ({ id: item.id, ...item.data() }))
-    .filter((item) => item.status !== "inactive" && item.status !== "exited");
+    .filter((item) => item.status !== "inactive" && item.status !== "exited")
+    .map((item) => ({
+      ...item,
+      goalAllocations: normalisePortfolioGoalAllocations(item.goalAllocations),
+      allocationStatus: portfolioAllocationStatus(item.goalAllocations)
+    }));
 
   const seenUlipPolicies = new Set();
   const summary = positions.reduce((total, item) => {
@@ -175,11 +186,27 @@ export async function createPortfolioSnapshot(investorId, actor, { snapshotDate 
   }, { currentValue: 0, totalInvested: 0, gainLoss: 0, monthlySip: 0, positionCount: 0, assetClasses: {}, productTypes: {} });
 
   const goalTotals = {};
+  const bucketTotals = {};
   positions.forEach((position) => {
     (position.goalAllocations || []).forEach((allocation) => {
-      if (!allocation?.goalId || Number(allocation.percentage || 0) <= 0) return;
-      const allocatedValue = Number(position.currentValue || 0) * Number(allocation.percentage || 0) / 100;
-      const allocatedMonthly = Number(position.monthlySip || 0) * Number(allocation.percentage || 0) / 100;
+      const percentage = Number(allocation.percentage || 0);
+      if (percentage <= 0) return;
+      const allocatedValue = Number(position.currentValue || 0) * percentage / 100;
+      const allocatedMonthly = Number(position.monthlySip || 0) * percentage / 100;
+      const bucketKey = allocation.goalId || allocation.bucketId || GENERAL_WEALTH_BUCKET_ID;
+      const bucket = bucketTotals[bucketKey] || {
+        goalId: allocation.goalId || "",
+        bucketId: allocation.bucketId || (allocation.goalId ? "" : GENERAL_WEALTH_BUCKET_ID),
+        goalName: allocation.goalName || (allocation.goalId ? "Goal" : GENERAL_WEALTH_BUCKET_NAME),
+        bucketName: allocation.bucketName || allocation.goalName || (allocation.goalId ? "Goal" : GENERAL_WEALTH_BUCKET_NAME),
+        currentValue: 0,
+        monthlyContribution: 0,
+        isDefault: !allocation.goalId
+      };
+      bucket.currentValue += allocatedValue;
+      bucket.monthlyContribution += allocatedMonthly;
+      bucketTotals[bucketKey] = bucket;
+      if (!allocation.goalId) return;
       const current = goalTotals[allocation.goalId] || { goalId: allocation.goalId, goalName: allocation.goalName || "", currentValue: 0, monthlyContribution: 0 };
       current.currentValue += allocatedValue;
       current.monthlyContribution += allocatedMonthly;
@@ -187,8 +214,11 @@ export async function createPortfolioSnapshot(investorId, actor, { snapshotDate 
     });
   });
 
+  const generalWealthTotal = bucketTotals[GENERAL_WEALTH_BUCKET_ID] || { currentValue: 0, monthlyContribution: 0 };
   const roundedSummary = {
     ...summary,
+    generalWealthCorpus: Number(Number(generalWealthTotal.currentValue || 0).toFixed(2)),
+    generalWealthMonthlyContribution: Number(Number(generalWealthTotal.monthlyContribution || 0).toFixed(2)),
     currentValue: Number(summary.currentValue.toFixed(2)),
     totalInvested: Number(summary.totalInvested.toFixed(2)),
     gainLoss: Number(summary.gainLoss.toFixed(2)),
@@ -234,6 +264,11 @@ export async function createPortfolioSnapshot(investorId, actor, { snapshotDate 
       currentValue: Number(item.currentValue.toFixed(2)),
       monthlyContribution: Number(item.monthlyContribution.toFixed(2))
     })),
+    bucketTotals: Object.values(bucketTotals).map((item) => ({
+      ...item,
+      currentValue: Number(item.currentValue.toFixed(2)),
+      monthlyContribution: Number(item.monthlyContribution.toFixed(2))
+    })),
     sourceFreshness: intelligence.sourceFreshness?.length ? intelligence.sourceFreshness : sourceFreshness(positions),
     reconciliationStatus: intelligence.status,
     intelligence,
@@ -245,6 +280,13 @@ export async function createPortfolioSnapshot(investorId, actor, { snapshotDate 
 
   positions.forEach((position) => {
     const snapshotPositionId = `${snapshotId}_${position.id}`;
+    writer.set(adminDb.collection("portfolioPositions").doc(position.id), {
+      goalAllocations: position.goalAllocations,
+      allocationStatus: position.allocationStatus || portfolioAllocationStatus(position.goalAllocations),
+      defaultBucketApplied: position.goalAllocations.some((item) => !item.goalId),
+      defaultBucketId: GENERAL_WEALTH_BUCKET_ID,
+      defaultBucketName: GENERAL_WEALTH_BUCKET_NAME
+    }, { merge: true });
     writer.set(adminDb.collection("portfolioSnapshotPositions").doc(snapshotPositionId), {
       snapshotId,
       snapshotDate,
@@ -294,6 +336,9 @@ export async function createPortfolioSnapshot(investorId, actor, { snapshotDate 
       returnPercentage: Number(position.returnPercentage || 0),
       monthlySip: Number(position.monthlySip || 0),
       goalAllocations: position.goalAllocations || [],
+      allocationStatus: position.allocationStatus || portfolioAllocationStatus(position.goalAllocations),
+      defaultBucketId: GENERAL_WEALTH_BUCKET_ID,
+      defaultBucketName: GENERAL_WEALTH_BUCKET_NAME,
       updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
   });
@@ -309,11 +354,13 @@ export async function createPortfolioSnapshot(investorId, actor, { snapshotDate 
     latestPortfolioIssueCount: Number(intelligence.issues?.filter((item) => item.severity !== "info").length || 0),
     latestPortfolioNewHoldingCount: Number(intelligence.counts?.newHoldings || 0),
     latestPortfolioExitedHoldingCount: Number(intelligence.counts?.exitedHoldings || 0),
-    latestPortfolioUnassignedCount: Number(intelligence.counts?.unassignedHoldings || 0),
+    latestPortfolioGeneralWealthCount: Number(intelligence.counts?.generalWealthHoldings || 0),
+    latestPortfolioGeneralWealthValue: roundedSummary.generalWealthCorpus,
+    latestPortfolioUnassignedCount: 0,
     latestPortfolioUpdatedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp()
   });
 
   await writer.close();
-  return { id: snapshotId, snapshotDate, summary: roundedSummary, goalTotals: Object.values(goalTotals), positionCount: positions.length, reconciliationStatus: intelligence.status, intelligence };
+  return { id: snapshotId, snapshotDate, summary: roundedSummary, goalTotals: Object.values(goalTotals), bucketTotals: Object.values(bucketTotals), positionCount: positions.length, reconciliationStatus: intelligence.status, intelligence };
 }

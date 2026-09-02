@@ -512,7 +512,10 @@ service cloud.firestore {
         && request.resource.data.get('investorPortalUid', null) == resource.data.get('investorPortalUid', null)
         && request.resource.data.get('reportCode', null) == resource.data.get('reportCode', null)
       );
-      allow delete: if isSuperAdmin();
+      // Monthly Report deletion is server-managed so published-version/PDF
+      // cleanup, permission checks, Investor Portal removal and audit logging
+      // always happen as one controlled workflow.
+      allow delete: if false;
     }
 
 

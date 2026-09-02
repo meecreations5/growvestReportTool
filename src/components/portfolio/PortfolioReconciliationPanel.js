@@ -85,7 +85,7 @@ function ReconciliationRow({ row }) {
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div><p className="font-bold text-slate-900">{row.counts?.newHoldings || 0}</p><p className="text-slate-500">New</p></div>
           <div><p className="font-bold text-slate-900">{row.counts?.exitedHoldings || 0}</p><p className="text-slate-500">Exited</p></div>
-          <div><p className="font-bold text-slate-900">{row.counts?.unassignedHoldings || 0}</p><p className="text-slate-500">Unassigned</p></div>
+          <div><p className="font-bold text-slate-900">{row.counts?.generalWealthHoldings || 0}</p><p className="text-slate-500">General Wealth</p></div>
           <div><p className={`font-bold ${row.issueCount ? "text-amber-700" : "text-emerald-700"}`}>{row.issueCount || 0}</p><p className="text-slate-500">Issues</p></div>
         </div>
 
@@ -219,7 +219,7 @@ export default function PortfolioReconciliationPanel({ currentUser, refreshKey =
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
             <span><strong className="text-slate-900">{summary.newHoldings || 0}</strong> new holdings</span>
             <span><strong className="text-slate-900">{summary.exitedHoldings || 0}</strong> exited</span>
-            <span><strong className="text-slate-900">{summary.unassignedHoldings || 0}</strong> unassigned</span>
+            <span><strong className="text-slate-900">{summary.generalWealthHoldings || 0}</strong> in General Wealth</span>
             <span><strong className={summary.issueCount ? "text-amber-700" : "text-emerald-700"}>{summary.issueCount || 0}</strong> actionable issues</span>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -241,7 +241,7 @@ export default function PortfolioReconciliationPanel({ currentUser, refreshKey =
 
         <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/60 p-4 text-xs leading-5 text-blue-900">
           <div className="flex items-start gap-2"><TrendingUp size={15} className="mt-0.5 shrink-0" /><p><strong>Concentration indicators are informational.</strong> GrowVest surfaces the largest holding, asset class and Goal/Bucket allocation to support review; it does not automatically label a portfolio suitable/unsuitable or execute rebalancing.</p></div>
-          <div className="mt-2 flex items-start gap-2"><Target size={15} className="mt-0.5 shrink-0" /><p>New holdings without a Goal/Bucket remain in General Wealth / Unassigned until staff changes the persistent assignment.</p></div>
+          <div className="mt-2 flex items-start gap-2"><Target size={15} className="mt-0.5 shrink-0" /><p>Every holding has a persistent bucket assignment. New holdings default to General Wealth until staff deliberately links them to a specific Bucket List goal.</p></div>
         </div>
       </div>
     </Card>

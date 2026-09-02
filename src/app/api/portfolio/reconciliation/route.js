@@ -108,7 +108,8 @@ function reconciliationRow(investor = {}, snapshot = null, today = indiaDateKey(
       newHoldings: Number(counts.newHoldings ?? investor.latestPortfolioNewHoldingCount ?? 0),
       exitedHoldings: Number(counts.exitedHoldings ?? investor.latestPortfolioExitedHoldingCount ?? 0),
       partialExits: Number(counts.partialExits || 0),
-      unassignedHoldings: Number(counts.unassignedHoldings ?? investor.latestPortfolioUnassignedCount ?? 0),
+      generalWealthHoldings: Number(counts.generalWealthHoldings ?? investor.latestPortfolioGeneralWealthCount ?? 0),
+      unassignedHoldings: 0,
       valuationMismatches: Number(counts.valuationMismatches || 0),
       duplicateGroups: Number(counts.duplicateGroups || 0),
       staleSources: Number(counts.staleSources || sourceFreshness.filter((item) => ["stale", "critical"].includes(item.freshnessStatus)).length),
@@ -119,7 +120,8 @@ function reconciliationRow(investor = {}, snapshot = null, today = indiaDateKey(
       largestHolding: concentration.largestHolding || null,
       largestAssetClass: concentration.largestAssetClass || null,
       largestGoal: concentration.largestGoal || null,
-      unassignedPercentage: Number(concentration.unassignedPercentage || 0)
+      generalWealthPercentage: Number(concentration.generalWealthPercentage || 0),
+      unassignedPercentage: 0
     },
     sourceFreshness,
     updatedAt: snapshot?.updatedAt || investor.latestPortfolioUpdatedAt || null
@@ -168,7 +170,7 @@ export async function GET(request) {
       else if (row.reconciliationStatus === PORTFOLIO_RECONCILIATION_STATUS.MISSING_SOURCE) totals.missingSource += 1;
       totals.newHoldings += Number(row.counts.newHoldings || 0);
       totals.exitedHoldings += Number(row.counts.exitedHoldings || 0);
-      totals.unassignedHoldings += Number(row.counts.unassignedHoldings || 0);
+      totals.generalWealthHoldings += Number(row.counts.generalWealthHoldings || 0);
       totals.issueCount += Number(row.issueCount || 0);
       return totals;
     }, {
@@ -180,6 +182,7 @@ export async function GET(request) {
       missingSource: 0,
       newHoldings: 0,
       exitedHoldings: 0,
+      generalWealthHoldings: 0,
       unassignedHoldings: 0,
       issueCount: 0
     });

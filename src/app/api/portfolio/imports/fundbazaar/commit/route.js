@@ -9,6 +9,7 @@ import {
   PORTFOLIO_SOURCES
 } from "@/lib/constants/portfolio";
 import { normaliseExternalName, stableHash } from "@/lib/server/portfolioImportParser";
+import { normalisePortfolioGoalAllocations, portfolioAllocationStatus } from "@/lib/portfolioGoalAllocation";
 import { buildDailyPortfolioCoverage } from "@/lib/server/portfolioCoverage";
 import {
   createPortfolioSnapshot,
@@ -576,6 +577,8 @@ async function commitBajajFile({ actor, batchId, file, fileRef, investor, invest
     const recovered = recoveredBajajGoalAllocation(file, holding);
     let goalAllocations = recovered?.goalAllocations || (Array.isArray(previous.goalAllocations) ? previous.goalAllocations : []);
     if (!goalAllocations.length && !existing && holding.requestedGoalName) goalAllocations = requestedGoalAllocation(investor, holding.requestedGoalName);
+    const goalImportReviewRequired = Boolean(holding.requestedGoalName && !goalAllocations.length && !/general wealth|unassigned/i.test(holding.requestedGoalName));
+    goalAllocations = normalisePortfolioGoalAllocations(goalAllocations);
     const valuationDate = holding.valuationDate || file.summary?.valuationDate || file.reportPeriodEnd || "";
     const numbers = brokerPositionNumbers(holding, previous);
     const { quantity, currentRate, currentValue, totalInvested, averageBuyRate, costBasisAvailable, gainLoss, returnPercentage } = numbers;
@@ -621,9 +624,10 @@ async function commitBajajFile({ actor, batchId, file, fileRef, investor, invest
       previousCurrentValue: valuationChanged ? Number(previous.currentValue || 0) : Number(previous.previousCurrentValue || 0),
       previousValuationDate: valuationChanged ? (previous.valuationDate || previous.priceDate || "") : (previous.previousValuationDate || ""),
       goalAllocations,
-      allocationStatus: goalAllocations.length ? (recovered?.allocationStatus || previous.allocationStatus || "allocated") : "general_wealth",
+      allocationStatus: portfolioAllocationStatus(goalAllocations),
+      defaultBucketApplied: goalAllocations.some((item) => !item.goalId),
       requestedGoalName: holding.requestedGoalName || "",
-      goalImportReviewRequired: Boolean(holding.requestedGoalName && !goalAllocations.length && !/general wealth|unassigned/i.test(holding.requestedGoalName)),
+      goalImportReviewRequired,
       notes: holding.notes || previous.notes || "",
       status: quantity > 0 || currentValue > 0 ? "active" : "exited",
       valuationSourceReportType: file.reportType || "",
@@ -917,7 +921,7 @@ async function commitAngelOneFile({ actor, batchId, file, fileRef, investor, inv
         || Number(previous.currentRate || 0) !== numbers.currentRate
         || String(previous.valuationDate || previous.priceDate || "") !== String(valuationDate || "")
       );
-      const goalAllocations = Array.isArray(previous.goalAllocations) ? previous.goalAllocations : [];
+      const goalAllocations = normalisePortfolioGoalAllocations(Array.isArray(previous.goalAllocations) ? previous.goalAllocations : []);
       writer.set(ref, {
         investorId,
         investorName: investor.fullName || investor.name || "",
@@ -955,7 +959,8 @@ async function commitAngelOneFile({ actor, batchId, file, fileRef, investor, inv
         previousCurrentValue: valuationChanged ? Number(previous.currentValue || 0) : Number(previous.previousCurrentValue || 0),
         previousValuationDate: valuationChanged ? (previous.valuationDate || previous.priceDate || "") : (previous.previousValuationDate || ""),
         goalAllocations,
-        allocationStatus: goalAllocations.length ? (previous.allocationStatus || "allocated") : "general_wealth",
+        allocationStatus: portfolioAllocationStatus(goalAllocations),
+        defaultBucketApplied: goalAllocations.some((item) => !item.goalId),
         notes: holding.notes || previous.notes || "",
         status: numbers.quantity > 0 || numbers.currentValue > 0 ? "active" : "exited",
         valuationSourceReportType: file.reportType || "",
@@ -1269,6 +1274,8 @@ async function commitGenericFile({ actor, batchId, file, fileRef, investor, inve
       const recovered = recoveredGenericGoalAllocation(file, holding);
       let goalAllocations = recovered?.goalAllocations || (Array.isArray(previous.goalAllocations) ? previous.goalAllocations : []);
       if (!goalAllocations.length && !existing && holding.requestedGoalName) goalAllocations = requestedGoalAllocation(investor, holding.requestedGoalName);
+      const goalImportReviewRequired = Boolean(holding.requestedGoalName && !goalAllocations.length && !/general wealth|unassigned/i.test(holding.requestedGoalName));
+      goalAllocations = normalisePortfolioGoalAllocations(goalAllocations);
       const productType = holding.productType || previous.productType || "other";
       const quantity = Number(holding.quantity ?? holding.totalUnits ?? 0);
       const averagePurchaseRate = Number(holding.averagePurchaseRate ?? holding.averageBuyRate ?? holding.averagePurchaseNav ?? 0);
@@ -1330,9 +1337,10 @@ async function commitGenericFile({ actor, batchId, file, fileRef, investor, inve
         previousCurrentValue: valuationChanged ? Number(previous.currentValue || 0) : Number(previous.previousCurrentValue || 0),
         previousValuationDate: valuationChanged ? (previous.valuationDate || previous.navDate || previous.priceDate || "") : (previous.previousValuationDate || ""),
         goalAllocations,
-        allocationStatus: goalAllocations.length ? (recovered?.allocationStatus || previous.allocationStatus || "allocated") : "general_wealth",
+        allocationStatus: portfolioAllocationStatus(goalAllocations),
+        defaultBucketApplied: goalAllocations.some((item) => !item.goalId),
         requestedGoalName: holding.requestedGoalName || "",
-        goalImportReviewRequired: Boolean(holding.requestedGoalName && !goalAllocations.length && !/general wealth|unassigned/i.test(holding.requestedGoalName)),
+        goalImportReviewRequired,
         notes: holding.notes || previous.notes || "",
         status: currentValue > 0 || quantity > 0 || totalInvested > 0 ? "active" : "inactive",
         valuationSourceReportType: file.reportType || "",
@@ -1654,6 +1662,8 @@ async function commitUlipFile({ actor, batchId, file, fileRef, investor, investo
       const recovered = recoveredUlipGoalAllocation(file, holding);
       let goalAllocations = recovered?.goalAllocations || (Array.isArray(previous.goalAllocations) ? previous.goalAllocations : []);
       if (!goalAllocations.length && !existing && holding.requestedGoalName) goalAllocations = requestedGoalAllocation(investor, holding.requestedGoalName);
+      const goalImportReviewRequired = Boolean(holding.requestedGoalName && !goalAllocations.length && !/general wealth|unassigned/i.test(holding.requestedGoalName));
+      goalAllocations = normalisePortfolioGoalAllocations(goalAllocations);
       const navDate = holding.navDate || holding.valuationDate || file.summary?.navDate || file.reportPeriodEnd || "";
       const currentValue = Number(holding.currentValue || 0);
       const totalUnits = Number(holding.totalUnits || 0);
@@ -1707,9 +1717,10 @@ async function commitUlipFile({ actor, batchId, file, fileRef, investor, investo
         previousCurrentValue: valuationChanged ? Number(previous.currentValue || 0) : Number(previous.previousCurrentValue || 0),
         previousValuationDate: valuationChanged ? (previous.valuationDate || previous.navDate || "") : (previous.previousValuationDate || ""),
         goalAllocations,
-        allocationStatus: goalAllocations.length ? (recovered?.allocationStatus || previous.allocationStatus || "allocated") : "general_wealth",
+        allocationStatus: portfolioAllocationStatus(goalAllocations),
+        defaultBucketApplied: goalAllocations.some((item) => !item.goalId),
         requestedGoalName: holding.requestedGoalName || "",
-        goalImportReviewRequired: Boolean(holding.requestedGoalName && !goalAllocations.length && !/general wealth|unassigned/i.test(holding.requestedGoalName)),
+        goalImportReviewRequired,
         notes: holding.notes || previous.notes || "",
         status: currentValue > 0 || totalUnits > 0 ? "active" : "inactive",
         valuationSourceReportType: file.reportType || "",
@@ -2016,9 +2027,9 @@ export async function POST(request) {
         holdingEntries.forEach(({ holding, ref: positionRef, existing: existingPosition }) => {
           const existing = existingPosition || {};
           const recoveredGoal = recoveredGoalAllocation(file, holding);
-          const preservedGoalAllocations = recoveredGoal
+          const preservedGoalAllocations = normalisePortfolioGoalAllocations(recoveredGoal
             ? (Array.isArray(recoveredGoal.goalAllocations) ? recoveredGoal.goalAllocations : [])
-            : (Array.isArray(existing.goalAllocations) ? existing.goalAllocations : []);
+            : (Array.isArray(existing.goalAllocations) ? existing.goalAllocations : []));
           const parsedNavDate = holding.navDate || file.summary?.navDate || file.reportPeriodEnd || "";
           const parsedNav = Number(holding.currentNav || 0);
           const parsedCurrentValue = Number(holding.currentValue || 0);
@@ -2113,7 +2124,8 @@ export async function POST(request) {
             monthlySip: Number(holding.monthlySip || existing.monthlySip || 0),
             transactionCount: Math.max(Number(holding.transactionCount || 0), Number(existing.transactionCount || 0)),
             goalAllocations: preservedGoalAllocations,
-            allocationStatus: preservedGoalAllocations.length ? (recoveredGoal?.allocationStatus || existing.allocationStatus || "allocated") : "general_wealth",
+            allocationStatus: portfolioAllocationStatus(preservedGoalAllocations),
+            defaultBucketApplied: preservedGoalAllocations.some((item) => !item.goalId),
             status: "active",
             valuationSourceReportType: preservePreciseValuation ? (existing.valuationSourceReportType || "") : file.reportType || "",
             sourceImportId: batchId,

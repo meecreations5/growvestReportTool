@@ -44,6 +44,7 @@ import InvestorPortalAccessCard from "@/components/investors/InvestorPortalAcces
 import InvestorLifecycleCard from "@/components/investors/InvestorLifecycleCard";
 import InvestorPortfolioPanel from "@/components/portfolio/InvestorPortfolioPanel";
 import ActionStatusBadge from "@/components/actions/ActionStatusBadge";
+import WithdrawalCashNeedsPanel from "@/components/actions/WithdrawalCashNeedsPanel";
 import InvestorReportsPanel from "@/components/reports/InvestorReportsPanel";
 import ReportStatusBadge from "@/components/reports/ReportStatusBadge";
 import Card from "@/components/ui/Card";
@@ -62,7 +63,7 @@ import { subscribeAssessmentVersions, subscribeInvestor } from "@/services/asses
 import { subscribeInvestorMeetings } from "@/services/meetingService";
 import { subscribeInvestorReports } from "@/services/reportService";
 import { subscribeInvestorActions } from "@/services/actionService";
-import { ACTION_TERMINAL_STATUSES } from "@/lib/constants/actions";
+import { ACTION_TERMINAL_STATUSES, isStructuredWithdrawalAction } from "@/lib/constants/actions";
 
 function investorGoals(investor) {
   if (Array.isArray(investor?.bucketList) && investor.bucketList.length) return investor.bucketList;
@@ -510,6 +511,7 @@ export default function InvestorDetailClient({ investorId }) {
     { value: "overview", label: "Overview", icon: LayoutDashboard },
     { value: "goals", label: "Goals & Bucket List", icon: Target, count: goals.length },
     { value: "portfolio", label: "Portfolio", icon: WalletCards },
+    { value: "withdrawals", label: "Withdrawals & Cash Needs", icon: CircleDollarSign, count: actions.filter(isStructuredWithdrawalAction).length },
     { value: "reports", label: "Monthly Reports", icon: FileBarChart, count: reports.length },
     { value: "actions", label: "Advisor Follow-up", icon: ListChecks, count: actions.filter((item) => !ACTION_TERMINAL_STATUSES.includes(item.status)).length },
     { value: "meetings", label: "Meetings & MOM", icon: CalendarDays, count: meetings.length },
@@ -849,7 +851,7 @@ export default function InvestorDetailClient({ investorId }) {
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
             {goals.length
               ? goals.map((goal, index) => <GoalCard key={goal.id || `${goal.name}-${index}`} goal={goal} />)
-              : <div className="lg:col-span-2"><EmptyState title="General Wealth Corpus" description="No specific goal is required. Portfolio holdings can remain under General Wealth and be allocated to goals later." /></div>}
+              : <div className="lg:col-span-2"><EmptyState title="General Wealth (Default)" description="Every investment remains mapped. Holdings not linked to a specific Bucket List are automatically assigned to General Wealth until you deliberately reallocate them." /></div>}
           </div>
         </Card>
       ) : null}
@@ -906,6 +908,20 @@ export default function InvestorDetailClient({ investorId }) {
       ) : null}
 
       {tab === "reports" ? <InvestorReportsPanel investorId={investor.id} /> : null}
+
+      {tab === "withdrawals" ? (
+        <div className="grid gap-5">
+          <WithdrawalCashNeedsPanel investor={investor} staff />
+          <Card className="p-5 sm:p-6">
+            <SectionHeader eyebrow="Single source of truth" title="How withdrawals flow" description="Plan the cash need once in the Investor Profile. Monthly Reports read the planned/in-process/completed state automatically; the report does not ask the Advisor to enter withdrawal figures again." />
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <div className="rounded-xl border border-violet-200 bg-violet-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-violet-700">Planned</p><p className="mt-2 text-sm leading-6 text-violet-900">Choose the Bucket List, one or more Mutual Funds, Partial/Complete withdrawal and SIP Continue/Pause/Stop.</p></div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-amber-700">In process</p><p className="mt-2 text-sm leading-6 text-amber-900">Advisor executes the redemption. Portfolio figures remain unchanged until actual execution is confirmed.</p></div>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Completed</p><p className="mt-2 text-sm leading-6 text-emerald-900">GrowVest updates Portfolio Master, SIP status, Bucket List corpus and the Investor-visible action automatically.</p></div>
+            </div>
+          </Card>
+        </div>
+      ) : null}
 
       {tab === "actions" ? (
         <Card className="p-5 sm:p-6">

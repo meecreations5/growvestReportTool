@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   Download,
+  Eye,
   FileCheck2,
   FileClock,
   FileText,
@@ -15,9 +16,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   downloadInvestorDocument,
   subscribeInvestorPortalDocuments,
-  uploadInvestorDocument
+  uploadInvestorDocument,
+  viewInvestorDocument
 } from "@/services/documentService";
 import InvestorPageHeader from "@/components/investor/InvestorPageHeader";
+import DocumentPreviewModal from "@/components/documents/DocumentPreviewModal";
 
 const statusStyles = {
   requested: "border-amber-200 bg-amber-50 text-amber-700",
@@ -48,6 +51,7 @@ export default function InvestorDocumentsPage() {
   const [workingId, setWorkingId] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [preview, setPreview] = useState(null);
 
   useEffect(() => {
     if (!profile?.investorId) return () => {};
@@ -72,6 +76,10 @@ export default function InvestorDocumentsPage() {
       }
     );
   }, [profile?.investorId]);
+
+  useEffect(() => () => {
+    if (preview?.url) URL.revokeObjectURL(preview.url);
+  }, [preview?.url]);
 
   const counts = useMemo(
     () => ({
@@ -106,6 +114,20 @@ export default function InvestorDocumentsPage() {
       await downloadInvestorDocument(item);
     } catch (nextError) {
       setError(nextError?.message || "The document could not be downloaded.");
+    } finally {
+      setWorkingId("");
+    }
+  }
+
+  async function handleView(item) {
+    setWorkingId(item.id);
+    setError("");
+
+    try {
+      const securePreview = await viewInvestorDocument(item);
+      setPreview({ ...securePreview, title: item.title || item.documentType || "Document", documentRecord: item });
+    } catch (nextError) {
+      setError(nextError?.message || "The document could not be opened.");
     } finally {
       setWorkingId("");
     }
@@ -220,7 +242,7 @@ export default function InvestorDocumentsPage() {
                 </div>
               ) : null}
 
-              <div className={`mt-5 grid gap-2 ${item.storagePath ? "grid-cols-2" : "grid-cols-1"}`}>
+              <div className={`mt-5 grid gap-2 ${item.storagePath ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-1"}`}>
                 <label className="inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl bg-[var(--gv-blue)] px-3 text-sm font-bold text-white transition hover:bg-[var(--gv-blue-strong)]">
                   <Upload size={17} />
                   {isWorking ? "Uploading…" : needsUpload ? "Upload document" : "Replace file"}
@@ -235,6 +257,17 @@ export default function InvestorDocumentsPage() {
                     }}
                   />
                 </label>
+
+                {item.storagePath ? (
+                  <button
+                    type="button"
+                    onClick={() => handleView(item)}
+                    disabled={isWorking}
+                    className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-sm font-bold text-blue-700 transition hover:bg-blue-100 disabled:opacity-60"
+                  >
+                    <Eye size={17} /> View
+                  </button>
+                ) : null}
 
                 {item.storagePath ? (
                   <button
@@ -268,6 +301,12 @@ export default function InvestorDocumentsPage() {
         <ShieldCheck className="mt-0.5 shrink-0" size={18} />
         <p>Uploaded documents are stored securely and are accessible only to authorised GrowVest users.</p>
       </div>
+
+      <DocumentPreviewModal
+        preview={preview}
+        onClose={() => setPreview(null)}
+        onDownload={() => preview?.documentRecord ? handleDownload(preview.documentRecord) : null}
+      />
     </div>
   );
 }

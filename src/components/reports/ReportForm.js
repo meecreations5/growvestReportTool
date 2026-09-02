@@ -16,8 +16,8 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { subscribeInvestors } from "@/services/assessmentService";
 import { getDataImport, linkDataImportToReport } from "@/services/dataImportService";
-import { getPortfolioReportSource } from "@/services/portfolioService";
-import { getOpenInvestorActionsOnce } from "@/services/actionService";
+import { getPortfolioReportSource, updatePortfolioGoal } from "@/services/portfolioService";
+import { getInvestorProfileActionsForReportOnce, getOpenInvestorActionsOnce } from "@/services/actionService";
 import {
   getLatestInvestorReport,
   getMonthlyReport,
@@ -43,7 +43,10 @@ import {
   createReportFromInvestor,
   createReportFromPortfolioSource,
   getMonthLabel,
-  getReportMonthKey
+  getReportMonthKey,
+  getDefaultReportPeriod,
+  getReportPeriodCutoffDate,
+  getReportPeriodEndDate
 } from "@/lib/constants/report";
 import { monthlyReportSchema, validateCompletedReport } from "@/lib/validation/reportSchema";
 import { getReportTemplate, subscribeReportTemplates } from "@/services/reportTemplateService";
@@ -74,6 +77,8 @@ import {
   ValueSourceLegend
 } from "@/components/reports/create/ReportWorkflowGuidance";
 import CommentaryLibraryPicker from "@/components/market-commentary/CommentaryLibraryPicker";
+import { isActionOpen, isStructuredWithdrawalAction } from "@/lib/constants/actions";
+import WithdrawalActionSummary from "@/components/actions/WithdrawalActionSummary";
 
 function numberValue(value) {
   if (value === "" || value === null || value === undefined) return 0;
@@ -102,20 +107,11 @@ function nextReportPeriod(report) {
   return { month, year };
 }
 
-function reportPeriodEndDate(year, month) {
-  const monthEnd = new Date(Number(year), Number(month), 0);
-  return `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(monthEnd.getDate()).padStart(2, "0")}`;
-}
-
-function todayDateKey() {
-  const today = new Date();
-  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-}
-
 function reportPortfolioAsOfDate(year, month, statementDate = "") {
-  const requestedDate = statementDate || reportPeriodEndDate(year, month);
-  const today = todayDateKey();
-  return requestedDate > today ? today : requestedDate;
+  const cutoff = getReportPeriodCutoffDate(year, month);
+  const monthPrefix = `${Number(year)}-${String(Number(month)).padStart(2, "0")}-`;
+  if (statementDate && String(statementDate).startsWith(monthPrefix) && statementDate <= cutoff) return statementDate;
+  return cutoff;
 }
 
 function SectionHeader({ number, title, description, action }) {
@@ -159,7 +155,11 @@ export default function ReportForm({ reportId = null }) {
   const { profile } = useAuth();
   const [investors, setInvestors] = useState([]);
   const [reportTemplates, setReportTemplates] = useState([]);
-  const [form, setForm] = useState(() => withReportTemplateDefaults(createReportFromInvestor(null)));
+  const [form, setForm] = useState(() => {
+    const period = getDefaultReportPeriod();
+    const initial = createReportFromInvestor(null, period.month, period.year);
+    return withReportTemplateDefaults({ ...initial, statementDate: getReportPeriodCutoffDate(period.year, period.month) });
+  });
   const [loading, setLoading] = useState(Boolean(reportId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -186,6 +186,7 @@ export default function ReportForm({ reportId = null }) {
   const [portfolioSource, setPortfolioSource] = useState(null);
   const [portfolioSourceLoading, setPortfolioSourceLoading] = useState(false);
   const [portfolioRefreshToken, setPortfolioRefreshToken] = useState(0);
+  const [portfolioAllocationBusyId, setPortfolioAllocationBusyId] = useState("");
 
   const investorsForSelection = investors;
 
@@ -259,6 +260,7 @@ export default function ReportForm({ reportId = null }) {
     if (reportId || !investors.length) return;
     const investorId = searchParams.get("investorId");
     const copyFrom = searchParams.get("copyFrom");
+    const requestedMonthKey = searchParams.get("month");
     if (!investorId) return;
     const investor = investors.find((item) => item.id === investorId);
     if (!investor) return;
@@ -270,7 +272,7 @@ export default function ReportForm({ reportId = null }) {
           if (source) {
             const period = nextReportPeriod(source);
             formReadyRef.current = false;
-            corpusTouchedRef.current = true;
+            corpusTouchedRef.current = false;
             setForm(withReportTemplateDefaults({
               ...source,
               id: undefined,
@@ -279,7 +281,20 @@ export default function ReportForm({ reportId = null }) {
               reportMonth: period.month,
               reportYear: period.year,
               reportMonthKey: getReportMonthKey(period.year, period.month),
-              statementDate: "",
+              statementDate: getReportPeriodCutoffDate(period.year, period.month),
+              portfolioAsOfDate: "",
+              sourcePortfolioSnapshotId: null,
+              portfolioVerificationStatus: "",
+              portfolioSourceFreshness: [],
+              portfolioVerification: null,
+              reportGenerationSource: "",
+              reportingPeriod: {
+                monthKey: getReportMonthKey(period.year, period.month),
+                startDate: `${period.year}-${String(period.month).padStart(2, "0")}-01`,
+                endDate: getReportPeriodEndDate(period.year, period.month),
+                portfolioCutoffDate: getReportPeriodCutoffDate(period.year, period.month)
+              },
+              monthlyChanges: [],
               title: `Monthly Portfolio Report — ${getMonthLabel(period.month)} ${period.year}`,
               status: "draft",
               investorVisible: false,
@@ -310,7 +325,17 @@ export default function ReportForm({ reportId = null }) {
       }
       formReadyRef.current = false;
       corpusTouchedRef.current = false;
-      setForm(createReportFromInvestor(investor));
+      const defaultPeriod = getDefaultReportPeriod();
+      const requestedMatch = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(String(requestedMonthKey || ""));
+      const currentMonthKey = getReportMonthKey(new Date().getFullYear(), new Date().getMonth() + 1);
+      const requestedPeriodAllowed = requestedMatch && String(requestedMonthKey) <= currentMonthKey;
+      const period = requestedPeriodAllowed
+        ? { year: Number(requestedMatch[1]), month: Number(requestedMatch[2]) }
+        : defaultPeriod;
+      setForm(withReportTemplateDefaults({
+        ...createReportFromInvestor(investor, period.month, period.year),
+        statementDate: getReportPeriodCutoffDate(period.year, period.month)
+      }));
     }
 
     initialiseFromQuery();
@@ -344,6 +369,7 @@ export default function ReportForm({ reportId = null }) {
             summary: {
               ...current.summary,
               totalCorpus: Number(generated.summary?.totalCorpus || 0),
+              lifetimeTarget: Number(generated.summary?.lifetimeTarget || 0),
               monthlySip: Number(generated.summary?.monthlySip || 0),
               newMoneyAdded: 0,
               investmentGain: 0,
@@ -351,14 +377,16 @@ export default function ReportForm({ reportId = null }) {
               totalWithdrawals: 0,
               overallProgress: calculatePercentage(
                 Number(generated.summary?.totalCorpus || 0),
-                Number(current.summary?.lifetimeTarget || generated.summary?.lifetimeTarget || 0)
+                Number(generated.summary?.lifetimeTarget || 0)
               )
             },
             holdings: generated.holdings || [],
             allocation: generated.allocation || [],
             funds: generated.funds || [],
             portfolioVerification: generated.portfolioVerification,
-            reportGenerationSource: "portfolio_master"
+            reportGenerationSource: "portfolio_master",
+            reportingPeriod: generated.reportingPeriod || null,
+            monthlyChanges: generated.monthlyChanges || []
           }));
           setError("No verified Portfolio Master snapshot is available on or before this report date. Update the investor portfolio before generating the monthly report.");
           return;
@@ -375,7 +403,9 @@ export default function ReportForm({ reportId = null }) {
             portfolioVerificationStatus: source.snapshot.verificationStatus || "verified",
             portfolioSourceFreshness: source.snapshot.sourceFreshness || [],
             portfolioVerification: generated.portfolioVerification,
-            reportGenerationSource: "portfolio_master"
+            reportGenerationSource: "portfolio_master",
+            reportingPeriod: generated.reportingPeriod || null,
+            monthlyChanges: generated.monthlyChanges || []
           }));
         } else {
           setForm((current) => withReportTemplateDefaults({
@@ -553,14 +583,27 @@ export default function ReportForm({ reportId = null }) {
       setPeriodLookupLoading(true);
       const monthKey = getReportMonthKey(form.reportYear, form.reportMonth);
       try {
-        const [previous, duplicate, openActions] = await Promise.all([
+        const periodStart = `${monthKey}-01`;
+        const periodEnd = getReportPeriodEndDate(form.reportYear, form.reportMonth);
+        const [previous, duplicate, openActions, profileActions] = await Promise.all([
           getLatestInvestorReport(form.investorId, monthKey),
           getMonthlyReport(`${form.investorId}_${monthKey}`),
-          profile?.id ? getOpenInvestorActionsOnce(form.investorId, profile) : Promise.resolve([])
+          profile?.id ? getOpenInvestorActionsOnce(form.investorId, profile) : Promise.resolve([]),
+          profile?.id ? getInvestorProfileActionsForReportOnce(form.investorId, profile, { startDate: periodStart, endDate: periodEnd }) : Promise.resolve([])
         ]);
         if (!active) return;
         setPreviousReport(previous);
         setWorkflowActions(openActions || []);
+        if (!duplicate || duplicate.id === workingReportId) {
+          setForm((current) => {
+            const frozenProfileActions = Boolean(
+              current.status === "locked"
+              || current.publicationStatus === "published"
+              || (current.investorVisible === true && Number(current.publishedVersion || 0) > 0)
+            );
+            return frozenProfileActions ? current : { ...current, profileActions: profileActions || [] };
+          });
+        }
         setDuplicateReport(duplicate && duplicate.id !== workingReportId ? duplicate : null);
       } catch (lookupError) {
         console.error(lookupError);
@@ -582,8 +625,9 @@ export default function ReportForm({ reportId = null }) {
     const carryKey = `${form.investorId}:${form.reportYear}-${String(form.reportMonth).padStart(2, "0")}:${workflowActions.map((item) => item.id).join(",") || previousReport?.id || "none"}`;
     if (carriedActionsFromReportRef.current === carryKey) return;
 
-    const workflowCarry = (workflowActions || []).filter((item) => !["Completed", "Rejected", "Cancelled"].includes(String(item.status || "")));
-    const carryForward = workflowCarry;
+    const workflowCarry = (workflowActions || []).filter((item) => isActionOpen(item) && item.sourceType === "monthly_report");
+    const previousReportCarry = (previousReport?.nextSteps || []).filter((item) => isActionOpen(item));
+    const carryForward = previousReportCarry.length ? previousReportCarry : workflowCarry;
     if (!carryForward.length) {
       carriedActionsFromReportRef.current = carryKey;
       return;
@@ -608,7 +652,18 @@ export default function ReportForm({ reportId = null }) {
           priority: item.priority || "Planned",
           dueDate: item.dueDate || "",
           completionDate: item.completionDate || "",
-          status: item.status || "Recommended"
+          status: item.status || "Recommended",
+          requestType: item.requestType || item.recommendationType || "",
+          sourceType: item.sourceType || "monthly_report",
+          requestedAmount: Number(item.requestedAmount || 0),
+          requestedMonthlyAmount: Number(item.requestedMonthlyAmount || 0),
+          requestedUnits: Number(item.requestedUnits || 0),
+          requestedEffectiveDate: item.requestedEffectiveDate || "",
+          requestedTargetGoalId: item.requestedTargetGoalId || "",
+          requestedTargetGoalName: item.requestedTargetGoalName || "",
+          requestedAccountReference: item.requestedAccountReference || "",
+          financialImpactType: item.financialImpactType || "none",
+          financialImpactStatus: item.financialImpactStatus || "not_applicable"
         }))
       };
     });
@@ -663,14 +718,33 @@ export default function ReportForm({ reportId = null }) {
     carriedActionsFromReportRef.current = "";
     setPortfolioSource(null);
     setForm((current) => {
-      const reportMonth = field === "reportMonth" ? Number(value) : Number(current.reportMonth);
-      const reportYear = field === "reportYear" ? Number(value) : Number(current.reportYear);
-      const suggestedStatementDate = reportPeriodEndDate(reportYear, reportMonth);
+      let reportMonth = Number(current.reportMonth);
+      let reportYear = Number(current.reportYear);
+
+      if (field === "reportMonthKey") {
+        const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(String(value || ""));
+        if (!match) return current;
+        reportYear = Number(match[1]);
+        reportMonth = Number(match[2]);
+      } else {
+        reportMonth = field === "reportMonth" ? Number(value) : reportMonth;
+        reportYear = field === "reportYear" ? Number(value) : reportYear;
+      }
+
+      const suggestedStatementDate = getReportPeriodCutoffDate(reportYear, reportMonth);
       return {
         ...current,
-        [field]: Number(value),
+        reportMonth,
+        reportYear,
         reportMonthKey: getReportMonthKey(reportYear, reportMonth),
-        statementDate: current.statementDate || suggestedStatementDate,
+        statementDate: suggestedStatementDate,
+        reportingPeriod: {
+          monthKey: getReportMonthKey(reportYear, reportMonth),
+          startDate: `${reportYear}-${String(reportMonth).padStart(2, "0")}-01`,
+          endDate: getReportPeriodEndDate(reportYear, reportMonth),
+          portfolioCutoffDate: suggestedStatementDate
+        },
+        monthlyChanges: [],
         title: `Monthly Portfolio Report — ${getMonthLabel(reportMonth)} ${reportYear}`
       };
     });
@@ -690,14 +764,31 @@ export default function ReportForm({ reportId = null }) {
     }
 
     const fresh = withReportTemplateDefaults(createReportFromInvestor(investor, form.reportMonth, form.reportYear));
-    const suggestedStatementDate = reportPeriodEndDate(form.reportYear, form.reportMonth);
+    const suggestedStatementDate = getReportPeriodCutoffDate(form.reportYear, form.reportMonth);
 
     const nextForm = {
       ...fresh,
-      statementDate: form.statementDate || suggestedStatementDate
+      statementDate: suggestedStatementDate
     };
 
     setForm(nextForm);
+  }
+
+  async function updatePortfolioBucketFromReport(fund, goalId) {
+    if (!fund?.positionId) return;
+    setPortfolioAllocationBusyId(fund.positionId);
+    setError("");
+    setSuccess("");
+    try {
+      await updatePortfolioGoal(fund.positionId, goalId);
+      appliedPortfolioSnapshotRef.current = "";
+      setPortfolioRefreshToken((value) => value + 1);
+      setSuccess(`Bucket assignment updated in Portfolio Master for ${fund.instrumentName || "investment"}. The report has been refreshed from the verified portfolio.`);
+    } catch (nextError) {
+      setError(nextError.message || "Unable to update the Bucket List assignment.");
+    } finally {
+      setPortfolioAllocationBusyId("");
+    }
   }
 
   function updateArray(section, index, field, value) {
@@ -1073,20 +1164,27 @@ export default function ReportForm({ reportId = null }) {
     && !["pdf", "delivery"].includes(activeStep);
 
   useEffect(() => {
-    if (loading || isLocked || saving || !canSaveDraft || saveState !== "dirty") return undefined;
+    if (loading || isLocked || saving || !canSaveDraft || saveState !== "dirty" || ["investor", "period"].includes(activeStep)) return undefined;
 
     const timer = window.setTimeout(() => {
       handleSave(false, { silent: true, autosave: true });
     }, 1800);
 
     return () => window.clearTimeout(timer);
-  }, [form, loading, isLocked, saving, canSaveDraft, saveState]);
+  }, [form, loading, isLocked, saving, canSaveDraft, saveState, activeStep]);
 
   if (loading) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">Loading monthly report…</div>;
 
   const holdingsTotal = (form.holdings || []).reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
   const fundsTotal = (form.funds || []).reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
   const corpusDifference = Number(form.summary?.totalCorpus || 0) - holdingsTotal;
+  const portfolioFactsLocked = Boolean(form.sourcePortfolioSnapshotId && form.reportGenerationSource === "portfolio_master");
+  const canModifyCurrentPortfolioBuckets = Boolean(
+    portfolioFactsLocked
+    && selectedInvestor?.latestPortfolioSnapshotId
+    && String(selectedInvestor.latestPortfolioSnapshotId) === String(form.sourcePortfolioSnapshotId)
+    && !isLocked
+  );
 
   return (
     <div className="-mx-4 -mt-5 min-h-[calc(100dvh-5rem)] bg-[#F5F7FB] sm:-mx-6 sm:-mt-7 xl:-mx-8 xl:-mt-8">
@@ -1144,6 +1242,7 @@ export default function ReportForm({ reportId = null }) {
                   onUpdatePeriod={updatePeriod}
                   onTopLevelChange={setTopLevel}
                   onCopyPrevious={copyLatestReport}
+                  periodLocked={isLocked}
                 />
                 </div>
               </ReportStepShell>
@@ -1234,45 +1333,56 @@ export default function ReportForm({ reportId = null }) {
                   </div>
                 ) : null}
             <Card id="report-summary" className="scroll-mt-28">
-                    <SectionHeader number="2" title="Portfolio summary" description="These values populate the portfolio overview and headline KPI cards." />
+                    <SectionHeader number="2" title="Portfolio summary" description="All financial values are calculated automatically for the selected reporting month. Advisor entry is not required." />
                     <div className="grid gap-5 p-5 sm:grid-cols-2 xl:grid-cols-3">
                       {[
-                        ["totalCorpus", "Total corpus built", false],
-                        ["lifetimeTarget", "Lifetime target", false],
-                        ["overallProgress", "Overall progress %", true],
-                        ["monthlySip", "Total monthly SIP", false],
-                        ["newMoneyAdded", "New money added", false],
-                        ["investmentGain", "Investment gain / loss", false]
-                      ].map(([field, label, calculated]) => (
-                        <Field key={field} label={label}>
-                          <div className="grid gap-1.5">
-                            <input
-                              type="number"
-                              step="0.01"
-                              readOnly={calculated}
-                              className={`${inputClassName} ${calculated ? "border-emerald-200 bg-emerald-50/60 text-emerald-900" : ""}`}
-                              value={form.summary?.[field] ?? 0}
-                              onChange={(event) => { if (!calculated) setSummary(field, event.target.value); }}
-                            />
-                            <span className={`text-[11px] font-semibold ${calculated ? "text-emerald-700" : "text-blue-700"}`}>
-                              {calculated ? "Calculated automatically" : "Entered by staff"}
-                            </span>
-                          </div>
-                        </Field>
-                      ))}
+                        ["totalCorpus", "Current Portfolio Value"],
+                        ["lifetimeTarget", "Total Goal Target"],
+                        ["overallProgress", "Goal Progress %"],
+                        ["monthlySip", "Monthly SIP"],
+                        ["newMoneyAdded", "Money Added This Month"],
+                        ["totalWithdrawals", "Money Withdrawn This Month"],
+                        ["investmentGain", "Portfolio Gain / Loss"]
+                      ].map(([field, label]) => {
+                        const readOnly = true;
+                        return (
+                          <Field key={field} label={label}>
+                            <div className="grid gap-1.5">
+                              <input
+                                type="number"
+                                step="0.01"
+                                readOnly={readOnly}
+                                className={`${inputClassName} ${readOnly ? "border-emerald-200 bg-emerald-50/60 text-emerald-900" : ""}`}
+                                value={form.summary?.[field] ?? 0}
+                                onChange={(event) => { if (!readOnly) setSummary(field, event.target.value); }}
+                              />
+                              <span className={`text-[11px] font-semibold ${readOnly ? "text-emerald-700" : "text-blue-700"}`}>
+                                {portfolioFactsLocked ? "Calculated from verified Portfolio Master" : field === "lifetimeTarget" || field === "overallProgress" ? "Calculated from Bucket List goals" : "Available automatically after a verified portfolio is selected"}
+                              </span>
+                            </div>
+                          </Field>
+                        );
+                      })}
+                    </div>
+                  </Card>
+            <Card id="report-monthly-changes" className="scroll-mt-28">
+                    <SectionHeader number="2A" title="What changed this month" description="Detected automatically from Portfolio Master snapshots and confirmed transactions. Planned investor requests are shown later under Upcoming / Planned Actions and do not change these figures." />
+                    <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-3">
+                      {(form.monthlyChanges || []).map((item) => <div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{item.title}</p><p className="mt-2 font-bold text-slate-950">{item.description || "Portfolio movement"}</p>{Number(item.amount || 0) ? <p className="mt-2 text-sm font-bold text-blue-700">{formatCurrency(item.amount)}</p> : null}{item.type?.startsWith("sip_") ? <p className="mt-1 text-xs text-slate-500">{formatCurrency(item.previousAmount || 0)} → {formatCurrency(item.amount || 0)} per month</p> : null}<p className="mt-2 text-[11px] font-semibold text-emerald-700">Confirmed portfolio activity</p></div>)}
+                      {!(form.monthlyChanges || []).length ? <div className="sm:col-span-2 xl:col-span-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">No confirmed investment, SIP or external cash-flow change was detected for this reporting month.</div> : null}
                     </div>
                   </Card>
             <Card id="report-holdings" className="scroll-mt-28">
-                    <SectionHeader number="3" title="Holdings breakdown" description="Add asset classes for the report overview. Percentages recalculate from the total corpus." action={<Button type="button" variant="secondary" onClick={() => setForm((current) => ({ ...current, holdings: [...(current.holdings || []), createEmptyHolding(current.holdings?.length || 0)] }))}><Plus size={16} /> Add asset class</Button>} />
+                    <SectionHeader number="3" title="Holdings breakdown" description={portfolioFactsLocked ? "Asset classes and values are fetched from the verified Portfolio Master. Correct portfolio facts at source, then refresh the report." : "Add asset classes for the report overview. Percentages recalculate from the total corpus."} action={portfolioFactsLocked ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">Portfolio Master</span> : <Button type="button" variant="secondary" onClick={() => setForm((current) => ({ ...current, holdings: [...(current.holdings || []), createEmptyHolding(current.holdings?.length || 0)] }))}><Plus size={16} /> Add asset class</Button>} />
                     <div className="grid gap-3 p-5">
-                      {(form.holdings || []).map((item, index) => <div key={item.id || index} className="grid gap-3 rounded-2xl border border-slate-200 p-4 md:grid-cols-[1.2fr_1fr_1fr_90px_44px] md:items-end"><Field label="Asset class"><select className={inputClassName} value={item.assetClass} onChange={(event) => updateArray("holdings", index, "assetClass", event.target.value)}>{ASSET_CLASS_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Current value"><input type="number" className={inputClassName} value={item.currentValue ?? 0} onChange={(event) => updateArray("holdings", index, "currentValue", event.target.value)} /></Field><Field label="Portfolio %"><div className="grid gap-1.5"><input readOnly type="number" step="0.1" className={`${inputClassName} border-emerald-200 bg-emerald-50/60 text-emerald-900`} value={item.percentage ?? 0} /><span className="text-[11px] font-semibold text-emerald-700">Calculated automatically</span></div></Field><Field label="Colour"><input type="color" className="h-11 w-full rounded-xl border border-slate-300 bg-white p-1" value={item.color || "#64748B"} onChange={(event) => updateArray("holdings", index, "color", event.target.value)} /></Field><RemoveButton onClick={() => removeArrayRow("holdings", index)} /></div>)}
-                      {!form.holdings?.length ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">No holdings added. Add the first asset class.</p> : null}
+                      {(form.holdings || []).map((item, index) => <div key={item.id || index} className={`grid gap-3 rounded-2xl border border-slate-200 p-4 ${portfolioFactsLocked ? "md:grid-cols-[1.2fr_1fr_1fr_90px]" : "md:grid-cols-[1.2fr_1fr_1fr_90px_44px]"} md:items-end`}><Field label="Asset class"><select disabled={portfolioFactsLocked} className={`${inputClassName} ${portfolioFactsLocked ? "bg-slate-50 text-slate-600" : ""}`} value={item.assetClass} onChange={(event) => updateArray("holdings", index, "assetClass", event.target.value)}>{ASSET_CLASS_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Current value"><div className="grid gap-1.5"><input readOnly={portfolioFactsLocked} type="number" className={`${inputClassName} ${portfolioFactsLocked ? "border-emerald-200 bg-emerald-50/60 text-emerald-900" : ""}`} value={item.currentValue ?? 0} onChange={(event) => { if (!portfolioFactsLocked) updateArray("holdings", index, "currentValue", event.target.value); }} />{portfolioFactsLocked ? <span className="text-[11px] font-semibold text-emerald-700">Fetched from Portfolio Master</span> : null}</div></Field><Field label="Portfolio %"><div className="grid gap-1.5"><input readOnly type="number" step="0.1" className={`${inputClassName} border-emerald-200 bg-emerald-50/60 text-emerald-900`} value={item.percentage ?? 0} /><span className="text-[11px] font-semibold text-emerald-700">Calculated automatically</span></div></Field><Field label="Colour"><input type="color" className="h-11 w-full rounded-xl border border-slate-300 bg-white p-1" value={item.color || "#64748B"} onChange={(event) => updateArray("holdings", index, "color", event.target.value)} /></Field>{!portfolioFactsLocked ? <RemoveButton onClick={() => removeArrayRow("holdings", index)} /> : null}</div>)}
+                      {!form.holdings?.length ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">No holdings are available in the selected Portfolio Master snapshot.</p> : null}
                     </div>
                   </Card>
             <Card id="report-funds" className="scroll-mt-28">
-                    <SectionHeader number="7" title="Investment-wise details" description="Review every mutual fund, delivery stock, ULIP or other instrument, its Goal/General Wealth allocation and current value." action={<Button type="button" variant="secondary" onClick={() => setForm((current) => ({ ...current, funds: [...(current.funds || []), createEmptyFund(current.funds?.length || 0)] }))}><Plus size={16} /> Add fund</Button>} />
+                    <SectionHeader number="7" title="Investment-wise details" description={portfolioFactsLocked ? "Every investment is fetched from Portfolio Master and must map to a Bucket List goal or the default General Wealth bucket. Advisor notes remain editable." : "Review every mutual fund, delivery stock, ULIP or other instrument, its Bucket List/General Wealth allocation and current value."} action={portfolioFactsLocked ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">Source values locked</span> : <Button type="button" variant="secondary" onClick={() => setForm((current) => ({ ...current, funds: [...(current.funds || []), createEmptyFund(current.funds?.length || 0)] }))}><Plus size={16} /> Add fund</Button>} />
                     <div className="grid gap-4 p-5">
-                      {(form.funds || []).map((fund, index) => <div key={fund.id || index} className="rounded-2xl border border-slate-200 p-4"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Field label="Fund / instrument"><input className={inputClassName} value={fund.instrumentName || ""} onChange={(event) => updateArray("funds", index, "instrumentName", event.target.value)} /></Field><Field label="Asset class"><select className={inputClassName} value={fund.assetClass || "Other"} onChange={(event) => updateArray("funds", index, "assetClass", event.target.value)}>{ASSET_CLASS_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Linked goal"><select className={inputClassName} value={fund.goalId || ""} onChange={(event) => updateArray("funds", index, "goalId", event.target.value)}><option value="">General Wealth / no goal</option>{(form.goals || []).map((goal) => <option key={goal.goalId} value={goal.goalId}>{goal.name || "Unnamed goal"}</option>)}</select></Field><Field label="Investment type"><select className={inputClassName} value={fund.type || "Fixed"} onChange={(event) => updateArray("funds", index, "type", event.target.value)}><option>Fixed</option><option>Flexible</option><option>SIP</option><option>Lump Sum</option><option>Both</option><option>Delivery</option><option>ULIP</option></select></Field><Field label="Monthly SIP"><input type="number" className={inputClassName} value={fund.monthlySip ?? 0} onChange={(event) => updateArray("funds", index, "monthlySip", event.target.value)} /></Field><Field label="Current value"><input type="number" className={inputClassName} value={fund.currentValue ?? 0} onChange={(event) => updateArray("funds", index, "currentValue", event.target.value)} /></Field><Field label="Notes"><input className={inputClassName} value={fund.notes || ""} onChange={(event) => updateArray("funds", index, "notes", event.target.value)} /></Field><div className="flex items-end justify-end"><RemoveButton onClick={() => removeArrayRow("funds", index)} label="Remove fund" /></div></div></div>)}
+                      {(form.funds || []).map((fund, index) => <div key={fund.id || index} className="rounded-2xl border border-slate-200 p-4"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Field label="Fund / instrument"><input readOnly={portfolioFactsLocked} className={`${inputClassName} ${portfolioFactsLocked ? "bg-slate-50 text-slate-700" : ""}`} value={fund.instrumentName || ""} onChange={(event) => { if (!portfolioFactsLocked) updateArray("funds", index, "instrumentName", event.target.value); }} /></Field><Field label="Asset class"><select disabled={portfolioFactsLocked} className={`${inputClassName} ${portfolioFactsLocked ? "bg-slate-50 text-slate-700" : ""}`} value={fund.assetClass || "Other"} onChange={(event) => updateArray("funds", index, "assetClass", event.target.value)}>{ASSET_CLASS_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Bucket List / default bucket"><div className="grid gap-1.5"><select disabled={portfolioFactsLocked && (!canModifyCurrentPortfolioBuckets || portfolioAllocationBusyId === fund.positionId)} className={`${inputClassName} ${portfolioFactsLocked && !canModifyCurrentPortfolioBuckets ? "bg-slate-50 text-slate-700" : ""}`} value={fund.goalId || ""} onChange={(event) => portfolioFactsLocked ? updatePortfolioBucketFromReport(fund, event.target.value) : updateArray("funds", index, "goalId", event.target.value)}><option value="">General Wealth (Default)</option>{(form.goals || []).map((goal) => <option key={goal.goalId} value={goal.goalId}>{goal.name || "Unnamed goal"}</option>)}</select>{portfolioFactsLocked ? <span className="text-[11px] font-semibold text-slate-500">{canModifyCurrentPortfolioBuckets ? (portfolioAllocationBusyId === fund.positionId ? "Updating Portfolio Master…" : "Changing this updates the live Portfolio Master, then refreshes the report.") : "Historical snapshot: allocation is frozen in this report."}</span> : null}</div></Field><Field label="Investment type"><select disabled={portfolioFactsLocked} className={`${inputClassName} ${portfolioFactsLocked ? "bg-slate-50 text-slate-700" : ""}`} value={fund.type || "Fixed"} onChange={(event) => updateArray("funds", index, "type", event.target.value)}><option>Fixed</option><option>Flexible</option><option>SIP</option><option>Lump Sum</option><option>Both</option><option>Delivery</option><option>ULIP</option></select></Field><Field label="Monthly SIP"><input readOnly={portfolioFactsLocked} type="number" className={`${inputClassName} ${portfolioFactsLocked ? "border-emerald-200 bg-emerald-50/60 text-emerald-900" : ""}`} value={fund.monthlySip ?? 0} onChange={(event) => { if (!portfolioFactsLocked) updateArray("funds", index, "monthlySip", event.target.value); }} /></Field><Field label="Current value"><input readOnly={portfolioFactsLocked} type="number" className={`${inputClassName} ${portfolioFactsLocked ? "border-emerald-200 bg-emerald-50/60 text-emerald-900" : ""}`} value={fund.currentValue ?? 0} onChange={(event) => { if (!portfolioFactsLocked) updateArray("funds", index, "currentValue", event.target.value); }} /></Field><Field label="Advisor report note"><input className={inputClassName} value={fund.notes || ""} onChange={(event) => updateArray("funds", index, "notes", event.target.value)} placeholder="Optional observation for this report" /></Field>{!portfolioFactsLocked ? <div className="flex items-end justify-end"><RemoveButton onClick={() => removeArrayRow("funds", index)} label="Remove fund" /></div> : <div className="flex items-end"><span className="rounded-full bg-slate-100 px-3 py-1.5 text-[11px] font-bold text-slate-600">{fund.bucketLabel || fund.goalName || "General Wealth (Default)"}</span></div>}</div></div>)}
                     </div>
                   </Card>
               </div>
@@ -1283,18 +1393,18 @@ export default function ReportForm({ reportId = null }) {
                 <StepPageIntro number="4" stepId="calculations" showValueLegend icon={Calculator} title="Review Calculations" description="Check the report totals before adding the monthly narrative. Calculated values are shown separately from entered values." />
                 <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    {form.sourceImportId ? <CalculationMetric label="Imported opening value" value={formatCurrency(form.summary?.openingValue)} tone="slate" /> : null}
-                    <CalculationMetric label="Entered corpus" value={formatCurrency(form.summary?.totalCorpus)} tone="blue" />
+                    {form.sourceImportId ? <CalculationMetric label="Opening Portfolio Value" value={formatCurrency(form.summary?.openingValue)} tone="slate" /> : null}
+                    <CalculationMetric label="Closing Portfolio Value" value={formatCurrency(form.summary?.totalCorpus)} tone="blue" />
                     <CalculationMetric label="Asset-class total" value={formatCurrency(holdingsTotal)} tone="slate" />
                     <CalculationMetric label="Fund-wise total" value={formatCurrency(fundsTotal)} tone="slate" />
-                    {form.sourceImportId ? <CalculationMetric label="Imported withdrawals" value={formatCurrency(form.summary?.totalWithdrawals)} tone="slate" /> : null}
+                    {form.sourceImportId ? <CalculationMetric label="Money Withdrawn" value={formatCurrency(form.summary?.totalWithdrawals)} tone="slate" /> : null}
                     <CalculationMetric label="Reconciliation difference" value={formatCurrency(corpusDifference)} tone={Math.abs(corpusDifference) < 1 ? "green" : "amber"} />
                   </div>
                   <div className={`mt-5 flex items-start gap-3 rounded-xl border p-4 ${Math.abs(corpusDifference) < 1 ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
                     {Math.abs(corpusDifference) < 1 ? <CheckCircle2 size={19} className="mt-0.5 shrink-0" /> : <AlertTriangle size={19} className="mt-0.5 shrink-0" />}
                     <div>
                       <p className="text-sm font-semibold">{Math.abs(corpusDifference) < 1 ? "Portfolio values are reconciled" : "Review the asset-class breakdown"}</p>
-                      <p className="mt-1 text-sm leading-6 opacity-80">{Math.abs(corpusDifference) < 1 ? "The entered corpus and asset-class total match." : `The asset-class total differs from the entered corpus by ${formatCurrency(Math.abs(corpusDifference))}.`}</p>
+                      <p className="mt-1 text-sm leading-6 opacity-80">{Math.abs(corpusDifference) < 1 ? "The closing portfolio value and asset-class total match." : `The asset-class total differs from the closing portfolio value by ${formatCurrency(Math.abs(corpusDifference))}.`}</p>
                     </div>
                   </div>
                 </section>
@@ -1412,9 +1522,13 @@ export default function ReportForm({ reportId = null }) {
                   </div>
                 </section>
             <Card id="report-actions" className="scroll-mt-28">
-                    <SectionHeader number="8" title="Next steps and review" description="Capture recommendations, ownership, due dates and the next portfolio review." action={<Button type="button" variant="secondary" onClick={() => setForm((current) => ({ ...current, nextSteps: [...(current.nextSteps || []), createEmptyAction(current.nextSteps?.length || 0)] }))}><Plus size={16} /> Add next step</Button>} />
+                    <SectionHeader number="8A" title="Investor Profile actions" description="Auto-fetched and read-only. Planned withdrawals, SIP changes, new investments and other Investor Profile actions are shown here without re-entering them in the report." />
+                    <div className="grid gap-3 p-5">
+                      {(form.profileActions || []).length ? (form.profileActions || []).map((item) => <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-heading text-base font-bold text-slate-950">{item.title || item.requestType || "Investor action"}</p><p className="mt-1 text-xs font-semibold text-blue-700">{item.requestType || item.recommendationType || "Portfolio action"} · {item.status || "Requested"}</p>{item.description ? <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p> : null}</div>{item.requestedEffectiveDate ? <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">Planned {item.requestedEffectiveDate}</span> : null}</div>{isStructuredWithdrawalAction(item) ? <WithdrawalActionSummary action={item} /> : <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-600">{Number(item.requestedAmount || 0) ? <span className="rounded-full bg-white px-2.5 py-1">Amount {formatCurrency(item.requestedAmount)}</span> : null}{Number(item.requestedMonthlyAmount || 0) ? <span className="rounded-full bg-white px-2.5 py-1">Monthly {formatCurrency(item.requestedMonthlyAmount)}</span> : null}{item.relatedGoalName ? <span className="rounded-full bg-violet-50 px-2.5 py-1 text-violet-700">{item.relatedGoalName}</span> : null}</div>}</div>) : <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">No Investor Profile actions are relevant to this reporting period.</div>}
+                    </div>
+                    <SectionHeader number="8B" title="Advisor recommendations & next steps" description="Advisor commentary and recommendations only. Withdrawal figures are not entered here; they come from Investor Profile actions and confirmed Portfolio Master transactions." action={<Button type="button" variant="secondary" onClick={() => setForm((current) => ({ ...current, nextSteps: [...(current.nextSteps || []), createEmptyAction(current.nextSteps?.length || 0)] }))}><Plus size={16} /> Add next step</Button>} />
                     <div className="grid gap-4 p-5">
-                      {(form.nextSteps || []).map((item, index) => <div key={item.id || index} className="rounded-2xl border border-slate-200 p-4"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Field label="Recommendation / action"><input className={inputClassName} value={item.title || ""} onChange={(event) => updateArray("nextSteps", index, "title", event.target.value)} placeholder="Increase SIP by ₹5,000" /></Field><Field label="Recommendation type"><select className={inputClassName} value={item.recommendationType || "Portfolio Review"} onChange={(event) => updateArray("nextSteps", index, "recommendationType", event.target.value)}>{RECOMMENDATION_TYPE_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Priority"><select className={inputClassName} value={item.priority || "Planned"} onChange={(event) => updateArray("nextSteps", index, "priority", event.target.value)}>{ACTION_PRIORITY_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Owner"><select className={inputClassName} value={item.owner || "Advisor"} onChange={(event) => updateArray("nextSteps", index, "owner", event.target.value)}>{ACTION_OWNER_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Status"><select className={inputClassName} value={item.status || "Recommended"} onChange={(event) => updateArray("nextSteps", index, "status", event.target.value)}>{ACTION_STATUS_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Investor decision"><select className={inputClassName} value={item.investorDecision || "Pending Discussion"} onChange={(event) => updateArray("nextSteps", index, "investorDecision", event.target.value)}>{INVESTOR_DECISION_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Linked goal"><select className={inputClassName} value={item.relatedGoalId || ""} onChange={(event) => updateArray("nextSteps", index, "relatedGoalId", event.target.value)}><option value="">General / no goal</option>{(form.goals || []).map((goal) => <option key={goal.goalId} value={goal.goalId}>{goal.name || "Unnamed goal"}</option>)}</select></Field><Field label="Linked investment"><select className={inputClassName} value={item.relatedInvestmentId || ""} onChange={(event) => updateArray("nextSteps", index, "relatedInvestmentId", event.target.value)}><option value="">No specific investment</option>{(form.funds || []).map((fund) => <option key={fund.id} value={fund.positionId || fund.id}>{fund.instrumentName || "Investment"}</option>)}</select></Field><Field label="Action description"><input className={inputClassName} value={item.description || ""} onChange={(event) => updateArray("nextSteps", index, "description", event.target.value)} /></Field><Field label="Due date"><input type="date" className={inputClassName} value={item.dueDate || ""} onChange={(event) => updateArray("nextSteps", index, "dueDate", event.target.value)} /></Field><Field label="Completion date"><input type="date" className={inputClassName} value={item.completionDate || ""} onChange={(event) => updateArray("nextSteps", index, "completionDate", event.target.value)} /></Field><div className="flex items-end justify-end"><RemoveButton onClick={() => removeArrayRow("nextSteps", index)} label="Remove next step" /></div></div>{item.sourceReportMonthKey ? <p className="mt-3 text-xs font-semibold text-amber-700">Carried forward from {item.sourceReportMonthKey}</p> : null}</div>)}
+                      {(form.nextSteps || []).map((item, index) => <div key={item.id || index} className="rounded-2xl border border-slate-200 p-4"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Field label="Recommendation / action"><input className={inputClassName} value={item.title || ""} onChange={(event) => updateArray("nextSteps", index, "title", event.target.value)} placeholder="Increase SIP by ₹5,000" /></Field><Field label="Recommendation type"><select className={inputClassName} value={item.recommendationType || "Portfolio Review"} onChange={(event) => updateArray("nextSteps", index, "recommendationType", event.target.value)}>{RECOMMENDATION_TYPE_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Priority"><select className={inputClassName} value={item.priority || "Planned"} onChange={(event) => updateArray("nextSteps", index, "priority", event.target.value)}>{ACTION_PRIORITY_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Owner"><select className={inputClassName} value={item.owner || "Advisor"} onChange={(event) => updateArray("nextSteps", index, "owner", event.target.value)}>{ACTION_OWNER_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Status"><select className={inputClassName} value={item.status || "Recommended"} onChange={(event) => updateArray("nextSteps", index, "status", event.target.value)}>{ACTION_STATUS_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Investor decision"><select className={inputClassName} value={item.investorDecision || "Pending Discussion"} onChange={(event) => updateArray("nextSteps", index, "investorDecision", event.target.value)}>{INVESTOR_DECISION_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Linked goal"><select className={inputClassName} value={item.relatedGoalId || ""} onChange={(event) => updateArray("nextSteps", index, "relatedGoalId", event.target.value)}><option value="">General Wealth (Default)</option>{(form.goals || []).map((goal) => <option key={goal.goalId} value={goal.goalId}>{goal.name || "Unnamed goal"}</option>)}</select></Field><Field label="Linked investment"><select className={inputClassName} value={item.relatedInvestmentId || ""} onChange={(event) => updateArray("nextSteps", index, "relatedInvestmentId", event.target.value)}><option value="">No specific investment</option>{(form.funds || []).map((fund) => <option key={fund.id} value={fund.positionId || fund.id}>{fund.instrumentName || "Investment"}</option>)}</select></Field><Field label="Action description"><input className={inputClassName} value={item.description || ""} onChange={(event) => updateArray("nextSteps", index, "description", event.target.value)} /></Field><Field label="Due date"><input type="date" className={inputClassName} value={item.dueDate || ""} onChange={(event) => updateArray("nextSteps", index, "dueDate", event.target.value)} /></Field><Field label="Completion date"><input type="date" className={inputClassName} value={item.completionDate || ""} onChange={(event) => updateArray("nextSteps", index, "completionDate", event.target.value)} /></Field><div className="flex items-end justify-end"><RemoveButton onClick={() => removeArrayRow("nextSteps", index)} label="Remove next step" /></div></div>{Number(item.requestedAmount || 0) || Number(item.requestedMonthlyAmount || 0) || item.requestedEffectiveDate || item.requestedTargetGoalName || item.requestedAccountReference || (item.financialImpactType && item.financialImpactType !== "none") ? <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-600">{Number(item.requestedAmount || 0) ? <span className="rounded-full bg-slate-100 px-2.5 py-1">Requested {formatCurrency(item.requestedAmount)}</span> : null}{Number(item.requestedMonthlyAmount || 0) ? <span className="rounded-full bg-slate-100 px-2.5 py-1">Monthly {formatCurrency(item.requestedMonthlyAmount)}</span> : null}{item.requestedEffectiveDate ? <span className="rounded-full bg-slate-100 px-2.5 py-1">Preferred {item.requestedEffectiveDate}</span> : null}{item.requestedTargetGoalName ? <span className="rounded-full bg-violet-50 px-2.5 py-1 text-violet-700">Target {item.requestedTargetGoalName}</span> : null}{item.requestedAccountReference ? <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">Account {item.requestedAccountReference}</span> : null}{item.financialImpactType && item.financialImpactType !== "none" ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800">{item.financialImpactStatus === "awaiting_portfolio_confirmation" ? "Awaiting portfolio confirmation" : "Planned only · excluded from report cash flows"}</span> : null}</div> : null}{item.sourceReportMonthKey ? <p className="mt-3 text-xs font-semibold text-amber-700">Carried forward from {item.sourceReportMonthKey}</p> : null}</div>)}
                       <div className="grid gap-5 rounded-2xl bg-slate-50 p-5 md:grid-cols-3"><Field label="Next review date"><input type="date" className={inputClassName} value={form.nextReview?.date || ""} onChange={(event) => setForm((current) => ({ ...current, nextReview: { ...current.nextReview, date: event.target.value } }))} /></Field><Field label="Meeting mode"><input className={inputClassName} value={form.nextReview?.mode || ""} onChange={(event) => setForm((current) => ({ ...current, nextReview: { ...current.nextReview, mode: event.target.value } }))} placeholder="In person / Teams / Google Meet" /></Field><Field label="Review note"><input className={inputClassName} value={form.nextReview?.note || ""} onChange={(event) => setForm((current) => ({ ...current, nextReview: { ...current.nextReview, note: event.target.value } }))} /></Field></div>
                     </div>
                   </Card>

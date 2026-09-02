@@ -63,6 +63,11 @@ export function generateReportPdf(reportId) {
   return postAuthenticated(`/api/reports/${reportId}/generate-pdf`, {});
 }
 
+export function deleteMonthlyReport(reportId, { reason, confirmation = "DELETE" } = {}) {
+  return postAuthenticated(`/api/reports/${reportId}/delete`, { reason, confirmation });
+}
+
+
 export async function downloadReportPdf(reportId, versionId = "") {
   const user = auth.currentUser;
   if (!user) throw new Error("You must be signed in to download this report.");

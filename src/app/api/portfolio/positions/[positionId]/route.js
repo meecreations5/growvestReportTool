@@ -3,6 +3,7 @@ import { adminDb, verifyStaffRequest,
   appRequestErrorStatus
 } from "@/lib/server/firebaseAdmin";
 import { createPortfolioSnapshot, getAccessibleInvestor, indiaDateKey } from "@/lib/server/portfolioServer";
+import { generalWealthAllocation, normalisePortfolioGoalAllocations, portfolioAllocationStatus, primaryPortfolioBucket } from "@/lib/portfolioGoalAllocation";
 
 export const runtime = "nodejs";
 
@@ -18,26 +19,25 @@ export async function PATCH(request, { params }) {
     const investor = await getAccessibleInvestor(actor, position.investorId);
 
     const goalId = String(payload?.goalId || "").trim();
-    let goalAllocations = [];
+    let goalAllocations = [generalWealthAllocation()];
     if (goalId) {
       const goals = Array.isArray(investor.bucketList) && investor.bucketList.length ? investor.bucketList : (investor.goals || []);
       const goal = goals.find((item) => String(item.id || item.goalId) === goalId);
       if (!goal) return Response.json({ error: "The selected Goal / Bucket List no longer exists." }, { status: 400 });
-      goalAllocations = [{
+      goalAllocations = normalisePortfolioGoalAllocations([{
         goalId,
         goalName: goal.name || goal.goalName || "Goal",
         percentage: 100
-      }];
+      }]);
     }
 
-    const previousGoal = Array.isArray(position.goalAllocations)
-      ? position.goalAllocations.find((item) => item?.goalId)
-      : null;
-    const nextGoal = goalAllocations[0] || null;
+    const previousGoal = primaryPortfolioBucket(position.goalAllocations);
+    const nextGoal = primaryPortfolioBucket(goalAllocations);
 
     await positionRef.update({
       goalAllocations,
-      allocationStatus: goalAllocations.length ? "allocated" : "general_wealth",
+      allocationStatus: portfolioAllocationStatus(goalAllocations),
+      defaultBucketApplied: goalAllocations.some((item) => !item.goalId),
       goalAllocationSource: "staff",
       goalAllocationUpdatedAt: FieldValue.serverTimestamp(),
       goalAllocationUpdatedByUid: actor.uid,

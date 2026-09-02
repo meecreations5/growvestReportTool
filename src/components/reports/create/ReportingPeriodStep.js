@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Field, inputClassName } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
-import { MONTH_OPTIONS, getMonthLabel } from "@/lib/constants/report";
+import { getMonthLabel, getReportMonthKey } from "@/lib/constants/report";
 import { formatCurrency, formatDate } from "@/lib/utils/format";
 
 function financialYearLabel(month, year) {
@@ -31,7 +31,8 @@ export default function ReportingPeriodStep({
   copying,
   onUpdatePeriod,
   onTopLevelChange,
-  onCopyPrevious
+  onCopyPrevious,
+  periodLocked = false
 }) {
   const periodLabel = `${getMonthLabel(form.reportMonth)} ${form.reportYear}`;
 
@@ -50,26 +51,37 @@ export default function ReportingPeriodStep({
         </div>
       ) : null}
 
+      {!reportId ? <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900"><strong>Monthly reporting:</strong> GrowVest starts with the last completed calendar month. You can change the reporting month/year here before completing the report.</div> : null}
+
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         <Field label="Reporting month" required>
-          <select disabled={Boolean(reportId)} className={inputClassName} value={form.reportMonth} onChange={(event) => onUpdatePeriod("reportMonth", event.target.value)}>
-            {MONTH_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </select>
+          <div className="grid gap-1.5">
+            <input
+              disabled={periodLocked}
+              type="month"
+              min="2020-01"
+              max={getReportMonthKey(new Date().getFullYear(), new Date().getMonth() + 1)}
+              className={inputClassName}
+              value={getReportMonthKey(form.reportYear, form.reportMonth)}
+              onChange={(event) => onUpdatePeriod("reportMonthKey", event.target.value)}
+            />
+            <span className="text-[11px] font-semibold text-blue-700">Choose the month this report belongs to. Example: select August 2026 even when preparing it between 1–5 September.</span>
+          </div>
         </Field>
-        <Field label="Report year" required>
-          <input disabled={Boolean(reportId)} type="number" min="2020" max="2100" className={inputClassName} value={form.reportYear} onChange={(event) => onUpdatePeriod("reportYear", event.target.value)} />
+        <Field label="Report year">
+          <input readOnly className={`${inputClassName} bg-slate-50`} value={form.reportYear || ""} />
         </Field>
         <Field label="Financial year">
           <input readOnly className={`${inputClassName} bg-slate-50`} value={financialYearLabel(form.reportMonth, form.reportYear)} />
         </Field>
-        <Field label="Statement date" required error={fieldErrors.statementDate}>
-          <input type="date" className={inputClassName} value={form.statementDate || ""} onChange={(event) => onTopLevelChange("statementDate", event.target.value)} />
+        <Field label="Portfolio cutoff date" required error={fieldErrors.statementDate}>
+          <div className="grid gap-1.5"><input readOnly type="date" className={`${inputClassName} border-emerald-200 bg-emerald-50/60 text-emerald-900`} value={form.statementDate || ""} /><span className="text-[11px] font-semibold text-emerald-700">Automatic: month-end for a completed month, or today for the current month</span></div>
         </Field>
         <Field label="Report title" required error={fieldErrors.title}>
           <input className={inputClassName} value={form.title || ""} onChange={(event) => onTopLevelChange("title", event.target.value)} />
         </Field>
         <Field label="Data source">
-          <input readOnly className={`${inputClassName} bg-slate-50`} value={form.sourceReportMonthKey ? `Copied from ${form.sourceReportMonthKey}` : "Manual entry"} />
+          <input readOnly className={`${inputClassName} bg-slate-50`} value={form.sourcePortfolioSnapshotId || form.reportGenerationSource === "portfolio_master" ? "Verified Portfolio Master" : form.sourceReportMonthKey ? `Copied from ${form.sourceReportMonthKey}` : "Waiting for verified portfolio"} />
         </Field>
       </div>
 
@@ -78,7 +90,7 @@ export default function ReportingPeriodStep({
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white text-blue-700 shadow-sm"><CalendarDays size={18} /></span>
           <div>
             <p className="text-sm font-semibold text-slate-950">Reporting period</p>
-            <p className="mt-1 text-sm text-slate-500">This report will cover {periodLabel}. The statement date is used across the HTML preview and generated PDF.</p>
+            <p className="mt-1 text-sm text-slate-500">This report will cover {periodLabel}, even if it is prepared between the 1st and 5th of the next month. Portfolio values are taken only up to the automatic cutoff date.</p>
           </div>
         </div>
         <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm">

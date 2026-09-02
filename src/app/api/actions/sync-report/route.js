@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb, canStaffAccessRecord, verifyStaffRequest,
   appRequestErrorStatus
 } from "@/lib/server/firebaseAdmin";
-import { ACTION_STATUSES, INVESTOR_DECISIONS } from "@/lib/constants/actions";
+import { ACTION_STATUSES, INVESTOR_DECISIONS, actionFinancialImpactStatus, actionFinancialImpactType } from "@/lib/constants/actions";
 import { actionCode, actionEventPayload, actionNotification, actionActorName, cleanActionText } from "@/lib/server/actionServer";
 
 export const runtime = "nodejs";
@@ -55,6 +55,8 @@ export async function POST(request) {
       const incomingStatus = ACTION_STATUSES.includes(item.status) ? item.status : "Recommended";
       const incomingDecision = INVESTOR_DECISIONS.includes(item.investorDecision) ? item.investorDecision : "Pending Discussion";
       const advisorUid = report.assignedAdvisorUid || report.advisorUid || actor.uid;
+      const requestType = cleanActionText(item.requestType || item.recommendationType, 120) || "Portfolio Review";
+      const financialImpactType = actionFinancialImpactType(requestType);
       const base = {
         investorId: report.investorId,
         investorName: report.investorName || "Investor",
@@ -62,8 +64,8 @@ export async function POST(request) {
         investorPortalUid: report.investorPortalUid || null,
         advisorUid,
         assignedAdvisorUid: advisorUid,
-        requestType: cleanActionText(item.recommendationType, 120) || "Portfolio Review",
-        recommendationType: cleanActionText(item.recommendationType, 120) || "Portfolio Review",
+        requestType,
+        recommendationType: cleanActionText(item.recommendationType, 120) || requestType,
         title: cleanActionText(item.title || item.description, 240),
         description: cleanActionText(item.description, 3000),
         priority: cleanActionText(item.priority, 80) || "Planned",
@@ -71,6 +73,15 @@ export async function POST(request) {
         dueDate: cleanActionText(item.dueDate, 20),
         relatedGoalId: cleanActionText(item.relatedGoalId, 180),
         relatedInvestmentId: cleanActionText(item.relatedInvestmentId, 180),
+        requestedAmount: Number(item.requestedAmount || 0),
+        requestedMonthlyAmount: Number(item.requestedMonthlyAmount || 0),
+        requestedUnits: Number(item.requestedUnits || 0),
+        requestedEffectiveDate: cleanActionText(item.requestedEffectiveDate, 20),
+        requestedTargetGoalId: cleanActionText(item.requestedTargetGoalId, 180),
+        requestedTargetGoalName: cleanActionText(item.requestedTargetGoalName, 240),
+        requestedAccountReference: cleanActionText(item.requestedAccountReference, 240),
+        financialImpactType,
+        financialImpactStatus: existing?.financialImpactStatus || actionFinancialImpactStatus(incomingStatus, financialImpactType),
         sourceType: existing?.sourceType || "monthly_report",
         sourceReportId: existing?.sourceReportId || reportId,
         sourceReportMonthKey: existing?.sourceReportMonthKey || report.reportMonthKey || "",

@@ -4,6 +4,7 @@ import { adminDb, verifyStaffRequest,
 } from "@/lib/server/firebaseAdmin";
 import { PORTFOLIO_IMPORT_STATUS, PORTFOLIO_MATCH_STATUS, PORTFOLIO_SOURCES } from "@/lib/constants/portfolio";
 import { stableHash } from "@/lib/server/portfolioImportParser";
+import { normalisePortfolioGoalAllocations, portfolioAllocationStatus } from "@/lib/portfolioGoalAllocation";
 import { createPortfolioSnapshot, getAccessibleInvestor, indiaDateKey } from "@/lib/server/portfolioServer";
 
 export const runtime = "nodejs";
@@ -358,8 +359,8 @@ async function captureGoalAllocations(file, investorId) {
       policyNumber: position.policyNumber || position.folioNo || "",
       fundCode: position.fundCode || "",
       instrumentName: position.instrumentName || position.schemeName || position.stockName || position.fundName || "",
-      goalAllocations: position.goalAllocations || [],
-      allocationStatus: position.allocationStatus || "allocated"
+      goalAllocations: normalisePortfolioGoalAllocations(position.goalAllocations),
+      allocationStatus: portfolioAllocationStatus(position.goalAllocations)
     }));
 }
 

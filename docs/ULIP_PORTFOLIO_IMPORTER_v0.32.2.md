@@ -85,7 +85,7 @@ After confirmation, available ULIP identity keys are saved for future matching. 
 
 ULIP fund Goal/Bucket assignments belong to the permanent portfolio position, not to the daily file. A later ULIP import can update units, NAV and fund value without resetting the existing Goal/Bucket assignment.
 
-For a genuinely new fund, an imported goal is applied only when it matches exactly one existing GrowVest goal. Otherwise the fund remains **General Wealth / Unassigned** for Admin/Advisor review.
+For a genuinely new fund, an imported goal is applied only when it matches exactly one existing GrowVest goal. Otherwise the fund is mapped to **General Wealth (Default)** until Admin/Advisor deliberately assigns a specific Bucket List.
 
 ## Return and premium treatment
 

@@ -8,6 +8,13 @@ import {
 } from "@/lib/constants/portfolio";
 import { createPortfolioSnapshot, indiaDateKey } from "@/lib/server/portfolioServer";
 import { stableHash } from "@/lib/server/portfolioImportParser";
+import {
+  GENERAL_WEALTH_BUCKET_NAME,
+  generalWealthAllocation,
+  isGeneralWealthName,
+  normalisePortfolioGoalAllocations,
+  portfolioAllocationStatus
+} from "@/lib/portfolioGoalAllocation";
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024;
 const MAX_INVESTORS = 100;
@@ -52,7 +59,7 @@ function normalisePan(value) { const pan = clean(value).toUpperCase().replace(/[
 function number(value) { const parsed = Number(String(value ?? "").replace(/,/g, "").replace(/[^0-9.+-]/g, "")); return Number.isFinite(parsed) ? parsed : 0; }
 function round(value, digits = 2) { const factor = 10 ** digits; return Math.round((Number(value) || 0) * factor) / factor; }
 function truthy(value) { return ["yes", "y", "true", "1", "active"].includes(clean(value).toLowerCase()); }
-function isGeneralWealth(value) { return ["general wealth", "general wealth corpus", "unassigned", "general wealth unassigned"].includes(normaliseHeader(value)); }
+function isGeneralWealth(value) { return isGeneralWealthName(value); }
 
 function excelDate(value) {
   if (!value) return "";
@@ -551,7 +558,7 @@ export async function resolveManualPortfolioWorkbook(parsed) {
       allocation.positionId = holding.positionId;
       if (isGeneralWealth(allocation.goalName)) {
         allocation.goalId = "";
-        allocation.goalResolvedName = "General Wealth";
+        allocation.goalResolvedName = GENERAL_WEALTH_BUCKET_NAME;
         allocation.goalMatched = true;
       } else {
         const goal = goals.find((item) => clean(item.name || item.goalName).toLowerCase() === clean(allocation.goalName).toLowerCase());
@@ -751,6 +758,9 @@ async function refreshAccountSummaries(investor, actor, batchId) {
         gainLoss: 0,
         returnPercentage: 0,
         valuationDate: terminalDate,
+        goalAllocations: [generalWealthAllocation()],
+        allocationStatus: "general_wealth",
+        defaultBucketApplied: true,
         status: "active",
         manualPortfolioManaged: true,
         manualPortfolioCashPosition: true,
@@ -843,7 +853,7 @@ export async function commitManualPortfolioWorkbook({ actor, file, mode, parsed,
     const existingPositionIds = new Set(existing.portfolioPositions.map((item) => item.id));
     for (const row of group.holdings) {
       const ref = adminDb.collection("portfolioPositions").doc(row.positionId);
-      const goalAllocations = allocationsByPosition.get(row.positionId) || [];
+      const goalAllocations = normalisePortfolioGoalAllocations(allocationsByPosition.get(row.positionId) || []);
       const gainLoss = round(row.currentValue - row.totalInvested);
       const returnPercentage = row.totalInvested > 0 ? round(gainLoss / row.totalInvested * 100) : 0;
       writer.set(ref, {
@@ -863,7 +873,7 @@ export async function commitManualPortfolioWorkbook({ actor, file, mode, parsed,
         navDate: row.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? row.valuationDate : "",
         valuationDate: row.valuationDate, purchaseDate: row.purchaseDate, maturityDate: row.maturityDate,
         currentValue: row.currentValue, gainLoss, returnPercentage, monthlySip: row.monthlySip,
-        goalAllocations, allocationStatus: goalAllocations.some((item) => item.goalId) ? "allocated" : "general_wealth", notes: row.notes, status: row.status || "active",
+        goalAllocations, allocationStatus: portfolioAllocationStatus(goalAllocations), defaultBucketApplied: goalAllocations.some((item) => !item.goalId), notes: row.notes, status: row.status || "active",
         manualPortfolioManaged: true, manualPortfolioAccountId: row.accountId, manualPortfolioAccountCode: row.accountCode, manualHoldingKey: row.holdingKey,
         manualImportFileName: parsed.fileName, manualImportMode: mode, manualBulkImportId: batchId,
         createdAt: now, updatedAt: now, updatedByUid: actor.uid, updatedByName: actor.fullName || actor.email || "GrowVest User"

@@ -213,6 +213,26 @@ export async function downloadInvestorDocument(documentRecord) {
   URL.revokeObjectURL(url);
 }
 
+export async function viewInvestorDocument(documentRecord) {
+  if (!documentRecord?.storagePath) throw new Error("No file has been uploaded for this document.");
+
+  const sourceBlob = await getBlob(ref(storage, documentRecord.storagePath));
+  const mimeType = documentRecord.mimeType || sourceBlob.type || "application/octet-stream";
+  // Preserve the verified metadata MIME type. Some Storage downloads can lose
+  // their content type, which makes browser PDF preview render as a blank/black page.
+  const previewBlob = sourceBlob.type === mimeType
+    ? sourceBlob
+    : sourceBlob.slice(0, sourceBlob.size, mimeType);
+  const url = URL.createObjectURL(previewBlob);
+
+  return {
+    url,
+    mimeType,
+    fileName: documentRecord.fileName || "GrowVest-document",
+    sizeBytes: documentRecord.sizeBytes || previewBlob.size || 0
+  };
+}
+
 export async function deleteInvestorDocumentFile(documentRecord) {
   if (documentRecord?.storagePath) await deleteObject(ref(storage, documentRecord.storagePath));
   await updateDoc(doc(db, "investorDocuments", documentRecord.id), {

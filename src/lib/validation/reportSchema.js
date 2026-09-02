@@ -14,6 +14,7 @@ export const monthlyReportSchema = z.object({
     overallProgress: nonNegative,
     monthlySip: nonNegative,
     newMoneyAdded: nonNegative,
+    totalWithdrawals: nonNegative.optional().default(0),
     investmentGain: z.coerce.number()
   }),
   advisorNote: z.object({
@@ -24,6 +25,14 @@ export const monthlyReportSchema = z.object({
   goals: z.array(z.any()).default([]),
   allocation: z.array(z.any()).default([]),
   funds: z.array(z.any()).default([]),
+  reportingPeriod: z.object({
+    monthKey: z.string().optional().default(""),
+    startDate: z.string().optional().default(""),
+    endDate: z.string().optional().default(""),
+    portfolioCutoffDate: z.string().optional().default("")
+  }).optional(),
+  monthlyChanges: z.array(z.any()).default([]),
+  profileActions: z.array(z.any()).default([]),
   nextSteps: z.array(z.any()).default([]),
   nextReview: z.object({
     date: z.string().optional().default(""),

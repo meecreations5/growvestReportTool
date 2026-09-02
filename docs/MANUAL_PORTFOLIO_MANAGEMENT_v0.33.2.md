@@ -71,7 +71,7 @@ Portfolio Intelligence also reads Manual Cash Ledger entries between verified sn
 
 `09_Goal_Allocation` may split a holding across several GrowVest goals. Total allocation for the same Holding Key cannot exceed 100%.
 
-`General Wealth` / `Unassigned` is treated as the non-goal portion and does not require a Goal definition. Unknown named goals are warnings and are preserved in the supporting allocation ledger but are not attached to the live holding until the goal exists.
+`General Wealth` is the mandatory default bucket and does not require a Goal definition. A holding with no specific Bucket List allocation is stored as 100% General Wealth. If named Bucket List allocations total less than 100%, the remaining percentage is automatically mapped to General Wealth. Allocations above 100% remain invalid. Unknown named goals are warnings and are preserved in the supporting allocation ledger but are not attached to the live holding until the goal exists.
 
 If a holding contains a `Goal / Bucket List` value and there is no explicit `09_Goal_Allocation` row for that Holding Key, GrowVest treats the holding goal as a 100% inline allocation.
 

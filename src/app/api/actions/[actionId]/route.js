@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb, verifyAppRequest,
   appRequestErrorStatus
 } from "@/lib/server/firebaseAdmin";
-import { ACTION_PRIORITIES, ACTION_STATUSES, INVESTOR_DECISIONS } from "@/lib/constants/actions";
+import { ACTION_FINANCIAL_IMPACT_STATUSES, ACTION_PRIORITIES, ACTION_STATUSES, INVESTOR_DECISIONS, isStructuredWithdrawalAction, actionFinancialImpactStatus, actionFinancialImpactType } from "@/lib/constants/actions";
 import { actionActorName, actionEventPayload, actionNotification, cleanActionText } from "@/lib/server/actionServer";
 
 export const runtime = "nodejs";
@@ -52,6 +52,9 @@ export async function PATCH(request, { params }) {
       updates.lastInvestorResponseAt = FieldValue.serverTimestamp();
       updates.lastInvestorResponseByUid = actor.uid;
     } else {
+      if (payload.status === "Completed" && isStructuredWithdrawalAction(current) && current.withdrawalPortfolioApplied !== true) {
+        throw new Error("Use Complete Withdrawal & Update Portfolio so the fund holdings and SIP instructions are applied together.");
+      }
       if (payload.status && ACTION_STATUSES.includes(payload.status)) updates.status = payload.status;
       if (payload.priority && ACTION_PRIORITIES.includes(payload.priority)) updates.priority = payload.priority;
       if (payload.investorDecision && INVESTOR_DECISIONS.includes(payload.investorDecision)) updates.investorDecision = payload.investorDecision;
@@ -68,6 +71,52 @@ export async function PATCH(request, { params }) {
     }
 
     const nextStatus = updates.status || current.status || "Requested";
+    const financialImpactType = current.financialImpactType || actionFinancialImpactType(current.requestType || current.recommendationType);
+    updates.financialImpactType = financialImpactType;
+    updates.financialImpactStatus = actionFinancialImpactStatus(nextStatus, financialImpactType, current.financialImpactStatus || "");
+
+    // Financial actions are operationally complete only after staff confirm that
+    // the provider/Portfolio Master has reflected the actual change. Report cash
+    // flows still come from confirmed Portfolio Master transactions, never from
+    // this workflow flag.
+    if (!investorOwns && payload.confirmPortfolioImpact === true) {
+      if (nextStatus !== "Completed") throw new Error("Mark the action Completed before confirming it in Portfolio Master.");
+      if (!financialImpactType || financialImpactType === "none") throw new Error("This action does not require portfolio financial confirmation.");
+      const investorSnapshot = await adminDb.collection("investors").doc(current.investorId).get();
+      const investor = investorSnapshot.exists ? investorSnapshot.data() : {};
+      const latestPortfolioSnapshotId = cleanActionText(investor?.latestPortfolioSnapshotId, 180);
+      if (!latestPortfolioSnapshotId) throw new Error("No verified Portfolio Master snapshot is available for this investor yet.");
+      const latestPortfolioSnapshot = await adminDb.collection("portfolioSnapshots").doc(latestPortfolioSnapshotId).get();
+      const latestSnapshotDate = latestPortfolioSnapshot.exists ? cleanActionText(latestPortfolioSnapshot.data()?.snapshotDate, 20) : "";
+      const externalImpact = ["external_inflow", "external_outflow"].includes(financialImpactType);
+      const confirmationMode = externalImpact
+        ? (payload.financialConfirmationMode === "manual_cash_movement" ? "manual_cash_movement" : "provider_transaction")
+        : "provider_state";
+      updates.financialConfirmationMode = confirmationMode;
+
+      if (confirmationMode === "manual_cash_movement") {
+        const actualFinancialAmount = Math.abs(Number(payload.actualFinancialAmount || current.requestedAmount || 0));
+        const actualFinancialDate = cleanActionText(payload.actualFinancialDate || current.completionDate, 20);
+        if (!(actualFinancialAmount > 0)) throw new Error("Enter the actual external cash movement amount before confirming it.");
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(actualFinancialDate)) throw new Error("Enter the actual external cash movement date before confirming it.");
+        if (latestSnapshotDate && actualFinancialDate > latestSnapshotDate) {
+          throw new Error(`The latest verified Portfolio Master is dated ${latestSnapshotDate}. Refresh the portfolio after the ${actualFinancialDate} cash movement before confirming it.`);
+        }
+        updates.actualFinancialAmount = Number(actualFinancialAmount.toFixed(2));
+        updates.actualFinancialDate = actualFinancialDate;
+        updates.actualFinancialReference = cleanActionText(payload.actualFinancialReference, 240);
+      } else {
+        updates.actualFinancialAmount = 0;
+        updates.actualFinancialDate = "";
+        updates.actualFinancialReference = "";
+      }
+
+      updates.financialImpactStatus = ACTION_FINANCIAL_IMPACT_STATUSES.CONFIRMED;
+      updates.portfolioConfirmedAt = FieldValue.serverTimestamp();
+      updates.portfolioConfirmedSnapshotId = latestPortfolioSnapshotId;
+      updates.portfolioConfirmationNote = cleanActionText(payload.portfolioConfirmationNote, 1000);
+      note = updates.portfolioConfirmationNote || note || "Confirmed as reflected in Portfolio Master.";
+    }
     const nextInvestorVisible = updates.investorVisible !== undefined
       ? Boolean(updates.investorVisible)
       : current.investorVisible !== false;
@@ -83,7 +132,7 @@ export async function PATCH(request, { params }) {
       actionId,
       action: { ...current, ...updates },
       actor,
-      eventType: investorOwns ? "investor_response" : "advisor_update",
+      eventType: investorOwns ? "investor_response" : payload.confirmPortfolioImpact === true ? "portfolio_confirmation" : "advisor_update",
       note,
       fromStatus: current.status || "",
       toStatus: nextStatus,

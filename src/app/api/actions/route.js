@@ -7,7 +7,8 @@ import {
   actionEventPayload,
   actionNotification,
   getAccessibleActionInvestor,
-  normaliseCreateAction
+  normaliseCreateAction,
+  validateStructuredWithdrawalPayload
 } from "@/lib/server/actionServer";
 
 export const runtime = "nodejs";
@@ -18,7 +19,8 @@ export async function POST(request) {
     const payload = await request.json().catch(() => ({}));
     const investor = await getAccessibleActionInvestor(actor, payload.investorId);
     const actionRef = adminDb.collection("investorActions").doc();
-    const action = normaliseCreateAction(payload, actor, investor);
+    const validatedPayload = await validateStructuredWithdrawalPayload(payload, investor);
+    const action = normaliseCreateAction(validatedPayload, actor, investor);
     const batch = adminDb.batch();
 
     batch.set(actionRef, { ...action, actionCode: actionCode(actionRef.id) });

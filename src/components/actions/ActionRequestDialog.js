@@ -15,6 +15,19 @@ function goalRows(investor) {
   return Array.isArray(safeInvestor.goals) ? safeInvestor.goals : [];
 }
 
+function actionFieldNeeds(requestType = "") {
+  const type = String(requestType || "");
+  return {
+    amount: ["Invest More", "Start Lump Sum Investment", "Trading Account Deposit", "Trading Account Withdrawal", "Partial Redemption", "Full Redemption"].includes(type),
+    monthlyAmount: ["Start SIP", "Increase SIP", "Reduce SIP"].includes(type),
+    units: ["Partial Redemption"].includes(type),
+    targetGoal: ["Goal / Bucket List Change"].includes(type),
+    accountReference: ["Trading Account Deposit", "Trading Account Withdrawal"].includes(type),
+    changeDetails: ["Correct Portfolio Information", "Add Investment Information"].includes(type),
+    effectiveDate: !["Discuss Investment", "Insurance Review", "Schedule Review Meeting", "Document Required"].includes(type)
+  };
+}
+
 export default function ActionRequestDialog({ open, onClose, onCreated, investor, positions = [], staff = false, initial = {} }) {
   const safePositions = Array.isArray(positions) ? positions : [];
   const goals = useMemo(() => goalRows(investor), [investor]);
@@ -35,11 +48,19 @@ export default function ActionRequestDialog({ open, onClose, onCreated, investor
       relatedInvestmentName: source.relatedInvestmentName || "",
       relatedGoalId: source.relatedGoalId || "",
       relatedGoalName: source.relatedGoalName || "",
-      dueDate: source.dueDate || ""
+      dueDate: source.dueDate || "",
+      requestedAmount: source.requestedAmount || "",
+      requestedMonthlyAmount: source.requestedMonthlyAmount || "",
+      requestedUnits: source.requestedUnits || "",
+      requestedEffectiveDate: source.requestedEffectiveDate || "",
+      requestedTargetGoalId: source.requestedTargetGoalId || "",
+      requestedAccountReference: source.requestedAccountReference || "",
+      requestedChangeDetails: source.requestedChangeDetails || ""
     });
   }, [initial, open]);
 
   if (!open) return null;
+  const fields = actionFieldNeeds(form.requestType);
 
   function set(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -54,11 +75,13 @@ export default function ActionRequestDialog({ open, onClose, onCreated, investor
       }
       const position = safePositions.find((item) => String(item.id) === String(form.relatedInvestmentId));
       const goal = goals.find((item) => String(item.id || item.goalId) === String(form.relatedGoalId));
+      const targetGoal = goals.find((item) => String(item.id || item.goalId) === String(form.requestedTargetGoalId));
       const result = await createInvestorAction({
         investorId: investor?.id,
         ...form,
         relatedInvestmentName: position?.instrumentName || form.relatedInvestmentName || "",
-        relatedGoalName: goal?.name || goal?.goalName || form.relatedGoalName || "",
+        relatedGoalName: goal?.name || goal?.goalName || form.relatedGoalName || "General Wealth",
+        requestedTargetGoalName: targetGoal?.name || targetGoal?.goalName || (form.requestedTargetGoalId ? "Goal" : "General Wealth"),
         sourceType: staff ? "advisor_manual" : "investor_request"
       });
       onCreated?.(result.action);
@@ -88,12 +111,20 @@ export default function ActionRequestDialog({ open, onClose, onCreated, investor
           <Field label="Request / action type"><select className={inputClassName} value={form.requestType || ""} onChange={(event) => set("requestType", event.target.value)}>{INVESTOR_REQUEST_TYPES.map((item) => <option key={item}>{item}</option>)}</select></Field>
           {staff ? <Field label="Priority"><select className={inputClassName} value={form.priority || "Planned"} onChange={(event) => set("priority", event.target.value)}>{ACTION_PRIORITIES.map((item) => <option key={item}>{item}</option>)}</select></Field> : null}
           <Field label="Linked investment"><select className={inputClassName} value={form.relatedInvestmentId || ""} onChange={(event) => set("relatedInvestmentId", event.target.value)}><option value="">No specific investment</option>{safePositions.map((item) => <option key={item.id} value={item.id}>{item.instrumentName || "Investment"}</option>)}</select></Field>
-          <Field label="Linked Goal / Bucket List"><select className={inputClassName} value={form.relatedGoalId || ""} onChange={(event) => set("relatedGoalId", event.target.value)}><option value="">General / no goal</option>{goals.map((goal) => <option key={goal.id || goal.goalId} value={goal.id || goal.goalId}>{goal.name || goal.goalName || "Goal"}</option>)}</select></Field>
+          <Field label="Current Bucket List / default"><select className={inputClassName} value={form.relatedGoalId || ""} onChange={(event) => set("relatedGoalId", event.target.value)}><option value="">General Wealth (Default)</option>{goals.map((goal) => <option key={goal.id || goal.goalId} value={goal.id || goal.goalId}>{goal.name || goal.goalName || "Goal"}</option>)}</select></Field>
+          {fields.accountReference ? <Field label="Trading account / broker"><input className={inputClassName} value={form.requestedAccountReference || ""} onChange={(event) => set("requestedAccountReference", event.target.value)} placeholder="Example: Bajaj Broking / Angel One" /></Field> : null}
+          {fields.targetGoal ? <Field label="Move to Bucket List"><select className={inputClassName} value={form.requestedTargetGoalId || ""} onChange={(event) => set("requestedTargetGoalId", event.target.value)}><option value="">General Wealth (Default)</option>{goals.map((goal) => <option key={goal.id || goal.goalId} value={goal.id || goal.goalId}>{goal.name || goal.goalName || "Goal"}</option>)}</select></Field> : null}
+          {fields.amount ? <Field label="Requested amount"><input type="number" min="0" step="0.01" className={inputClassName} value={form.requestedAmount || ""} onChange={(event) => set("requestedAmount", event.target.value)} placeholder="₹ amount" /></Field> : null}
+          {fields.monthlyAmount ? <Field label="Requested monthly amount"><input type="number" min="0" step="0.01" className={inputClassName} value={form.requestedMonthlyAmount || ""} onChange={(event) => set("requestedMonthlyAmount", event.target.value)} placeholder="₹ per month" /></Field> : null}
+          {fields.units ? <Field label="Units / quantity (optional)"><input type="number" min="0" step="0.0001" className={inputClassName} value={form.requestedUnits || ""} onChange={(event) => set("requestedUnits", event.target.value)} /></Field> : null}
+          {fields.effectiveDate ? <Field label="Preferred effective date"><input type="date" className={inputClassName} value={form.requestedEffectiveDate || ""} onChange={(event) => set("requestedEffectiveDate", event.target.value)} /></Field> : null}
           {staff ? <Field label="Due date"><input type="date" className={inputClassName} value={form.dueDate || ""} onChange={(event) => set("dueDate", event.target.value)} /></Field> : null}
           <div className="sm:col-span-2"><Field label="Title (optional)"><input className={inputClassName} value={form.title || ""} onChange={(event) => set("title", event.target.value)} placeholder="GrowVest will generate a title if left blank" /></Field></div>
-          <div className="sm:col-span-2"><Field label={staff ? "Action description" : "What would you like to discuss?"}><textarea rows={4} className={inputClassName} value={form.description || ""} onChange={(event) => set("description", event.target.value)} placeholder="Add the context your Advisor should know." /></Field></div>
+          {fields.changeDetails ? <div className="sm:col-span-2"><Field label="Information / correction details"><textarea rows={3} className={inputClassName} value={form.requestedChangeDetails || ""} onChange={(event) => set("requestedChangeDetails", event.target.value)} placeholder="Describe the investment, value or information you want GrowVest to verify." /></Field></div> : null}
+          <div className="sm:col-span-2"><Field label={staff ? "Action description" : "Anything else your Advisor should know?"}><textarea rows={4} className={inputClassName} value={form.description || ""} onChange={(event) => set("description", event.target.value)} placeholder="Add context, purpose or any other details." /></Field></div>
         </div>
 
+        {!staff ? <p className="mt-5 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-900">Submitting this request does not directly change Portfolio Master or place a transaction. Your Advisor reviews the request first; verified provider data remains the source of financial values.</p> : null}
         <div className="mt-6 flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={submit} disabled={busy}>{busy ? <Loader2 size={16} className="animate-spin" /> : <MessageSquarePlus size={16} />} {staff ? "Create Follow-up" : "Send Request"}</Button></div>
       </section>
     </div>

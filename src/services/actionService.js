@@ -9,7 +9,7 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/client";
 import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
-import { ACTION_TERMINAL_STATUSES } from "@/lib/constants/actions";
+import { isActionOpen } from "@/lib/constants/actions";
 
 function rows(snapshot) {
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
@@ -147,8 +147,44 @@ export async function getOpenInvestorActionsOnce(investorId, currentUser, limitC
   }
 
   return sortActions(rows(result))
-    .filter((item) => !ACTION_TERMINAL_STATUSES.includes(String(item.status || "")))
+    .filter((item) => isActionOpen(item))
     .slice(0, limitCount);
+}
+
+export async function getInvestorProfileActionsForReportOnce(investorId, currentUser, { startDate = "", endDate = "", limitCount = 200 } = {}) {
+  if (!investorId || !currentUser?.id || !endDate) return [];
+  const constraints = [where("investorId", "==", investorId)];
+  if (currentUser.role === "advisor") constraints.push(where("advisorUid", "==", currentUser.id));
+  if (currentUser.role === "investor") constraints.push(where("investorVisible", "==", true));
+  let result;
+  try {
+    result = await getDocs(query(collection(db, "investorActions"), ...constraints, orderBy("updatedAt", "desc"), limit(limitCount)));
+  } catch (error) {
+    if (!isIndexUnavailable(error)) throw error;
+    result = await getDocs(query(collection(db, "investorActions"), ...constraints));
+  }
+
+  return sortActions(rows(result)).filter((item) => {
+    if (item.sourceType === "monthly_report") return false;
+    if (["Rejected", "Cancelled"].includes(String(item.status || ""))) return false;
+    const requestedDate = String(item.requestedEffectiveDate || item.dueDate || "");
+    const actualDate = String(item.actualFinancialDate || item.completionDate || "");
+    const createdDate = item.requestedAt?.toDate?.() ? item.requestedAt.toDate().toISOString().slice(0, 10) : "";
+    const relevantDate = actualDate || requestedDate || createdDate;
+    if (relevantDate && relevantDate > endDate && String(item.status || "") === "Completed") return false;
+    if (actualDate && actualDate >= startDate && actualDate <= endDate) return true;
+    if (requestedDate && requestedDate <= endDate && item.status !== "Completed") return true;
+    if (createdDate && createdDate <= endDate && item.status !== "Completed") return true;
+    return item.status === "Completed" && !actualDate && createdDate >= startDate && createdDate <= endDate;
+  }).slice(0, limitCount);
+}
+
+export async function completeWithdrawalAction(actionId, payload = {}) {
+  if (!actionId) throw new Error("Withdrawal action is required.");
+  return authenticatedFetch(`/api/actions/${actionId}/complete-withdrawal`, {
+    method: "POST",
+    body: JSON.stringify(payload || {})
+  });
 }
 
 export async function createInvestorAction(payload) {

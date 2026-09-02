@@ -1,3 +1,5 @@
+import { primaryPortfolioBucket } from "@/lib/portfolioGoalAllocation";
+
 export const PORTFOLIO_SOURCES = {
   MIXED: "mixed",
   FUNDBAZAAR: "fundbazaar",
@@ -245,6 +247,5 @@ export function portfolioAssetClass(productType, nature = "") {
 }
 
 export function positionGoal(position = {}) {
-  const allocation = Array.isArray(position.goalAllocations) ? position.goalAllocations[0] : null;
-  return allocation?.goalId ? allocation : null;
+  return primaryPortfolioBucket(position.goalAllocations);
 }
