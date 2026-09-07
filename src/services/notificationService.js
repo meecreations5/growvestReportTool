@@ -1,18 +1,6 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where,
-  writeBatch
-} from "firebase/firestore";
-import { db } from "@/lib/firebase/client";
+import { collection, doc, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase/client";
+import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
 
 export function buildNotification({
   recipientUid,
@@ -56,38 +44,57 @@ export function addNotificationToBatch(batch, payload) {
   return notificationRef;
 }
 
+async function notificationApiFetch(options = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Your session has expired. Sign in again.");
+  const headers = await authenticatedApiHeaders(options.headers || {}, user);
+  if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const response = await fetch("/api/notifications", { ...options, headers, cache: "no-store" });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || "Notifications could not be loaded.");
+  return payload;
+}
+
 export function subscribeNotifications(profileOrUid, callback, onError) {
   const profile = typeof profileOrUid === "string" ? { id: profileOrUid } : profileOrUid;
   if (!profile?.id) return () => {};
+  let closed = false;
+  let timer = null;
 
-  // Notifications are always addressed to an explicit Firebase UID. Do not
-  // query by investorId: internal Advisor notifications may carry investorId as
-  // context and must never become visible to the Investor Portal.
-  return onSnapshot(
-    query(collection(db, "notifications"), where("recipientUid", "==", profile.id), orderBy("createdAt", "desc"), limit(50)),
-    (snapshot) => callback(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))),
-    onError
-  );
+  async function load() {
+    try {
+      const payload = await notificationApiFetch({ method: "GET" });
+      if (!closed) callback(payload.items || []);
+    } catch (error) {
+      if (!closed) onError?.(error);
+    }
+  }
+
+  load();
+  timer = window.setInterval(load, 30000);
+  const refreshOnFocus = () => { if (!document.hidden) load(); };
+  document.addEventListener("visibilitychange", refreshOnFocus);
+
+  return () => {
+    closed = true;
+    if (timer) window.clearInterval(timer);
+    document.removeEventListener("visibilitychange", refreshOnFocus);
+  };
 }
 
 export async function markNotificationRead(notificationId) {
-  await updateDoc(doc(db, "notifications", notificationId), {
-    status: "read",
-    readAt: serverTimestamp()
+  if (!notificationId) return;
+  await notificationApiFetch({
+    method: "POST",
+    body: JSON.stringify({ action: "mark_read", notificationId })
   });
 }
 
-export async function markAllNotificationsRead(items = []) {
-  const unread = items.filter((item) => item.status !== "read");
-  if (!unread.length) return;
-  const batch = writeBatch(db);
-  unread.forEach((item) => {
-    batch.update(doc(db, "notifications", item.id), {
-      status: "read",
-      readAt: serverTimestamp()
-    });
+export async function markAllNotificationsRead() {
+  await notificationApiFetch({
+    method: "POST",
+    body: JSON.stringify({ action: "mark_all_read" })
   });
-  await batch.commit();
 }
 
 
@@ -95,6 +102,9 @@ export const DEFAULT_NOTIFICATION_PREFERENCES = {
   inAppEnabled: true,
   pushEnabled: false,
   pushCategories: {
+    portfolio: true,
+    sip: true,
+    bucketList: true,
     reports: true,
     meetings: true,
     documents: true,
@@ -103,26 +113,23 @@ export const DEFAULT_NOTIFICATION_PREFERENCES = {
   }
 };
 
-export async function getNotificationPreferences(uid) {
-  if (!uid) return DEFAULT_NOTIFICATION_PREFERENCES;
-  const snapshot = await getDoc(doc(db, "notificationPreferences", uid));
-  if (!snapshot.exists()) return DEFAULT_NOTIFICATION_PREFERENCES;
-  const data = snapshot.data();
+export async function getNotificationPreferences() {
+  const payload = await notificationApiFetch({ method: "GET" });
   return {
     ...DEFAULT_NOTIFICATION_PREFERENCES,
-    ...data,
+    ...(payload.preferences || {}),
     pushCategories: {
       ...DEFAULT_NOTIFICATION_PREFERENCES.pushCategories,
-      ...(data.pushCategories || {})
+      ...(payload.preferences?.pushCategories || {})
     }
   };
 }
 
 export async function saveNotificationPreferences(uid, updates = {}) {
   if (!uid) throw new Error("A user profile is required to save notification preferences.");
-  await setDoc(doc(db, "notificationPreferences", uid), {
-    recipientUid: uid,
-    ...updates,
-    updatedAt: serverTimestamp()
-  }, { merge: true });
+  await notificationApiFetch({
+    method: "POST",
+    body: JSON.stringify({ action: "save_preferences", updates })
+  });
 }
+

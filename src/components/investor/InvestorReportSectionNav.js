@@ -53,7 +53,7 @@ export default function InvestorReportSectionNav({ items = defaultItems }) {
   return (
     <nav
       aria-label="Report sections"
-      className="sticky top-[72px] z-30 -mx-4 overflow-x-auto border-y border-slate-200 bg-white/95 px-4 py-2 backdrop-blur lg:top-[74px] lg:mx-0 lg:rounded-xl lg:border lg:px-3 lg:shadow-sm"
+      className="gv-investor-report-nav sticky top-[calc(env(safe-area-inset-top)+58px)] z-30 -mx-1 overflow-x-auto bg-[var(--gv-surface)]/95 px-1 py-2 backdrop-blur md:top-[74px] md:mx-0 md:rounded-xl md:border md:border-slate-200 md:bg-white/95 md:px-3 md:shadow-sm"
     >
       <div className="flex min-w-max gap-1.5">
         {stableItems.map(([label, id]) => {
@@ -64,7 +64,7 @@ export default function InvestorReportSectionNav({ items = defaultItems }) {
               type="button"
               onClick={() => jump(id)}
               aria-current={active ? "location" : undefined}
-              className={`min-h-10 rounded-lg px-3.5 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
+              className={`min-h-9 rounded-full px-3 text-[10px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 md:min-h-10 md:rounded-lg md:px-3.5 md:text-xs ${
                 active
                   ? "bg-blue-700 text-white shadow-sm"
                   : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"

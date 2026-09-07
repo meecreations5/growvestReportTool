@@ -148,7 +148,11 @@ async function previousSnapshotContext(investorId, snapshotDate) {
 
 export async function createPortfolioSnapshot(investorId, actor, { snapshotDate = indiaDateKey(), verificationStatus = "verified", sourceImportId = null } = {}) {
   const investor = await getAccessibleInvestor(actor, investorId);
-  const positionsSnapshot = await adminDb.collection("portfolioPositions").where("investorId", "==", investorId).get();
+  const [positionsSnapshot, sipScheduleSnapshot] = await Promise.all([
+    adminDb.collection("portfolioPositions").where("investorId", "==", investorId).get(),
+    adminDb.collection("sipFundingSchedules").where("investorId", "==", investorId).get()
+  ]);
+  const existingSipSchedules = new Map(sipScheduleSnapshot.docs.map((item) => [String(item.data()?.positionId || ""), { id: item.id, ...item.data() }]));
   const positions = positionsSnapshot.docs
     .map((item) => ({ id: item.id, ...item.data() }))
     .filter((item) => item.status !== "inactive" && item.status !== "exited")
@@ -335,12 +339,46 @@ export async function createPortfolioSnapshot(investorId, actor, { snapshotDate 
       gainLoss: Number(position.gainLoss || 0),
       returnPercentage: Number(position.returnPercentage || 0),
       monthlySip: Number(position.monthlySip || 0),
+      latestSipDate: position.latestSipDate || "",
+      sipDebitDay: Number(position.sipDebitDay || 0),
       goalAllocations: position.goalAllocations || [],
       allocationStatus: position.allocationStatus || portfolioAllocationStatus(position.goalAllocations),
       defaultBucketId: GENERAL_WEALTH_BUCKET_ID,
       defaultBucketName: GENERAL_WEALTH_BUCKET_NAME,
       updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
+
+    const investmentMode = String(position.investmentMode || "").toLowerCase();
+    const inferredDebitDay = Math.max(0, Math.min(31, Math.trunc(Number(position.sipDebitDay || (position.latestSipDate ? String(position.latestSipDate).slice(8, 10) : 0)) || 0)));
+    const isSipMutualFund = position.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND
+      && Number(position.monthlySip || 0) > 0
+      && (investmentMode.includes("sip") || investmentMode.includes("both"));
+    const existingSip = existingSipSchedules.get(String(position.id || ""));
+    if (isSipMutualFund && (existingSip || inferredDebitDay > 0)) {
+      const scheduleId = existingSip?.id || `sip_${position.id}`;
+      const inferredSchedule = !existingSip || String(existingSip.scheduleSource || "") === "portfolio_inferred";
+      writer.set(adminDb.collection("sipFundingSchedules").doc(scheduleId), {
+        investorId,
+        investorName: investor.fullName || investor.name || "Investor",
+        clientCode: investor.clientCode || "",
+        investorPortalUid: investor.investorPortalUid || investor.portalUid || null,
+        advisorUid: investor.assignedAdvisorUid || investor.advisorUid || position.advisorUid || actor.uid,
+        assignedAdvisorUid: investor.assignedAdvisorUid || investor.advisorUid || position.advisorUid || actor.uid,
+        positionId: position.id,
+        instrumentName: position.instrumentName || position.schemeName || "Mutual Fund SIP",
+        folioNo: position.folioNo || "",
+        isin: position.isin || "",
+        source: position.source || PORTFOLIO_SOURCES.MANUAL,
+        provider: position.provider || "",
+        sipAmount: Number(Number(position.monthlySip || 0).toFixed(2)),
+        ...(inferredSchedule && inferredDebitDay > 0 ? { debitDay: inferredDebitDay } : {}),
+        ...(existingSip ? {} : { reminderDays: [5], active: true, scheduleSource: "portfolio_inferred", createdAt: FieldValue.serverTimestamp(), createdByUid: actor.uid, createdByName: actor.fullName || actor.email || "GrowVest User" }),
+        latestSipDate: position.latestSipDate || "",
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedByUid: actor.uid,
+        updatedByName: actor.fullName || actor.email || "GrowVest User"
+      }, { merge: true });
+    }
   });
 
   writer.update(adminDb.collection("investors").doc(investorId), {

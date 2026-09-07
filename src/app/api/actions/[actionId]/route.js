@@ -20,6 +20,49 @@ function decisionStatus(decision, currentStatus) {
   return currentStatus;
 }
 
+
+function serialiseActionValue(value) {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map(serialiseActionValue);
+  if (typeof value?.toDate === "function") return value.toDate().toISOString();
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, serialiseActionValue(child)]));
+  return value;
+}
+
+function actionEventTime(value) {
+  if (!value) return 0;
+  if (typeof value?.toMillis === "function") return value.toMillis();
+  if (typeof value?.toDate === "function") return value.toDate().getTime();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+
+export async function GET(request, { params }) {
+  try {
+    const actor = await verifyAppRequest(request);
+    const { actionId } = await params;
+    const snapshot = await adminDb.collection("investorActions").doc(actionId).get();
+    if (!snapshot.exists) return Response.json({ error: "Action request was not found." }, { status: 404 });
+    const action = { id: snapshot.id, ...snapshot.data() };
+    const investorOwns = actor.role === "investor" && actor.investorId && actor.investorId === action.investorId && action.investorVisible !== false;
+    const staffCanManage = canStaffManage(actor, action);
+    if (!investorOwns && !staffCanManage) return Response.json({ error: "You are not authorised to view this action." }, { status: 403 });
+
+    const eventSnapshot = await adminDb.collection("investorActionEvents").where("actionId", "==", actionId).get();
+    const events = eventSnapshot.docs
+      .map((item) => ({ id: item.id, ...item.data() }))
+      .filter((item) => !investorOwns || item.investorVisible !== false)
+      .sort((a, b) => actionEventTime(b.createdAt) - actionEventTime(a.createdAt))
+      .slice(0, 100);
+
+    return Response.json(serialiseActionValue({ action, events }), { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    console.error("Investor action read failed", error);
+    return Response.json({ error: error?.message || "Unable to load this action." }, { status: appRequestErrorStatus(error, 500) });
+  }
+}
+
 export async function PATCH(request, { params }) {
   try {
     const actor = await verifyAppRequest(request);

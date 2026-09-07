@@ -9,15 +9,13 @@ import {
   ChevronRight,
   Download,
   MessageCircleMore,
-  Printer
+  Printer,
+  ArrowDownRight,
+  ArrowUpRight,
+  WalletCards
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  subscribeMonthlyReport,
-  subscribePublishedInvestorReports,
-  subscribeReportAcknowledgement,
-  subscribeReportVersion
-} from "@/services/reportService";
+import { getInvestorReportDetail } from "@/services/investorAppService";
 import {
   downloadReportPdf,
   submitReportAcknowledgement
@@ -26,6 +24,8 @@ import { getMonthLabel } from "@/lib/constants/report";
 import MonthlyWealthReport from "@/components/reports/MonthlyWealthReport";
 import InvestorReportSectionNav from "@/components/investor/InvestorReportSectionNav";
 import { reportTemplateNavItems } from "@/lib/constants/reportTemplates";
+import { formatCurrency } from "@/lib/utils/format";
+
 
 export default function InvestorReportDetailClient({ reportId }) {
   const { profile } = useAuth();
@@ -38,61 +38,37 @@ export default function InvestorReportDetailClient({ reportId }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [comment, setComment] = useState("");
+  const [mobileExpanded, setMobileExpanded] = useState(false);
 
-  useEffect(
-    () =>
-      subscribeMonthlyReport(
-        reportId,
-        (item) => {
-          if (item && (!item.investorVisible || item.status !== "completed" || !item.activePublishedVersionId)) {
-            setError("This report has not been published to the Investor Portal.");
-            setReportMeta(null);
-          } else {
-            setReportMeta(item);
-            if (!item) setError("Monthly report was not found.");
-          }
-          setLoading(false);
-        },
-        (nextError) => {
-          console.error(nextError);
-          setError("You do not have access to this monthly report.");
-          setLoading(false);
-        }
-      ),
-    [reportId]
-  );
+  async function refreshReportDetail() {
+    if (!profile?.id || !reportId) return;
+    const payload = await getInvestorReportDetail(reportId);
+    setReportMeta(payload.reportMeta || null);
+    setPublishedVersion(payload.publishedVersion || null);
+    setHistory(payload.history || []);
+    setAcknowledgement(payload.acknowledgement || null);
+  }
 
   useEffect(() => {
-    if (!reportMeta?.activePublishedVersionId) return undefined;
-    return subscribeReportVersion(
-      reportMeta.activePublishedVersionId,
-      (item) => {
-        setPublishedVersion(
-          item
-            ? {
-                ...item,
-                id: reportId,
-                versionId: item.id,
-                activePublishedVersionId: item.id
-              }
-            : null
-        );
-      },
-      (nextError) => {
+    if (!profile?.id || !reportId) return undefined;
+    let active = true;
+    setLoading(true);
+    setError("");
+    getInvestorReportDetail(reportId)
+      .then((payload) => {
+        if (!active) return;
+        setReportMeta(payload.reportMeta || null);
+        setPublishedVersion(payload.publishedVersion || null);
+        setHistory(payload.history || []);
+        setAcknowledgement(payload.acknowledgement || null);
+      })
+      .catch((nextError) => {
+        if (!active) return;
         console.error(nextError);
-        setError("The published report version could not be loaded.");
-      }
-    );
-  }, [reportId, reportMeta?.activePublishedVersionId]);
-
-  useEffect(() => {
-    if (!reportMeta?.investorId) return undefined;
-    return subscribePublishedInvestorReports(reportMeta.investorId, setHistory, () => {});
-  }, [reportMeta?.investorId]);
-
-  useEffect(() => {
-    if (!profile?.id) return undefined;
-    return subscribeReportAcknowledgement(reportId, profile.id, setAcknowledgement, () => {});
+        setError(nextError?.message || "You do not have access to this monthly report.");
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [profile?.id, reportId]);
 
   const report = publishedVersion ? { ...publishedVersion, id: reportId } : null;
@@ -126,10 +102,11 @@ export default function InvestorReportDetailClient({ reportId }) {
       await submitReportAcknowledgement(report.id, { requestDiscussion, comment });
       setNotice(
         requestDiscussion
-          ? "Your discussion request was sent to your Advisor."
+          ? "Your discussion request was sent to your GrowVest Partner."
           : "Report acknowledged successfully."
       );
       setComment("");
+      await refreshReportDetail().catch(() => {});
     } catch (nextError) {
       setError(nextError.message || "Unable to update your report acknowledgement.");
     } finally {
@@ -156,10 +133,16 @@ export default function InvestorReportDetailClient({ reportId }) {
   if (!report) return null;
 
   const reportPeriod = `${getMonthLabel(report.reportMonth)} ${report.reportYear}`;
+  const mobileSummary = report.summary || {};
+  const mobileValue = Number(mobileSummary.totalCorpus || 0);
+  const mobileGain = Number(mobileSummary.investmentGain || mobileSummary.gainLoss || 0);
+  const mobileNewMoney = Number(mobileSummary.newMoneyAdded || 0);
+  const mobileWithdrawals = Number(mobileSummary.totalWithdrawals || 0);
+  const mobileMonthChange = mobileNewMoney - mobileWithdrawals + mobileGain;
 
   return (
-    <div className="grid gap-4 pb-24 lg:pb-0">
-      <header className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+    <div className="grid gap-4 pb-4 lg:pb-0">
+      <header className="hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:block sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
             <Link
@@ -244,6 +227,67 @@ export default function InvestorReportDetailClient({ reportId }) {
         ) : null}
       </header>
 
+      {/* Phone-only one-minute review. Full report is available on demand below. */}
+      <section className="md:hidden">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[12px] font-semibold text-[#6B7280]">Your {reportPeriod} in 60 seconds</p>
+            <h2 className="mt-0.5 font-heading text-[1.55rem] font-bold text-[#0B0B0F]">{reportPeriod}</h2>
+            <p className="mt-1 text-[11px] text-[#6B7280]">Monthly Review · Updated review {report.publishedVersion || 1}</p>
+          </div>
+          <button type="button" onClick={handleDownload} disabled={working} className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-slate-200 bg-white text-[#1F4ED8] disabled:opacity-50" aria-label="Download monthly review">
+            <Download size={17} strokeWidth={1.5} />
+          </button>
+        </div>
+
+        <div className="mt-5 rounded-[18px] bg-[#0B0B0F] p-5 text-white">
+          <p className="text-[11px] font-medium text-white/55">Portfolio Value</p>
+          <p className="gv-private-value mt-1 font-heading text-[2rem] font-bold leading-none text-white">{formatCurrency(mobileValue)}</p>
+          <p className={`gv-private-value mt-2 text-[12px] font-semibold ${mobileMonthChange >= 0 ? "text-[#9BB2FF]" : "text-red-300"}`}>{mobileMonthChange >= 0 ? "+" : ""}{formatCurrency(mobileMonthChange)} net change</p>
+
+          <div className="mt-5 grid grid-cols-2 border-t border-white/15 pt-4">
+            <div className="border-r border-white/15 pr-4"><p className="text-[10px] text-white/45">Money Added</p><p className="gv-private-value mt-1 font-heading text-[15px] font-bold text-white">{formatCurrency(mobileNewMoney)}</p></div>
+            <div className="pl-4"><p className="text-[10px] text-white/45">Investment Movement</p><p className={`gv-private-value mt-1 font-heading text-[15px] font-bold ${mobileGain >= 0 ? "text-[#9BB2FF]" : "text-red-300"}`}>{mobileGain >= 0 ? "+" : ""}{formatCurrency(mobileGain)}</p></div>
+            <div className="mt-4 border-r border-t border-white/15 pr-4 pt-4"><p className="text-[10px] text-white/45">Withdrawals</p><p className="gv-private-value mt-1 font-heading text-[15px] font-bold text-white">{formatCurrency(mobileWithdrawals)}</p></div>
+            <div className="mt-4 border-t border-white/15 pl-4 pt-4"><p className="text-[10px] text-white/45">Net Change</p><p className={`gv-private-value mt-1 font-heading text-[15px] font-bold ${mobileMonthChange >= 0 ? "text-[#9BB2FF]" : "text-red-300"}`}>{mobileMonthChange >= 0 ? "+" : ""}{formatCurrency(mobileMonthChange)}</p></div>
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <h3 className="font-heading text-[1.1rem] font-bold text-[#0B0B0F]">What changed this month?</h3>
+          <div className="mt-2 overflow-hidden border-y border-slate-200 bg-white">
+            {[
+              ["Money added", mobileNewMoney, "Confirmed investment inflow", WalletCards, "#1F4ED8"],
+              ["Investment movement", mobileGain, "Portfolio performance", mobileGain >= 0 ? ArrowUpRight : ArrowDownRight, mobileGain >= 0 ? "#1F4ED8" : "#E53935"],
+              ["Money withdrawn", mobileWithdrawals, "Confirmed withdrawal", ArrowDownRight, "#F5B301"]
+            ].map(([label, value, helper, Icon, color], index) => (
+              <div key={label} className={`flex min-h-[66px] items-center gap-3 py-3 ${index ? "border-t border-slate-100" : ""}`}>
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] bg-[#F4F6F9]" style={{ color }}><Icon size={18} strokeWidth={1.5} /></span>
+                <div className="min-w-0 flex-1"><p className="text-[13px] font-semibold text-[#0B0B0F]">{label}</p><p className="mt-0.5 text-[11px] text-[#6B7280]">{helper}</p></div>
+                <p className={`gv-private-value shrink-0 font-heading text-[13px] font-bold ${label === "Investment movement" && Number(value) < 0 ? "text-[#E53935]" : "text-[#0B0B0F]"}`}>{label === "Investment movement" && Number(value) >= 0 ? "+" : ""}{formatCurrency(value)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <p className="mt-5 rounded-[15px] bg-[#F4F6F9] px-4 py-3 text-[12px] leading-5 text-[#6B7280]">Detailed insights, goal progress, protection updates and GrowVest next steps are included in your full monthly review.</p>
+
+        <div className="mt-5 grid gap-2">
+          <button type="button" onClick={() => setMobileExpanded((current) => !current)} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[14px] bg-[#1F4ED8] px-4 text-[13px] font-bold text-white">
+            {mobileExpanded ? "Hide full review" : "View full review"} <ChevronRight size={16} strokeWidth={1.5} className={mobileExpanded ? "rotate-90" : ""} />
+          </button>
+          <button type="button" onClick={() => document.getElementById("report-discussion")?.scrollIntoView({ behavior: "smooth" })} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[14px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-[#0B0B0F]">
+            <MessageCircleMore size={17} strokeWidth={1.5} className="text-[#1F4ED8]" /> Discuss with GrowVest
+          </button>
+        </div>
+
+        {!acknowledgement?.acknowledged ? <button type="button" onClick={() => handleAcknowledgement(false)} disabled={working} className="mt-3 inline-flex min-h-11 w-full items-center justify-center text-[12px] font-semibold text-[#1F4ED8] disabled:opacity-60">Acknowledge report received</button> : null}
+        {(adjacent.older || adjacent.newer) ? <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+          {adjacent.older ? <Link href={`/investor/reports/${adjacent.older.id}`} className="inline-flex min-h-9 items-center gap-1 text-[11px] font-semibold text-[#6B7280]"><ChevronLeft size={14} strokeWidth={1.5} /> Previous</Link> : <span />}
+          {adjacent.newer ? <Link href={`/investor/reports/${adjacent.newer.id}`} className="inline-flex min-h-9 items-center gap-1 text-[11px] font-semibold text-[#6B7280]">Next <ChevronRight size={14} strokeWidth={1.5} /></Link> : null}
+        </div> : null}
+      </section>
+
       {error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
           {error}
@@ -256,24 +300,25 @@ export default function InvestorReportDetailClient({ reportId }) {
         </div>
       ) : null}
 
-      <InvestorReportSectionNav items={reportTemplateNavItems(report)} />
-
-      <div className="mx-auto w-full max-w-[1280px]">
-        <MonthlyWealthReport report={report} history={history} viewer="investor" />
+      <div className={`${mobileExpanded ? "grid gap-4" : "hidden"} md:grid md:gap-4`}>
+        <InvestorReportSectionNav items={reportTemplateNavItems(report)} />
+        <div className="mx-auto w-full max-w-[1280px]">
+          <MonthlyWealthReport report={report} history={history} viewer="investor" />
+        </div>
       </div>
 
       <section
         id="report-discussion"
-        className="scroll-mt-32 rounded-xl border border-blue-200 bg-blue-50 p-5"
+        className="scroll-mt-32 rounded-[16px] bg-[#F4F6F9] p-4 md:rounded-xl md:border md:border-blue-200 md:bg-blue-50 md:p-5"
       >
         <div className="flex items-start gap-3">
-          <MessageCircleMore className="mt-0.5 text-blue-700" size={21} />
+          <MessageCircleMore className="mt-0.5 text-[#1F4ED8]" size={21} strokeWidth={1.5} />
           <div className="min-w-0 flex-1">
             <h2 className="font-heading text-xl font-bold text-slate-950">
-              Discuss this report with your Advisor
+              Discuss this report with your GrowVest Partner
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              Send a question or request a review. Your Advisor will receive it in their notification centre.
+              Send a question or request a review. Your GrowVest Partner will receive it in their notification centre.
             </p>
             <textarea
               value={comment}
@@ -286,7 +331,7 @@ export default function InvestorReportDetailClient({ reportId }) {
               type="button"
               onClick={() => handleAcknowledgement(true)}
               disabled={working}
-              className="mt-3 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+              className="mt-3 rounded-[12px] bg-[#1F4ED8] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
             >
               Request Discussion
             </button>
@@ -294,25 +339,6 @@ export default function InvestorReportDetailClient({ reportId }) {
         </div>
       </section>
 
-      <div className="fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-30 border-t border-slate-200 bg-white/97 px-4 py-2 shadow-[0_-8px_30px_rgba(15,23,42,.08)] backdrop-blur lg:hidden">
-        <div className="mx-auto grid max-w-lg grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={handleDownload}
-            disabled={working}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[var(--gv-blue)] text-sm font-bold text-white disabled:opacity-60"
-          >
-            <Download size={16} /> {working ? "Preparing…" : "Download PDF"}
-          </button>
-          <button
-            type="button"
-            onClick={() => document.getElementById("report-discussion")?.scrollIntoView({ behavior: "smooth" })}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-600"
-          >
-            <MessageCircleMore size={16} /> Discuss
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

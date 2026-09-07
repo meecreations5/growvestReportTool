@@ -10,8 +10,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import { Field, inputClassName } from "@/components/ui/Field";
+import { businessDateKey } from "@/lib/utils/date";
 
-const today = new Date().toISOString().slice(0, 10);
+const today = businessDateKey();
 const currentTime = new Date().toTimeString().slice(0, 5);
 
 const initialValues = {

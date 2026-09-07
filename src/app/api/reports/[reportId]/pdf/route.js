@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { FieldValue } from "firebase-admin/firestore";
 import {adminBucket, adminDb, verifyAppRequest, appRequestErrorStatus} from "@/lib/server/firebaseAdmin";
 import { assertReportAccess, loadReportAndVersion } from "@/lib/server/reportServer";
 
@@ -41,7 +42,7 @@ export async function GET(request, { params }) {
       downloadedAt: new Date()
     });
     batch.set(adminDb.collection("monthlyReports").doc(reportId), {
-      downloadCount: Number(report.downloadCount || 0) + 1,
+      downloadCount: FieldValue.increment(1),
       lastDownloadedAt: new Date(),
       lastDownloadedByUid: actor.uid
     }, { merge: true });

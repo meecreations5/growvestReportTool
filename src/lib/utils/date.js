@@ -1,3 +1,23 @@
+export const INDIA_TIME_ZONE = "Asia/Kolkata";
+
+export function businessDateParts(date = new Date(), timeZone = INDIA_TIME_ZONE) {
+  const source = date instanceof Date ? date : new Date(date);
+  const safe = Number.isNaN(source.getTime()) ? new Date() : source;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(safe);
+  const values = Object.fromEntries(parts.filter((item) => item.type !== "literal").map((item) => [item.type, item.value]));
+  return { year: Number(values.year), month: Number(values.month), day: Number(values.day) };
+}
+
+export function businessDateKey(date = new Date(), timeZone = INDIA_TIME_ZONE) {
+  const value = businessDateParts(date, timeZone);
+  return `${String(value.year).padStart(4, "0")}-${String(value.month).padStart(2, "0")}-${String(value.day).padStart(2, "0")}`;
+}
+
 export function toDate(value) {
   if (!value) return null;
   if (value?.toDate) return value.toDate();

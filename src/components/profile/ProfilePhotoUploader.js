@@ -9,7 +9,7 @@ function initials(name) {
   return String(name || "GV").split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 }
 
-export default function ProfilePhotoUploader({ className = "", compact = false, onUploaded }) {
+export default function ProfilePhotoUploader({ className = "", compact = false, minimal = false, onUploaded }) {
   const inputRef = useRef(null);
   const { profile, refreshProfile } = useAuth();
   const [preview, setPreview] = useState(profile?.photoURL || "");
@@ -41,6 +41,20 @@ export default function ProfilePhotoUploader({ className = "", compact = false, 
     } finally {
       setSaving(false);
     }
+  }
+
+  if (minimal) {
+    return (
+      <div className={className}>
+        <button type="button" onClick={() => inputRef.current?.click()} disabled={saving} className="inline-flex min-h-9 items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 text-[10px] font-black text-white backdrop-blur-sm disabled:opacity-60">
+          {saving ? <LoaderCircle size={14} className="animate-spin" /> : <Camera size={14} />}
+          {saving ? `Uploading ${progress}%` : "Edit photo"}
+        </button>
+        <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) handleFile(file); event.target.value = ""; }} />
+        {error ? <p className="mt-2 text-[10px] font-semibold text-red-100">{error}</p> : null}
+        {message ? <p className="mt-2 text-[10px] font-semibold text-emerald-100">{message}</p> : null}
+      </div>
+    );
   }
 
   return (

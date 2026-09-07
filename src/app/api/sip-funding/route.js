@@ -40,6 +40,88 @@ function safeReminderDays(value) {
   return result.length ? result : [5];
 }
 
+function debitDayFromDate(value) {
+  const text = clean(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return 0;
+  const day = Number(text.slice(8, 10));
+  if (!Number.isFinite(day) || day < 1 || day > 31) return 0;
+  return Math.trunc(day);
+}
+
+function latestSipTransactionFor(position = {}, transactions = []) {
+  const folio = clean(position.folioNo).toLowerCase();
+  const isin = clean(position.isin).toLowerCase();
+  return transactions
+    .filter((item) => String(item.investmentMode || "").toLowerCase() === "sip")
+    .filter((item) => {
+      const itemFolio = clean(item.folioNo).toLowerCase();
+      const itemIsin = clean(item.isin).toLowerCase();
+      return (folio && itemFolio === folio) || (isin && itemIsin === isin);
+    })
+    .sort((a, b) => String(b.transactionDate || "").localeCompare(String(a.transactionDate || "")))[0] || null;
+}
+
+async function ensureInferredSchedules(actor, requestedInvestorId = "") {
+  const investorId = actor.role === "investor" ? clean(actor.investorId) : clean(requestedInvestorId);
+  if (!investorId) return;
+  const investor = await getAccessibleActionInvestor(actor, investorId);
+  const [positionSnapshot, scheduleSnapshot, transactionSnapshot] = await Promise.all([
+    adminDb.collection("portfolioPositions").where("investorId", "==", investor.id).get(),
+    adminDb.collection("sipFundingSchedules").where("investorId", "==", investor.id).get(),
+    adminDb.collection("portfolioTransactions").where("investorId", "==", investor.id).get()
+  ]);
+  const existingPositionIds = new Set(scheduleSnapshot.docs.map((item) => clean(item.data()?.positionId)).filter(Boolean));
+  const transactions = transactionSnapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+  const writer = adminDb.bulkWriter();
+  let created = 0;
+
+  positionSnapshot.docs.forEach((item) => {
+    const position = { id: item.id, ...item.data() };
+    if (existingPositionIds.has(position.id)) return;
+    if (position.productType !== PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND) return;
+    const mode = String(position.investmentMode || "").toLowerCase();
+    if (!(mode.includes("sip") || mode.includes("both")) || number(position.monthlySip) <= 0) return;
+    const latestSip = latestSipTransactionFor(position, transactions);
+    const latestSipDate = clean(position.latestSipDate || latestSip?.transactionDate);
+    const rawDebitDay = Math.trunc(number(position.sipDebitDay) || debitDayFromDate(latestSipDate));
+    if (rawDebitDay <= 0) return;
+    const debitDay = Math.max(1, Math.min(31, rawDebitDay));
+
+    const scheduleId = `sip_${position.id}`;
+    const advisorUid = investor.assignedAdvisorUid || investor.advisorUid || position.advisorUid || "";
+    writer.set(adminDb.collection("sipFundingSchedules").doc(scheduleId), {
+      investorId: investor.id,
+      investorName: investor.fullName || investor.name || "Investor",
+      clientCode: investor.clientCode || "",
+      investorPortalUid: investor.investorPortalUid || investor.portalUid || null,
+      advisorUid,
+      assignedAdvisorUid: advisorUid,
+      positionId: position.id,
+      instrumentName: position.instrumentName || position.schemeName || "Mutual Fund SIP",
+      folioNo: position.folioNo || "",
+      isin: position.isin || "",
+      source: position.source || "portfolio",
+      provider: position.provider || "",
+      sipAmount: Number(number(position.monthlySip).toFixed(2)),
+      debitDay,
+      latestSipDate,
+      reminderDays: [5],
+      active: true,
+      scheduleSource: "portfolio_inferred",
+      createdAt: FieldValue.serverTimestamp(),
+      createdByUid: actor.uid,
+      createdByName: actorName(actor),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedByUid: actor.uid,
+      updatedByName: actorName(actor)
+    }, { merge: true });
+    created += 1;
+  });
+
+  if (created) await writer.close();
+  else await writer.close();
+}
+
 async function loadSchedules(actor, requestedInvestorId = "") {
   let snapshot;
   if (actor.role === "investor") {
@@ -78,6 +160,7 @@ export async function GET(request) {
     const actor = await verifyAppRequest(request);
     const { searchParams } = new URL(request.url);
     const investorId = clean(searchParams.get("investorId"));
+    if (actor.role === "investor" || investorId) await ensureInferredSchedules(actor, investorId);
     const items = await loadSchedules(actor, investorId);
     return Response.json({ items });
   } catch (error) {

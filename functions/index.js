@@ -1,7 +1,7 @@
 const { initializeApp } = require("firebase-admin/app");
 const { FieldValue, getFirestore } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const logger = require("firebase-functions/logger");
 
 initializeApp();
@@ -11,6 +11,9 @@ const messaging = getMessaging();
 
 function notificationCategory(eventType = "") {
   const value = String(eventType).toLowerCase();
+  if (value.includes("portfolio")) return "portfolio";
+  if (value.includes("sip")) return "sip";
+  if (value.includes("bucket") || value.includes("goal_request")) return "bucketList";
   if (value.includes("report")) return "reports";
   if (value.includes("meeting") || value.includes("mom") || value.includes("action")) return "meetings";
   if (value.includes("document")) return "documents";
@@ -24,6 +27,24 @@ function safeText(value, fallback, maxLength) {
 }
 
 function pushCopy(category, notification) {
+  if (category === "portfolio") {
+    return {
+      title: "Your GrowVest portfolio is updated",
+      body: "Your latest verified portfolio is ready. Open GrowVest to view what changed."
+    };
+  }
+  if (category === "sip") {
+    return {
+      title: safeText(notification.title, "Upcoming SIP reminder", 90),
+      body: safeText(notification.message, "An upcoming SIP needs your attention in the GrowVest Investor App.", 220)
+    };
+  }
+  if (category === "bucketList") {
+    return {
+      title: safeText(notification.title, "Bucket List update", 90),
+      body: safeText(notification.message, "Your Bucket List has a new GrowVest update.", 220)
+    };
+  }
   if (category === "reports") {
     return {
       title: "Monthly report update",
@@ -77,6 +98,58 @@ async function removeInvalidSubscriptions(subscriptions, response) {
   if (removals) await batch.commit();
   return removals;
 }
+
+exports.notifyInvestorPortfolioVerified = onDocumentWritten({
+  document: "portfolioSnapshots/{snapshotId}",
+  region: "asia-south1",
+  retry: false,
+  memory: "256MiB",
+  timeoutSeconds: 60
+}, async (event) => {
+  const afterSnapshot = event.data?.after;
+  if (!afterSnapshot?.exists) return;
+
+  const after = afterSnapshot.data() || {};
+  const before = event.data?.before?.exists ? event.data.before.data() || {} : {};
+  const eligible = String(after.verificationStatus || "").toLowerCase() === "verified"
+    && String(after.reconciliationStatus || "").toLowerCase() === "verified";
+  if (!eligible) return;
+
+  const wasEligible = String(before.verificationStatus || "").toLowerCase() === "verified"
+    && String(before.reconciliationStatus || "").toLowerCase() === "verified";
+  const sameVersion = Number(before.snapshotVersion || 0) === Number(after.snapshotVersion || 0);
+  if (wasEligible && sameVersion) return;
+
+  const recipientUid = String(after.investorPortalUid || "").trim();
+  const investorId = String(after.investorId || "").trim();
+  const snapshotDate = String(after.snapshotDate || "").trim();
+  if (!recipientUid || !investorId || !snapshotDate) {
+    logger.info("Verified portfolio snapshot has no Investor Portal recipient", { snapshotId: afterSnapshot.id, investorId });
+    return;
+  }
+
+  // One Investor notification per investor/date. A same-day correction updates the
+  // verified snapshot without creating notification noise or duplicate pushes.
+  const notificationId = `portfolio_verified_${investorId}_${snapshotDate}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const notificationRef = db.collection("notifications").doc(notificationId);
+  const existing = await notificationRef.get();
+  if (existing.exists) return;
+
+  await notificationRef.set({
+    recipientUid,
+    recipientType: "investor",
+    title: "Your GrowVest portfolio is updated",
+    message: `Your verified portfolio for ${snapshotDate} is ready to view.`,
+    eventType: "portfolio_verified_update",
+    link: "/investor/portfolio",
+    investorId,
+    status: "unread",
+    createdByUid: "system",
+    createdAt: FieldValue.serverTimestamp(),
+    readAt: null,
+    metadata: { snapshotId: afterSnapshot.id, snapshotDate, snapshotVersion: Number(after.snapshotVersion || 1) }
+  });
+});
 
 exports.sendInvestorPushNotification = onDocumentCreated({
   document: "notifications/{notificationId}",

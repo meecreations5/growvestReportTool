@@ -24,7 +24,7 @@ export default function InvestorProtectedRoute({ children }) {
   }, [isAuthenticated, isInvestor, isStaff, loading, pathname, router]);
 
   if (loading || !isAuthenticated || !isInvestor) {
-    return <AuthLoadingScreen label="Loading your investor portal…" />;
+    return <AuthLoadingScreen label="Preparing your investor app…" variant="investor" />;
   }
 
   return children;

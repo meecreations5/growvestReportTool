@@ -1,4 +1,65 @@
+## Version 0.33.6 - Investor Mobile Finance App Redesign + Official SVG Brand Polish
+
+- Uses the supplied official GrowVest SVG assets for the phone Home header, internal app headers, Investor Login and loading/splash experience.
+- Fixes dark hero heading contrast on phone screens such as Login & Security.
+- Simplifies internal mobile headers, uses a circular profile avatar and removes redundant app-label clutter.
+- Applies Royal Trust Blue, Growth Cyan, Insight Yellow and Deep Premium Black intentionally across Home Quick Actions.
+- Adds subtle official GrowVest icon watermarks to key finance-app hero surfaces without affecting data readability.
+- Bucket List mobile filters are now a 2x2 app grid to prevent clipping on narrow phones.
+- PWA cache is bumped to `v0.33.6-ui2` and pre-caches the official GrowVest SVG set.
+- See `docs/INVESTOR_MOBILE_OFFICIAL_SVG_BRAND_POLISH_v0.33.6.md`.
+
+## Version 0.33.5 - Investor Mobile App Experience & Design System
+
+- Introduced a **phone-only (<768px) Investor App UI system** while preserving the established tablet and desktop layouts.
+- Investor Home now calculates the current wealth value from live **Portfolio Master positions**, not the latest published Monthly Report or a cached profile value.
+- Home refreshes on open, app focus/foreground, every 60 seconds while visible, and on manual refresh; Portfolio Master API responses are private/no-store.
+- Aligned ULIP invested-basis handling with the Portfolio screen while keeping Insurance protection cover completely outside portfolio corpus/AUM.
+- Added authenticated server-side Investor App data and notification routes to remove protected browser Firestore list reads that could raise `FirebaseError: Missing or insufficient permissions`.
+- Hardened Investor read flows for Home, Goals, Profile, Reports/report detail, Meetings, Documents, Notifications, Advisor Follow-up/Actions and withdrawal views.
+- Added a native-style mobile app bar, app-style More bottom sheet, consistent phone cards/safe areas and a compact phone Monthly Review header.
+- Permanent bottom navigation remains **Home | Portfolio | Goals | Reports | More**, with Notifications in the app header bell.
+- Bumped installed Investor PWA caches to v0.33.5.
+- See `docs/INVESTOR_MOBILE_APP_EXPERIENCE_DESIGN_SYSTEM_v0.33.5.md` and `docs/INVESTOR_MOBILE_APP_EXPERIENCE_DESIGN_SYSTEM_CODE_MANIFEST_v0.33.5.md`.
+
+## v0.33.4 Investor Portfolio Permission Hotfix
+
+- Replaced browser-side Portfolio Master listeners on **Investor → Portfolio** with authenticated `GET /api/portfolio/investor-view`.
+- Fixes `FirebaseError: Missing or insufficient permissions` caused by client-side list queries across Portfolio Positions, snapshots, transactions, ULIP investment records, trading history and Manual Portfolio accounts.
+- The server validates Super Admin/Admin, current Advisor assignment, or the linked Investor Portal identity before returning portfolio data.
+- Investor mobile `/investor/portfolio` no longer reads the Investor profile directly from browser Firestore.
+- Portfolio mutations continue through server APIs and the Portfolio view refreshes after Goal reassignment, manual holding/trade entry, delivery sale and cleanup actions.
+- Firestore security rules remain unchanged/tight; no broader browser read permission was introduced.
+- See `docs/INVESTOR_PORTFOLIO_PERMISSION_HOTFIX_v0.33.4.md`.
+
+## v0.33.4 Investor Directory Permission Hotfix
+
+- Replaced the staff **Investors** directory's browser-side Firestore collection listener with an authenticated server API (`GET /api/investors`).
+- Prevents `FirebaseError: Missing or insufficient permissions` on the Investor list when deployed browser rules/query proof lag behind the application.
+- Super Admin/Admin receive all non-deleted Investors; Advisors receive both current `assignedAdvisorUid` and legacy `advisorUid` ownership, de-duplicated server-side.
+- Older Investor records that predate the `isDeleted` field remain visible; only records explicitly marked `isDeleted: true` are excluded.
+- See `docs/INVESTOR_LIST_PERMISSION_HOTFIX_v0.33.4.md`.
+
+## Version 0.33.4 - Stability, Data Integrity & Mobile App Hardening
+
+- Hardened Monthly Report month changes so editable drafts migrate to the canonical `InvestorId_YYYY-MM` document identity instead of leaving the reporting month and Firestore ID out of sync.
+- Added stale-edit protection for Monthly Reports, idempotent publication claims, retry-safe deletion journaling, atomic PDF download counters and support for verified fully-exited zero-closing-balance report months.
+- Standardised GrowVest business-date defaults on **Asia/Kolkata** for newly hardened workflows.
+- Hardened Insurance reminders with overdue priority, catch-up stages, lifecycle pause controls, duplicate-policy protection, server-side status validation, retry-safe import batches and ULIP protection/investment linkage.
+- Investor disable/delete lifecycle controls now pause Insurance reminders, Meeting reminders and scheduled Report deliveries in addition to SIP reminder workflows.
+- Rebuilt Investor mobile-app navigation as exactly **Home | Portfolio | Goals | Reports | More**, with Notifications kept in the app header, corrected tablet More-menu behaviour and improved bottom safe-area spacing.
+- Updated Investor PWA cache identity to v0.33.4 so installed apps refresh the hardened navigation and routes.
+- See `docs/STABILITY_DATA_INTEGRITY_MOBILE_APP_HARDENING_v0.33.4.md` and `docs/STABILITY_DATA_INTEGRITY_MOBILE_APP_HARDENING_CODE_MANIFEST_v0.33.4.md`.
+
 ## Version 0.33.3 - Investor Insurance & Protection Management
+
+### Monthly Report regeneration hotfix
+
+- Fixed recreated Monthly Reports remaining on **Monthly Portfolio Verification · Checking** with zero holdings after the first draft save/remount. Empty recreated drafts now rehydrate from Portfolio Master automatically while established report facts remain protected.
+- **Refresh verification** can now populate a genuinely empty saved draft instead of only updating verification metadata.
+- Added a controlled five-day month-end capture grace window: if no verified snapshot exists on/before the report cutoff, GrowVest may use a snapshot captured during the next five days only when all dated source/position valuations are on or before the reporting cutoff.
+- Verification shows the effective portfolio date and, when different, the later capture date for audit transparency.
+- See `docs/REPORT_REGENERATION_PORTFOLIO_HYDRATION_HOTFIX_v0.33.3.md`.
 
 - Added **Insurance & Protection** as a separate protection layer inside Portfolio Management and Investor Profile without adding insurance cover to investment AUM/corpus.
 - Supports Term/Whole Life/Endowment/ULIP Insurance, Health/Critical Illness/Personal Accident, Vehicle, Home, Travel, Cyber and Other policies with standard and type-specific fields.
@@ -696,3 +757,139 @@ The Investor Profile is now the single source for planned Mutual Fund withdrawal
 ## v0.33.3 - Insurance integrated into Investor Profile and Portfolio
 
 Insurance & Protection is now surfaced directly inside the Investor Profile Overview, the Investor Portfolio, the Investor Portal Portfolio, and the consolidated Portfolio Overview. Portfolio Management now shows aggregate life/health cover, active policy counts, upcoming premium/renewal attention and investor-level protection rows while keeping every insurance cover amount outside investment AUM/current value/Bucket List corpus. Direct Investor links using `?tab=portfolio` or `?tab=protection` now open the requested profile section. See `docs/INSURANCE_PROFILE_AND_PORTFOLIO_INTEGRATION_v0.33.3.md`.
+
+### v0.33.4 Investor Mobile App optimisation hotfix
+- App-first mobile navigation refinement and safe-area handling.
+- Compact mobile header and bottom navigation active state.
+- Home Quick Access changed from swipe-only carousel to 2x2 grid.
+- Sticky Investments / Protection mobile Portfolio segment.
+- Mobile card rendering for intraday trades.
+- iOS form-control zoom prevention and report/document bottom-action spacing fixes.
+See `docs/MOBILE_APP_OPTIMISATION_HOTFIX_v0.33.4.md`.
+
+## v0.33.5 Investor Mobile Brand UI Refinement Hotfix
+
+- Phone-only Documents redesign with compact guidance, contained status summary and View-first action hierarchy.
+- Phone-only Portfolio Intelligence redesign with clearer information hierarchy and long-name wrapping.
+- GrowVest Royal Trust Blue, Growth Cyan and Insight Yellow applied through the existing dynamic branding tokens.
+- Global Investor App phone-width containment prevents right-side clipping/horizontal overflow.
+- PWA cache bumped to `v0.33.5-ui2` for installed-app refresh.
+
+See `docs/INVESTOR_MOBILE_BRAND_UI_REFINEMENT_HOTFIX_v0.33.5.md`.
+
+
+## v0.33.5 Investor Mobile Scroll Recovery Hotfix
+
+- Restores normal vertical scrolling on the Investor mobile app after the brand/overflow refinement.
+- Replaces the phone wrapper `overflow-x: hidden` with `overflow-x: clip` + explicit vertical overflow visibility so the wrapper cannot become an unintended scroll container.
+- Prevents secure Document Preview from applying a body scroll lock on phones.
+- Adds a route-level mobile recovery guard for stale body overflow locks left by an older PWA/Fast Refresh session.
+- Keeps horizontal clipping protection, fixed bottom navigation and all GrowVest mobile brand styling intact.
+- PWA cache bumped to `v0.33.5-ui3`.
+
+See `docs/INVESTOR_MOBILE_SCROLL_RECOVERY_HOTFIX_v0.33.5.md`.
+
+## v0.33.6 - Investor Mobile Finance App Redesign
+- Complete phone-only Investor finance-app visual system using approved GrowVest brand colors.
+- Live portfolio graphs, asset-allocation donut, Bucket List progress rings and report infographics.
+- Redesigned phone Home, Portfolio, Goals, Reports, Protection, Meetings, SIP Reminders, Actions, Notifications, Profile and Security experiences.
+- Floating five-item mobile navigation: Home, Portfolio, Goals, Reports, More.
+- Dedicated GrowVest SVG loading mark and branded Investor loading screen.
+- Tablet, desktop, Staff and Admin layouts remain unchanged by the phone-only design release.
+
+## v0.33.7 - Investor Mobile Professional UI & Visual Intelligence
+- Phone-only professional polish based on the approved GrowVest finance-app reference direction.
+- GrowVest official-icon outline motif, Financial Health visualization and calmer app-card hierarchy.
+- Portfolio expands to all holdings on demand; Goals and Reports gain mobile search/filter improvements.
+- Protection, Documents, Meetings, SIP, Actions, Notifications, Profile and Security receive native-style mobile refinements.
+- Monthly Report protection tables become phone cards to eliminate horizontal scrolling.
+- Official GrowVest SVG loading identity is retained; PWA cache is bumped to `v0.33.7-ui1`.
+- Tablet, desktop, Staff and Admin layouts remain unchanged.
+
+See `docs/INVESTOR_MOBILE_PROFESSIONAL_UI_VISUAL_INTELLIGENCE_v0.33.7.md`.
+
+## v0.33.7 Investor Mobile Build & Brand Hotfix
+
+- Fixes the Turbopack `Expression expected` error in Investor Meetings caused by an unbalanced JSX conditional.
+- Uses the complete official GrowVest SVG logo lockup in the phone Home header; the split wordmark asset is no longer rendered by itself.
+- Refines the hero-card GrowVest outline watermark to a thinner `0.28` stroke.
+- Bumps the installed Investor PWA cache to `v0.33.7-ui2`.
+
+See `docs/INVESTOR_MOBILE_BUILD_AND_BRAND_HOTFIX_v0.33.7.md`.
+
+## v0.33.8 - GrowVest Motion Language & Website-to-App Continuity
+
+The Investor phone experience now carries a consistent GrowVest motion identity from website/login into the Investor App. The official supplied GrowVest SVG icon outline forms first, the filled mark settles, the official wordmark appears, and the app transitions into the investor wealth view. The entry handoff is session-gated so normal navigation remains instant.
+
+The same compact GrowVest motion mark is reused during Portfolio Master refresh and Monthly Review PDF preparation. Reduced-motion accessibility is respected, and Staff/Admin/tablet/desktop behaviour is unchanged. Installed Investor PWA caches are bumped to `v0.33.8-motion1`.
+
+See `docs/GROWVEST_MOTION_LANGUAGE_APP_CONTINUITY_v0.33.8.md` and `docs/GROWVEST_MOTION_LANGUAGE_APP_CONTINUITY_CODE_MANIFEST_v0.33.8.md`.
+
+## v0.33.9 - Investor Mobile App Recomposition
+
+This release rebuilds the Investor phone experience around a calmer native-app hierarchy rather than continuing to stack dashboard cards. Home, Portfolio, Bucket List, Protection and Monthly Reviews now use one primary focal surface, quieter white supporting cards, compact filters, slimmer bottom navigation and stronger `Next for you` guidance. The official GrowVest SVG identity and motion language are retained, while the outline motif is intentionally more subtle.
+
+The redesign remains phone-only below 768px; tablet, desktop, staff and admin layouts are unchanged. Installed Investor PWA caches are bumped to `v0.33.9-ui1`.
+
+See `docs/INVESTOR_MOBILE_APP_RECOMPOSITION_v0.33.9.md` and `docs/INVESTOR_MOBILE_APP_RECOMPOSITION_CODE_MANIFEST_v0.33.9.md`.
+
+## v0.34.0 - Investor Mobile Premium Reference Replication & Performance
+
+The Investor phone experience now follows the approved premium GrowVest finance-app reference across Splash, Home, Portfolio, Holding Detail, Bucket List, Protection, Monthly Review, Documents, Notifications and Profile/More. The official GrowVest SVG motion language is retained, while page-to-page loading uses lightweight skeletons. Investor API reads now use short-lived section caching, in-flight request deduplication and lightweight server section responses to improve perceived and actual page performance. See `docs/INVESTOR_MOBILE_PREMIUM_REFERENCE_REPLICATION_v0.34.0.md`.
+
+## v0.34.1 - Investor Mobile UX & Premium Design System Consolidation
+
+This release consolidates the approved premium Investor phone experience into a more readable and consistent financial-app system. It adds persistent app-wide financial privacy, calendar-based chart ranges, priority-driven `Next for you`, one canonical Protection destination, Goal Detail and Holding purpose context, clearer Monthly Review language, simplified Profile/More information architecture, confirmation for investor decisions, investor-friendly login errors, Protection setup wording, improved mobile typography and explicit mobile dark-mode handling. Installed Investor PWA caches are bumped to `v0.34.1-ux1`.
+
+See `docs/INVESTOR_MOBILE_UX_PREMIUM_DESIGN_SYSTEM_v0.34.1.md` and `docs/INVESTOR_MOBILE_UX_PREMIUM_DESIGN_SYSTEM_CODE_MANIFEST_v0.34.1.md`.
+
+## v0.34.2 - GrowVest Signature Mobile UI
+
+The Investor App phone experience now follows the approved GrowVest reference direction: Royal Trust Blue `#1F4ED8`, Deep Premium Black `#0B0B0F`, Strategic Red `#E53935`, Insight Yellow `#F5B301`, Soft Gray `#F4F6F9`, Medium Gray `#6B7280` and White. The official GrowVest SVG assets are reused unchanged.
+
+The release introduces a brand-blue Total Wealth hero, overlapping four-action Home surface, slim Lucide icons, a central official GrowVest mobile action button, flatter Portfolio/Bucket List/Protection/Profile information architecture, a Deep Premium Black Monthly Review feature, redesigned Goal and Holding Detail views, and a consolidated phone design-system layer. Existing investor data/security flows and tablet/desktop workflows are preserved.
+
+See `docs/INVESTOR_MOBILE_SIGNATURE_UI_v0.34.2.md` and `docs/INVESTOR_MOBILE_SIGNATURE_UI_CODE_MANIFEST_v0.34.2.md`.
+
+## v0.34.3 - Investor Mobile Visual Correction
+
+v0.34.3 is a screenshot-led correction pass on the GrowVest Signature Mobile UI. It adds consistent mobile back navigation, corrects the home logo on Royal Trust Blue, tightens Home proportions, aligns portfolio gain/loss with current value versus invested amount, improves sparse chart history, makes Bucket List controls adaptive, displays non-zero sub-1% goal progress correctly, replaces unsupported goal-status copy with planning-aware guidance, reduces connected-investment density and further simplifies Profile.
+
+See `docs/INVESTOR_MOBILE_VISUAL_CORRECTION_v0.34.3.md`, `docs/INVESTOR_MOBILE_VISUAL_CORRECTION_CODE_MANIFEST_v0.34.3.md` and `RELEASE_VALIDATION_v0.34.3.md`.
+
+## v0.34.5 — Investor Experience Reconciliation
+
+This release reconciles the Investor App around three questions: **Where am I today? What am I building toward? What should I do next?** Home now uses a structurally full-width Royal Trust Blue hero, persistent phone navigation becomes **Home | Portfolio | GrowVest | Bucket List | Reports**, and Profile is completed with available Investor Master, masked KYC and portfolio-status context.
+
+SIP reminders can now be inferred from Portfolio SIP history when a staff-managed schedule is not already present, Home no longer silently hides SIP-load failures, and a verified/reconciled daily portfolio snapshot can create a deep-linked Investor notification and push alert according to the Investor's Portfolio notification preference.
+
+The release also introduces **Investor Add Bucket List**. Investor-submitted aspirations stay in a separate review workflow and do not affect active goal corpus/progress or investment allocation until an assigned Advisor, Admin or Super Admin discusses, refines and confirms the goal.
+
+See `docs/INVESTOR_EXPERIENCE_RECONCILIATION_v0.34.5.md`, `docs/INVESTOR_EXPERIENCE_RECONCILIATION_CODE_MANIFEST_v0.34.5.md` and `RELEASE_VALIDATION_v0.34.5.md`.
+
+## v0.34.4 — GrowVest Brand Color System & Screen Refinement
+
+This release applies the official GrowVest palette as a consistent mobile Investor App meaning system rather than decorative color. Royal Trust Blue leads active/progress states; Deep Premium Black carries wealth/review emphasis; Insight Yellow identifies planning and due-soon attention; Strategic Red is reserved for genuine negative/urgent states.
+
+Investor mobile refinements include an edge-to-edge Home wealth hero, data-driven Need Attention priorities, locked slim icon mapping, date-backed Portfolio range filters with full-history All view, a thicker brand-led Asset Allocation donut, richer low-density Bucket List presentation, consistent goal icons across Home/list/detail, a highlighted Holding Investment Snapshot, premium Black Monthly Review summaries, and Blue/Yellow/Red Protection status semantics.
+
+See `docs/INVESTOR_MOBILE_BRAND_COLOR_SYSTEM_v0.34.4.md` and `docs/INVESTOR_MOBILE_BRAND_COLOR_SYSTEM_CODE_MANIFEST_v0.34.4.md`.
+
+### v0.34.5 Home Composition Lock
+
+The phone Investor Home composition is now locked to the approved sequence: Royal Trust Blue wealth hero → curved white sheet → compact quick actions → smart Need Attention → compact Bucket List → Deep Premium Black Monthly Review → GrowVest Partner → bottom navigation. See `docs/INVESTOR_HOME_COMPOSITION_LOCK_v0.34.5.md`.
+
+### v0.34.5 Exact Home Reference Lock
+
+The phone Investor Home now matches the approved Home screenshot as the visual source of truth: full-width Royal Trust Blue hero, floating rounded four-action tray, one compact priority attention preview, compact Bucket List, Deep Premium Black Monthly Review, GrowVest Partner and the approved Home / Portfolio / GrowVest / Bucket List / Profile bottom navigation. See `docs/INVESTOR_HOME_COMPOSITION_LOCK_v0.34.5.md` and `docs/INVESTOR_HOME_EXACT_REFERENCE_CODE_MANIFEST_v0.34.5.md`.
+
+### v0.34.5 Exact Home Reference + Reports Navigation
+The approved Home screenshot remains the visual source of truth, with the requested persistent mobile navigation set to Home, Portfolio, GrowVest, Bucket List and Reports. Profile remains accessible from the Home avatar and GrowVest action sheet. Installed Investor PWA cache: `v0.34.5-home-exact2`.
+
+
+### v0.34.5 Exact Home Transition Correction
+The approved Home screenshot remains the source of truth. The Home transition now uses a true layered composition: the white content sheet overlaps the Royal Trust Blue hero by 14px with 22px rounded top shoulders, while the compact quick-action tray sits inside that sheet rather than independently floating over a flat white canvas. Persistent mobile navigation remains Home, Portfolio, GrowVest, Bucket List and Reports. Installed Investor PWA cache: `v0.34.5-home-exact4`.
+
+
+### v0.34.5 Home Transition Exact4
+The Home content sheet now rises 26px into the Royal Trust Blue hero with 26px rounded top shoulders, keeping the compact quick-action tray inside the sheet. The Deep Premium Black Monthly Review block remains visible even before a review is published, using an honest placeholder state that links to Reports. Installed Investor PWA cache: `v0.34.5-home-exact4`.

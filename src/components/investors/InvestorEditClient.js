@@ -31,6 +31,7 @@ import {
 } from "@/lib/constants/assessment";
 import { investorProfileSchema } from "@/lib/validation/assessmentSchema";
 import { formatCurrency } from "@/lib/utils/format";
+import { businessDateKey } from "@/lib/utils/date";
 import { BIRTHDAY_REMINDER_OPTIONS, DEFAULT_BIRTHDAY_REMINDER_OFFSETS } from "@/lib/utils/occasions";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -44,7 +45,7 @@ import {
 } from "@/components/assessment/RepeatableFinancialRows";
 import InvestmentPreferencesEditor from "@/components/assessment/InvestmentPreferencesEditor";
 
-const today = new Date().toISOString().slice(0, 10);
+const today = businessDateKey();
 
 const EDIT_SECTIONS = [
   { value: "profile", label: "Profile", icon: UserRound },

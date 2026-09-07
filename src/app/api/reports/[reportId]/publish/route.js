@@ -1,12 +1,30 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { adminDb, canStaffAccessRecord, verifyStaffRequest,
+import { FieldValue } from "firebase-admin/firestore";
+import {
+  adminDb,
+  canStaffAccessRecord,
+  verifyStaffRequest,
   appRequestErrorStatus
 } from "@/lib/server/firebaseAdmin";
 import { createAndUploadReportPdf, publishedSnapshotData } from "@/lib/server/reportServer";
 import { sendReportDelivery } from "@/lib/server/reportDelivery";
 
-
 export const runtime = "nodejs";
+
+const PUBLISH_CLAIM_TTL_MS = 10 * 60 * 1000;
+
+function requestError(message, statusCode = 422) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function claimDate(value) {
+  if (!value) return null;
+  const date = value?.toDate?.() || new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
 async function publishLinkedActionVisibility({ investorId, reportId, publishedVersion }) {
   if (!investorId) return 0;
@@ -17,9 +35,6 @@ async function publishLinkedActionVisibility({ investorId, reportId, publishedVe
   });
   if (!linkedActions.length) return 0;
 
-  // Keep action/event visibility consistent. Report-origin actions are hidden
-  // while drafts are internal, then both the action and its timeline become
-  // visible together once the source report is published.
   const operations = [];
   for (const item of linkedActions) {
     operations.push({
@@ -42,37 +57,133 @@ async function publishLinkedActionVisibility({ investorId, reportId, publishedVe
   }
   return linkedActions.length;
 }
+
+async function releasePublishClaim(reportRef, claimToken, fallbackPublicationStatus = "internal", failureReason = "") {
+  if (!claimToken) return;
+  try {
+    await adminDb.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(reportRef);
+      if (!snapshot.exists) return;
+      const data = snapshot.data() || {};
+      if (data.publicationClaim?.token !== claimToken) return;
+      transaction.set(reportRef, {
+        publicationClaim: FieldValue.delete(),
+        publicationStatus: data.activePublishedVersionId ? (data.pdfIsStale ? "revision_ready" : "published") : fallbackPublicationStatus,
+        lastPublishFailureReason: failureReason ? String(failureReason).slice(0, 1200) : null,
+        lastPublishFailedAt: failureReason ? new Date() : null,
+        updatedAt: new Date()
+      }, { merge: true });
+    });
+  } catch (releaseError) {
+    console.error("Unable to release Monthly Report publication claim", releaseError);
+  }
+}
+
 export async function POST(request, { params }) {
+  let reportRef = null;
+  let claimToken = "";
+  let fallbackPublicationStatus = "internal";
   try {
     const actor = await verifyStaffRequest(request);
     const { reportId } = await params;
     const body = await request.json().catch(() => ({}));
     const sendEmail = body.sendEmail !== false;
-    const reportRef = adminDb.collection("monthlyReports").doc(reportId);
-    const snapshot = await reportRef.get();
-    if (!snapshot.exists) return NextResponse.json({ error: "Monthly report was not found." }, { status: 404 });
-    const report = { id: snapshot.id, ...snapshot.data() };
-    if (!canStaffAccessRecord(actor, report)) return NextResponse.json({ error: "You are not authorised to publish this report." }, { status: 403 });
-    if (report.status !== "completed") return NextResponse.json({ error: "Complete the report before publishing it." }, { status: 422 });
+    reportRef = adminDb.collection("monthlyReports").doc(reportId);
 
-    const nextPublishedVersion = Number(report.publishedVersion || 0) + 1;
-    const versionId = `${reportId}_v${nextPublishedVersion}`;
+    const claim = await adminDb.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(reportRef);
+      if (!snapshot.exists) throw requestError("Monthly report was not found.", 404);
+      const report = { id: snapshot.id, ...snapshot.data() };
+      if (!canStaffAccessRecord(actor, report)) throw requestError("You are not authorised to publish this report.", 403);
+      if (report.status !== "completed") throw requestError("Complete the report before publishing it.", 422);
+
+      const sourceVersion = Number(report.version || 1);
+      const alreadyPublished = Boolean(
+        report.activePublishedVersionId
+        && Number(report.publishedSourceVersion || 0) === sourceVersion
+        && report.publicationStatus === "published"
+        && report.pdfIsStale !== true
+      );
+      if (alreadyPublished) return { idempotent: true, report };
+
+      const claimedAt = claimDate(report.publicationClaim?.claimedAt);
+      if (report.publicationClaim?.token && claimedAt && Date.now() - claimedAt.getTime() < PUBLISH_CLAIM_TTL_MS) {
+        throw requestError("This Monthly Report is already being published. Wait a moment and refresh before trying again.", 409);
+      }
+
+      const nextPublishedVersion = Number(report.publishedVersion || 0) + 1;
+      const versionId = `${reportId}_v${nextPublishedVersion}`;
+      const token = randomUUID();
+      fallbackPublicationStatus = report.activePublishedVersionId ? "revision_ready" : (report.publicationStatus || "internal");
+      transaction.set(reportRef, {
+        publicationStatus: "publishing",
+        publicationClaim: {
+          token,
+          sourceVersion,
+          publishedVersion: nextPublishedVersion,
+          versionId,
+          claimedAt: new Date(),
+          claimedByUid: actor.uid
+        },
+        updatedAt: new Date()
+      }, { merge: true });
+      return { idempotent: false, report, token, sourceVersion, nextPublishedVersion, versionId };
+    });
+
+    if (claim.idempotent) {
+      const report = claim.report;
+      return NextResponse.json({
+        success: true,
+        idempotent: true,
+        publishedVersion: Number(report.publishedVersion || 0),
+        versionId: report.activePublishedVersionId || null,
+        pdfStoragePath: report.pdfStoragePath || null,
+        pdfFileName: report.pdfFileName || null,
+        pdfSizeBytes: report.pdfSizeBytes || null,
+        emailStatus: "not_requested",
+        emailError: null
+      });
+    }
+
+    claimToken = claim.token;
+    const report = claim.report;
+    const nextPublishedVersion = claim.nextPublishedVersion;
+    const versionId = claim.versionId;
     const versionRef = adminDb.collection("reportVersions").doc(versionId);
     const snapshotData = publishedSnapshotData(report, nextPublishedVersion, versionId);
     const pdf = await createAndUploadReportPdf(snapshotData, { reportId, publishedVersion: nextPublishedVersion, versionId });
-    const versionData = { ...snapshotData, ...pdf, reportId, isActive: true, publishedByUid: actor.uid, publishedByName: actor.fullName || actor.email };
+    const versionData = {
+      ...snapshotData,
+      ...pdf,
+      reportId,
+      isActive: true,
+      publishedByUid: actor.uid,
+      publishedByName: actor.fullName || actor.email
+    };
+
+    // Confirm the publication claim is still ours before committing the final
+    // immutable version and investor-visible state.
+    const freshSnapshot = await reportRef.get();
+    if (!freshSnapshot.exists || freshSnapshot.data()?.publicationClaim?.token !== claimToken) {
+      throw requestError("The publication lock changed before the PDF could be committed. Refresh the report and try again.", 409);
+    }
 
     const batch = adminDb.batch();
     if (report.activePublishedVersionId) {
-      batch.set(adminDb.collection("reportVersions").doc(report.activePublishedVersionId), { isActive: false, supersededAt: new Date(), supersededByVersionId: versionId }, { merge: true });
+      batch.set(adminDb.collection("reportVersions").doc(report.activePublishedVersionId), {
+        isActive: false,
+        supersededAt: new Date(),
+        supersededByVersionId: versionId
+      }, { merge: true });
     }
     batch.set(versionRef, versionData);
     batch.set(reportRef, {
       investorVisible: true,
       publicationStatus: "published",
+      publicationClaim: FieldValue.delete(),
       activePublishedVersionId: versionId,
       publishedVersion: nextPublishedVersion,
-      publishedSourceVersion: Number(report.version || 1),
+      publishedSourceVersion: claim.sourceVersion,
       publishedAt: new Date(),
       publishedByUid: actor.uid,
       publishedByName: actor.fullName || actor.email,
@@ -80,6 +191,8 @@ export async function POST(request, { params }) {
       pdfIsStale: false,
       pdfInvalidatedAt: null,
       pdfInvalidationReason: null,
+      lastPublishFailureReason: null,
+      lastPublishFailedAt: null,
       updatedAt: new Date()
     }, { merge: true });
 
@@ -136,14 +249,17 @@ export async function POST(request, { params }) {
       createdAt: new Date()
     });
     await batch.commit();
+    claimToken = "";
 
-    // Report-origin actions remain internal while a report is a draft. Publishing
-    // exposes the linked action and its complete client-visible timeline together.
-    await publishLinkedActionVisibility({
-      investorId: report.investorId,
-      reportId,
-      publishedVersion: nextPublishedVersion
-    });
+    try {
+      await publishLinkedActionVisibility({
+        investorId: report.investorId,
+        reportId,
+        publishedVersion: nextPublishedVersion
+      });
+    } catch (actionError) {
+      console.error("Monthly report published but linked action visibility sync failed", actionError);
+    }
 
     let emailStatus = "not_requested";
     let emailError = null;
@@ -169,9 +285,23 @@ export async function POST(request, { params }) {
       await reportRef.set({ lastEmailStatus: "not_requested", lastEmailError: null, lastEmailAttemptAt: null }, { merge: true });
     }
 
-    return NextResponse.json({ success: true, publishedVersion: nextPublishedVersion, versionId, ...pdf, emailStatus, emailError });
+    return NextResponse.json({
+      success: true,
+      idempotent: false,
+      publishedVersion: nextPublishedVersion,
+      versionId,
+      ...pdf,
+      emailStatus,
+      emailError
+    });
   } catch (error) {
+    if (reportRef && claimToken) {
+      await releasePublishClaim(reportRef, claimToken, fallbackPublicationStatus, error?.message || "Publication failed");
+    }
     console.error("Report publication failed", error);
-    return NextResponse.json({ error: error.message || "Unable to publish monthly report." }, { status: appRequestErrorStatus(error, 500) });
+    return NextResponse.json(
+      { error: error.message || "Unable to publish monthly report." },
+      { status: appRequestErrorStatus(error, error?.statusCode || 500) }
+    );
   }
 }

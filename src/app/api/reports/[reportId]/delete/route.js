@@ -33,11 +33,7 @@ async function reportPermissionLevel(actor) {
   const rolePermissions = settings.exists
     ? settings.data()?.accessControl?.rolePermissions || DEFAULT_ROLE_PERMISSIONS
     : DEFAULT_ROLE_PERMISSIONS;
-  const effective = resolveEffectivePermissions(
-    actor.role,
-    rolePermissions,
-    actor.permissionOverrides || {}
-  );
+  const effective = resolveEffectivePermissions(actor.role, rolePermissions, actor.permissionOverrides || {});
   return effective.reports || ACCESS_LEVELS.NONE;
 }
 
@@ -92,7 +88,7 @@ async function nextLatestReport(investorId, deletedReportId) {
   if (!investorId) return null;
   const snapshot = await adminDb.collection("monthlyReports")
     .where("investorId", "==", investorId)
-    .limit(100)
+    .limit(250)
     .get();
   return snapshot.docs
     .filter((item) => item.id !== deletedReportId)
@@ -104,24 +100,61 @@ async function nextLatestReport(investorId, deletedReportId) {
     })[0] || null;
 }
 
-async function deleteReportFiles(report, versionDocs = []) {
+function storageManifest(report, versionDocs = []) {
   const investorPart = String(report.investorId || "investor").replace(/[^a-zA-Z0-9._-]+/g, "-");
   const reportPart = String(report.id || "report").replace(/[^a-zA-Z0-9._-]+/g, "-");
   const prefix = `monthly-reports/${investorPart}/${reportPart}/`;
-  await adminBucket.deleteFiles({ prefix });
-
-  // Old deployments may have stored an earlier PDF outside the current prefix.
-  const extraPaths = new Set([
+  const extraPaths = [...new Set([
     report.pdfStoragePath,
     ...versionDocs.map((item) => item.data()?.pdfStoragePath)
-  ].filter((item) => item && !String(item).startsWith(prefix)));
-  await Promise.all([...extraPaths].map(async (storagePath) => {
+  ].filter((item) => item && !String(item).startsWith(prefix)).map(String))];
+  return { prefix, extraPaths };
+}
+
+async function cleanupStorage(manifest = {}) {
+  if (manifest.prefix) await adminBucket.deleteFiles({ prefix: manifest.prefix });
+  await Promise.all((manifest.extraPaths || []).map(async (storagePath) => {
     try {
       await adminBucket.file(storagePath).delete({ ignoreNotFound: true });
     } catch (error) {
       if (Number(error?.code || 0) !== 404) throw error;
     }
   }));
+}
+
+async function retryPendingStorageCleanup(actor, reportId, jobSnapshot) {
+  const job = { id: jobSnapshot.id, ...jobSnapshot.data() };
+  await assertDeletePermission(actor, job);
+  if (job.status === "completed") {
+    return NextResponse.json({ success: true, reportId, alreadyDeleted: true, storageCleanup: "completed" });
+  }
+  if (job.status !== "storage_cleanup_pending") {
+    return NextResponse.json({ error: "Monthly report was not found." }, { status: 404 });
+  }
+  try {
+    await cleanupStorage(job.storageManifest || {});
+    await jobSnapshot.ref.set({
+      status: "completed",
+      storageCleanupStatus: "completed",
+      storageCleanupCompletedAt: new Date(),
+      completedAt: new Date(),
+      updatedAt: new Date()
+    }, { merge: true });
+    return NextResponse.json({ success: true, reportId, alreadyDeleted: true, storageCleanup: "completed" });
+  } catch (error) {
+    await jobSnapshot.ref.set({
+      lastStorageCleanupError: String(error?.message || error).slice(0, 1200),
+      lastStorageCleanupAttemptAt: new Date(),
+      updatedAt: new Date()
+    }, { merge: true });
+    return NextResponse.json({
+      success: true,
+      reportId,
+      alreadyDeleted: true,
+      storageCleanup: "pending",
+      message: "The report is deleted from GrowVest. Secure file cleanup is pending and can be retried safely."
+    });
+  }
 }
 
 export async function POST(request, { params }) {
@@ -131,30 +164,22 @@ export async function POST(request, { params }) {
     const payload = await request.json().catch(() => ({}));
     const reason = String(payload.reason || "").trim().slice(0, 1200);
     const confirmation = String(payload.confirmation || "").trim().toUpperCase();
-    if (reason.length < 5) {
-      return NextResponse.json({ error: "Enter a reason for deleting this report." }, { status: 422 });
-    }
-    if (confirmation !== "DELETE") {
-      return NextResponse.json({ error: "Type DELETE to confirm report deletion." }, { status: 422 });
-    }
+    if (reason.length < 5) return NextResponse.json({ error: "Enter a reason for deleting this report." }, { status: 422 });
+    if (confirmation !== "DELETE") return NextResponse.json({ error: "Type DELETE to confirm report deletion." }, { status: 422 });
 
     const reportRef = adminDb.collection("monthlyReports").doc(reportId);
-    const reportSnapshot = await reportRef.get();
+    const deletionJobRef = adminDb.collection("reportDeletionJobs").doc(reportId);
+    const [reportSnapshot, deletionJobSnapshot] = await Promise.all([reportRef.get(), deletionJobRef.get()]);
+
     if (!reportSnapshot.exists) {
+      if (deletionJobSnapshot.exists) return retryPendingStorageCleanup(actor, reportId, deletionJobSnapshot);
       return NextResponse.json({ error: "Monthly report was not found." }, { status: 404 });
     }
+
     const report = { id: reportSnapshot.id, ...reportSnapshot.data() };
     await assertDeletePermission(actor, report);
 
-    const [
-      versions,
-      acknowledgements,
-      downloads,
-      notifications,
-      deliveries,
-      actions,
-      replacementReport
-    ] = await Promise.all([
+    const [versions, acknowledgements, downloads, notifications, deliveries, actions, replacementReport] = await Promise.all([
       getByReportId("reportVersions", reportId),
       getByReportId("reportAcknowledgements", reportId),
       getByReportId("reportDownloads", reportId),
@@ -164,20 +189,38 @@ export async function POST(request, { params }) {
       nextLatestReport(report.investorId, reportId)
     ]);
 
-    await deleteReportFiles(report, versions.docs);
-
     const now = new Date();
+    const manifest = storageManifest(report, versions.docs);
+    await deletionJobRef.set({
+      reportId,
+      investorId: report.investorId || null,
+      investorName: report.investorName || "",
+      advisorUid: report.advisorUid || report.assignedAdvisorUid || null,
+      investorVisible: Boolean(report.investorVisible),
+      publicationStatus: report.publicationStatus || "",
+      activePublishedVersionId: report.activePublishedVersionId || null,
+      publishedVersion: Number(report.publishedVersion || 0),
+      reportCode: report.reportCode || "",
+      reportMonthKey: report.reportMonthKey || "",
+      status: "deleting",
+      storageCleanupStatus: "pending",
+      storageManifest: manifest,
+      reason,
+      requestedByUid: actor.uid,
+      requestedByName: actorName(actor),
+      startedAt: deletionJobSnapshot.exists ? (deletionJobSnapshot.data()?.startedAt || now) : now,
+      updatedAt: now
+    }, { merge: true });
+
     const operations = [];
     [...versions.docs, ...acknowledgements.docs, ...downloads.docs, ...notifications.docs]
       .forEach((item) => operations.push({ type: "delete", ref: item.ref }));
 
-    // Delivery history is retained as an operational audit, but is detached
-    // from the deleted live report and marked so it cannot be mistaken for a
-    // current delivery relationship.
     deliveries.docs.forEach((item) => operations.push({
       type: "set",
       ref: item.ref,
       data: {
+        status: ["scheduled", "queued"].includes(item.data()?.status) ? "cancelled_report_deleted" : item.data()?.status,
         reportDeletedAt: now,
         reportDeletedByUid: actor.uid,
         reportDeletedByName: actorName(actor),
@@ -186,8 +229,6 @@ export async function POST(request, { params }) {
       }
     }));
 
-    // Investor actions remain genuine workflow history. Deleting the report
-    // must not delete or reverse them, so remove only the live report links.
     actions.forEach((item) => operations.push({
       type: "set",
       ref: item.ref,
@@ -201,6 +242,8 @@ export async function POST(request, { params }) {
       }
     }));
 
+    // The live report is deleted last. If an earlier batch fails, retrying this
+    // endpoint safely continues cleanup while the report remains authoritative.
     operations.push({ type: "delete", ref: reportRef });
     await commitOperations(operations);
 
@@ -218,38 +261,67 @@ export async function POST(request, { params }) {
       }
     }
 
-    await adminDb.collection("activityLogs").add({
-      recordType: "monthly_report",
-      recordId: reportId,
-      reportId,
-      reportCode: report.reportCode || "",
-      reportMonthKey: report.reportMonthKey || "",
-      investorId: report.investorId || null,
-      investorName: report.investorName || "",
-      advisorUid: report.advisorUid || report.assignedAdvisorUid || actor.uid,
-      action: "monthly_report_deleted",
-      title: "Monthly report deleted",
-      description: `${report.title || report.reportMonthKey || "Monthly report"} was deleted by ${actorName(actor)}. Portfolio Master, Bucket Lists and Investor Actions were preserved.`,
-      metadata: {
-        reason,
-        wasPublished: isPublishedReport(report),
-        deletedVersionCount: versions.size,
-        deletedAcknowledgementCount: acknowledgements.size,
-        deletedDownloadCount: downloads.size,
-        removedNotificationCount: notifications.size,
-        preservedDeliveryCount: deliveries.size,
-        detachedActionCount: actions.length
-      },
-      createdByUid: actor.uid,
-      createdByName: actorName(actor),
-      createdAt: FieldValue.serverTimestamp()
-    });
+    // Audit persistence must never resurrect or invalidate an already deleted
+    // report, so it is best-effort after the controlled Firestore cleanup.
+    try {
+      await adminDb.collection("activityLogs").add({
+        recordType: "monthly_report",
+        recordId: reportId,
+        reportId,
+        reportCode: report.reportCode || "",
+        reportMonthKey: report.reportMonthKey || "",
+        investorId: report.investorId || null,
+        investorName: report.investorName || "",
+        advisorUid: report.advisorUid || report.assignedAdvisorUid || actor.uid,
+        action: "monthly_report_deleted",
+        title: "Monthly report deleted",
+        description: `${report.title || report.reportMonthKey || "Monthly report"} was deleted by ${actorName(actor)}. Portfolio Master, Bucket Lists and Investor Actions were preserved.`,
+        metadata: {
+          reason,
+          wasPublished: isPublishedReport(report),
+          deletedVersionCount: versions.size,
+          deletedAcknowledgementCount: acknowledgements.size,
+          deletedDownloadCount: downloads.size,
+          removedNotificationCount: notifications.size,
+          preservedDeliveryCount: deliveries.size,
+          detachedActionCount: actions.length
+        },
+        createdByUid: actor.uid,
+        createdByName: actorName(actor),
+        createdAt: FieldValue.serverTimestamp()
+      });
+    } catch (auditError) {
+      console.error("Monthly report deletion audit log failed", auditError);
+    }
+
+    let storageCleanup = "completed";
+    let storageCleanupError = "";
+    try {
+      await cleanupStorage(manifest);
+    } catch (error) {
+      storageCleanup = "pending";
+      storageCleanupError = String(error?.message || error).slice(0, 1200);
+    }
+
+    await deletionJobRef.set({
+      status: storageCleanup === "completed" ? "completed" : "storage_cleanup_pending",
+      storageCleanupStatus: storageCleanup,
+      lastStorageCleanupError: storageCleanupError || null,
+      firestoreCleanupCompletedAt: now,
+      storageCleanupCompletedAt: storageCleanup === "completed" ? new Date() : null,
+      completedAt: storageCleanup === "completed" ? new Date() : null,
+      updatedAt: new Date()
+    }, { merge: true });
 
     return NextResponse.json({
       success: true,
       reportId,
       reportMonthKey: report.reportMonthKey || "",
       investorId: report.investorId || null,
+      storageCleanup,
+      message: storageCleanup === "pending"
+        ? "The report is deleted from GrowVest. Secure file cleanup is pending and can be retried safely."
+        : "Monthly Report deleted successfully.",
       deleted: {
         report: 1,
         versions: versions.size,

@@ -10,6 +10,7 @@ import {
 import { auth, db } from "@/lib/firebase/client";
 import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
 import { isActionOpen } from "@/lib/constants/actions";
+import { businessDateKey } from "@/lib/utils/date";
 
 function rows(snapshot) {
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
@@ -169,7 +170,7 @@ export async function getInvestorProfileActionsForReportOnce(investorId, current
     if (["Rejected", "Cancelled"].includes(String(item.status || ""))) return false;
     const requestedDate = String(item.requestedEffectiveDate || item.dueDate || "");
     const actualDate = String(item.actualFinancialDate || item.completionDate || "");
-    const createdDate = item.requestedAt?.toDate?.() ? item.requestedAt.toDate().toISOString().slice(0, 10) : "";
+    const createdDate = item.requestedAt?.toDate?.() ? businessDateKey(item.requestedAt.toDate()) : "";
     const relevantDate = actualDate || requestedDate || createdDate;
     if (relevantDate && relevantDate > endDate && String(item.status || "") === "Completed") return false;
     if (actualDate && actualDate >= startDate && actualDate <= endDate) return true;
@@ -177,6 +178,18 @@ export async function getInvestorProfileActionsForReportOnce(investorId, current
     if (createdDate && createdDate <= endDate && item.status !== "Completed") return true;
     return item.status === "Completed" && !actualDate && createdDate >= startDate && createdDate <= endDate;
   }).slice(0, limitCount);
+}
+
+
+export async function getInvestorActions(investorId = "") {
+  const queryString = investorId ? `?investorId=${encodeURIComponent(investorId)}` : "";
+  const payload = await authenticatedFetch(`/api/actions${queryString}`, { method: "GET", cache: "no-store" });
+  return payload.actions || [];
+}
+
+export async function getActionDetail(actionId) {
+  if (!actionId) throw new Error("Action is required.");
+  return authenticatedFetch(`/api/actions/${encodeURIComponent(actionId)}`, { method: "GET", cache: "no-store" });
 }
 
 export async function completeWithdrawalAction(actionId, payload = {}) {

@@ -1,35 +1,39 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
+import { useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { db } from "@/lib/firebase/client";
 import InvestorPageHeader from "@/components/investor/InvestorPageHeader";
 import InvestorPortfolioPanel from "@/components/portfolio/InvestorPortfolioPanel";
-import InvestorProtectionSnapshotCard from "@/components/insurance/InvestorProtectionSnapshotCard";
 
 export default function InvestorPortfolioPage() {
-  const { profile } = useAuth();
-  const [investor, setInvestor] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const { profile, loading } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const legacyProtectionView = searchParams.get("view") === "protection";
+  const investor = profile?.investorId ? {
+    id: profile.investorId,
+    fullName: profile.fullName || profile.name || "Investor",
+    name: profile.name || profile.fullName || "Investor"
+  } : null;
 
   useEffect(() => {
-    let active = true;
-    async function load() {
-      if (!profile?.investorId) { setLoading(false); return; }
-      setLoading(true); setError("");
-      try {
-        const snapshot = await getDoc(doc(db, "investors", profile.investorId));
-        if (active) setInvestor(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null);
-      } catch (nextError) {
-        console.error(nextError);
-        if (active) setError("Your portfolio could not be loaded.");
-      } finally { if (active) setLoading(false); }
-    }
-    load();
-    return () => { active = false; };
-  }, [profile?.investorId]);
+    if (legacyProtectionView) router.replace("/investor/insurance");
+  }, [legacyProtectionView, router]);
 
-  return <div className="grid gap-5 sm:gap-6"><InvestorPageHeader eyebrow="Your Wealth" title="Portfolio" description="Your latest GrowVest investment portfolio and protection snapshot. Insurance cover is shown separately and never added to your investment corpus or Bucket List values." />{error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}{loading ? <div className="grid gap-4"><div className="gv-skeleton h-32 rounded-2xl" /><div className="gv-skeleton h-80 rounded-2xl" /></div> : investor ? <><InvestorProtectionSnapshotCard investorId={investor.id} portal title="Your protection snapshot" /><InvestorPortfolioPanel investor={investor} portal /></> : <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">Investor profile not found.</div>}</div>;
+  if (legacyProtectionView) {
+    return <div className="grid gap-4"><div className="gv-skeleton h-32 rounded-2xl" /><div className="gv-skeleton h-80 rounded-2xl" /></div>;
+  }
+
+  return <div className="grid gap-5 sm:gap-6">
+    <InvestorPageHeader
+      eyebrow="Your Wealth"
+      title="Portfolio"
+      description="Your verified investments, performance, allocation and holdings. Protection is managed separately in the Protection centre."
+    />
+
+    {loading ? <div className="grid gap-4"><div className="gv-skeleton h-32 rounded-2xl" /><div className="gv-skeleton h-80 rounded-2xl" /></div> : investor
+      ? <InvestorPortfolioPanel investor={investor} portal />
+      : <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">Investor profile not found.</div>}
+  </div>;
 }

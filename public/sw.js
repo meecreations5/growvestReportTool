@@ -1,5 +1,5 @@
-const CACHE_NAME = "growvest-investor-v0.30.3";
-const PAGE_CACHE = "growvest-pages-v0.30.3";
+const CACHE_NAME = "growvest-investor-v0.34.5-home-exact4";
+const PAGE_CACHE = "growvest-pages-v0.34.5-home-exact4";
 const OFFLINE_PREF_CACHE = "growvest-offline-preference-v1";
 const OFFLINE_PREF_URL = "/__growvest_offline_access__";
 const APP_SHELL = [
@@ -8,7 +8,14 @@ const APP_SHELL = [
   "/staff-login",
   "/icons/growvest-pwa-192.png",
   "/icons/growvest-pwa-512.png",
-  "/icons/growvest-pwa-maskable-512.png"
+  "/icons/growvest-pwa-maskable-512.png",
+  "/icons/growvest-loading-mark.svg",
+  "/brand/growvest-icon.svg",
+  "/brand/growvest-icon-outline.svg",
+  "/brand/growvest-logo-dark.svg",
+  "/brand/growvest-logo-white.svg",
+  "/brand/growvest-wordmark-dark.svg",
+  "/brand/growvest-wordmark-white.svg"
 ];
 
 const OFFLINE_SHELL_ROUTES = new Set([
@@ -20,11 +27,17 @@ const OFFLINE_SHELL_ROUTES = new Set([
   "/meetings",
   "/mom",
   "/investor/dashboard",
-  "/investor/reports",
+  "/investor/portfolio",
   "/investor/goals",
+  "/investor/reports",
+  "/investor/insurance",
+  "/investor/documents",
   "/investor/meetings",
+  "/investor/sip-reminders",
+  "/investor/actions",
   "/investor/notifications",
-  "/investor/profile"
+  "/investor/profile",
+  "/investor/change-password"
 ]);
 
 self.addEventListener("install", (event) => {

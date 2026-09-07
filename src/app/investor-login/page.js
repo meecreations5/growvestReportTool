@@ -25,6 +25,7 @@ import {
 import { sanitizeNextPath } from "@/lib/auth/session";
 import { inputClassName } from "@/components/ui/Field";
 import BrandLogo from "@/components/branding/BrandLogo";
+import InvestorBrandMark from "@/components/investor/mobile/InvestorBrandMark";
 import { useBranding } from "@/contexts/BrandingContext";
 
 const TABS = {
@@ -97,7 +98,10 @@ function OtpInputs({ value, onChange, disabled }) {
 function Feedback({ error, message, onUseMobile, onUsePassword }) {
   if (!error && !message) return null;
   const isGoogleSetup = Boolean(error && /google/i.test(error) && /(not linked|setup|required|connect)/i.test(error));
-  const isPhoneConfiguration = Boolean(error && /(SMS region policy|Authorized domains|Phone OTP request)/i.test(error));
+  const isPhoneConfiguration = Boolean(error && /(SMS region policy|Authorized domains|Phone OTP request|phone-auth|recaptcha)/i.test(error));
+  const safeError = isPhoneConfiguration
+    ? "We couldn’t send the OTP right now. Please try again in a moment or use your password to sign in. If this continues, contact GrowVest."
+    : error;
   if (message) {
     return (
       <div role="status" className="mt-5 flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-sm text-emerald-800">
@@ -109,13 +113,10 @@ function Feedback({ error, message, onUseMobile, onUsePassword }) {
   return (
     <div role="alert" className={`mt-5 rounded-2xl border px-4 py-3.5 text-sm ${isGoogleSetup ? "border-amber-200 bg-amber-50 text-amber-900" : "border-red-200 bg-red-50 text-red-700"}`}>
       {isGoogleSetup ? <p className="font-bold">Google account setup required</p> : null}
-      <p className={isGoogleSetup ? "mt-1 leading-6" : "leading-6"}>{error}</p>
+      <p className={isGoogleSetup ? "mt-1 leading-6" : "leading-6"}>{safeError}</p>
       {isPhoneConfiguration ? (
-        <div className="mt-3 rounded-xl border border-red-200 bg-white/70 p-3 text-xs leading-5 text-red-800">
-          <p className="font-bold">Firebase console checklist</p>
-          <p className="mt-1">Authentication → Settings → SMS region policy: allow India.</p>
-          <p>Authentication → Settings → Authorized domains: add insights.growvest.info.</p>
-          <p>Project settings → Web app: redeploy the matching production Firebase config.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" onClick={onUsePassword} className="rounded-lg bg-white px-3 py-2 text-xs font-semibold ring-1 ring-inset ring-red-200">Use Password</button>
         </div>
       ) : null}
       {isGoogleSetup ? (
@@ -260,11 +261,10 @@ export default function InvestorLoginPage() {
           <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full border border-white/10" />
           <div className="absolute -right-4 top-10 h-48 w-48 rounded-full border border-cyan-300/20" />
           <div className="relative flex items-center justify-between gap-3">
-            <BrandLogo
-              variant="wide"
+            <InvestorBrandMark
+              variant="logo"
               inverse
-              className="max-w-[150px] sm:max-w-[175px]"
-              imageClassName="max-h-10 drop-shadow-[0_2px_10px_rgba(0,0,0,.22)]"
+              className="h-auto w-[152px] sm:w-[176px] drop-shadow-[0_2px_10px_rgba(0,0,0,.22)]"
             />
             <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-cyan-100">Investor App</span>
           </div>

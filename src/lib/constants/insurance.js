@@ -1,3 +1,5 @@
+import { businessDateKey } from "@/lib/utils/date";
+
 export const INSURANCE_TYPES = [
   "Term Life",
   "Whole Life",
@@ -81,8 +83,8 @@ function parseDateOnly(value) {
 function referenceDateOnly(referenceDate = new Date()) {
   if (typeof referenceDate === "string") return parseDateOnly(referenceDate);
   const date = referenceDate instanceof Date ? referenceDate : new Date(referenceDate);
-  if (Number.isNaN(date.getTime())) return parseDateOnly(new Date().toISOString().slice(0, 10));
-  return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  if (Number.isNaN(date.getTime())) return parseDateOnly(businessDateKey());
+  return parseDateOnly(businessDateKey(date));
 }
 
 export function insuranceDaysUntil(value, referenceDate = new Date()) {
@@ -118,10 +120,16 @@ export function nearestInsuranceDue(policy = {}, referenceDate = new Date()) {
     .map((item) => ({ ...item, daysUntil: insuranceDaysUntil(item.date, referenceDate) }))
     .filter((item) => item.daysUntil !== null)
     .sort((a, b) => {
-      const aFuture = a.daysUntil >= 0;
-      const bFuture = b.daysUntil >= 0;
-      if (aFuture !== bFuture) return aFuture ? -1 : 1;
-      return aFuture ? a.daysUntil - b.daysUntil : b.daysUntil - a.daysUntil;
+      const aOverdue = a.daysUntil < 0;
+      const bOverdue = b.daysUntil < 0;
+      if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
+      if (aOverdue) {
+        const priority = { premium: 0, renewal: 1, own_damage: 2, third_party: 3 };
+        const kindCompare = Number(priority[a.kind] ?? 9) - Number(priority[b.kind] ?? 9);
+        if (kindCompare) return kindCompare;
+        return b.daysUntil - a.daysUntil;
+      }
+      return a.daysUntil - b.daysUntil;
     });
   return rows[0] || null;
 }
@@ -185,7 +193,7 @@ export function insuranceCoverageSummary(policies = [], referenceDate = new Date
       const days = insuranceDaysUntil(item.nextPremiumDueDate, referenceDate);
       return days !== null && days >= 0 && days <= 30;
     }).length,
-    nextDue: upcoming[0] || overdue[0] || null,
+    nextDue: overdue[0] || upcoming[0] || null,
     upcomingDueItems: upcoming.slice(0, 12),
     overdueDueItems: overdue.slice(0, 12)
   };

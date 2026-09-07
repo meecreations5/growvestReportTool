@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarClock, CheckCircle2, CircleDollarSign, Plus, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { subscribeInvestorPortfolio } from "@/services/portfolioService";
-import { createInvestorAction, subscribeInvestorActions } from "@/services/actionService";
+import { getInvestorPortfolioView, subscribeInvestorPortfolio } from "@/services/portfolioService";
+import { createInvestorAction, getInvestorActions, subscribeInvestorActions } from "@/services/actionService";
 import { GENERAL_WEALTH_BUCKET_ID, GENERAL_WEALTH_BUCKET_NAME, isGeneralWealthAllocation, normalisePortfolioGoalAllocations } from "@/lib/portfolioGoalAllocation";
 import { STRUCTURED_WITHDRAWAL_REQUEST_TYPE, isStructuredWithdrawalAction } from "@/lib/constants/actions";
 import { formatCurrency } from "@/lib/utils/format";
@@ -53,11 +53,25 @@ export default function WithdrawalCashNeedsPanel({ investor, staff = false, embe
 
   useEffect(() => {
     if (!investor?.id || !profile) return undefined;
+    if (profile.role === "investor") {
+      let cancelled = false;
+      getInvestorPortfolioView()
+        .then((payload) => { if (!cancelled) setPositions(payload.positions || []); })
+        .catch((nextError) => { if (!cancelled) setError(nextError.message || "Unable to load portfolio."); });
+      return () => { cancelled = true; };
+    }
     return subscribeInvestorPortfolio(investor.id, profile, setPositions, (nextError) => setError(nextError.message || "Unable to load portfolio."));
   }, [investor?.id, profile]);
 
   useEffect(() => {
     if (!investor?.id || !profile) return undefined;
+    if (profile.role === "investor") {
+      let cancelled = false;
+      getInvestorActions()
+        .then((rows) => { if (!cancelled) setActions((rows || []).filter(isStructuredWithdrawalAction)); })
+        .catch((nextError) => { if (!cancelled) setError(nextError.message || "Unable to load withdrawals."); });
+      return () => { cancelled = true; };
+    }
     return subscribeInvestorActions(investor.id, profile, (rows) => setActions(rows.filter(isStructuredWithdrawalAction)), (nextError) => setError(nextError.message || "Unable to load withdrawals."));
   }, [investor?.id, profile]);
 
@@ -103,6 +117,10 @@ export default function WithdrawalCashNeedsPanel({ investor, staff = false, embe
         requestedChangeDetails: "Fund-level withdrawal instructions are maintained in Investor Profile. Monthly Reports fetch this action automatically."
       });
       setNotice("Withdrawal request saved in the Investor Profile and will flow automatically into monthly reporting.");
+      if (profile?.role === "investor") {
+        const refreshed = await getInvestorActions();
+        setActions((refreshed || []).filter(isStructuredWithdrawalAction));
+      }
       setOpen(false); setPurpose(""); setPlannedDate(todayKey());
     } catch (nextError) {
       setError(nextError.message || "Unable to save the withdrawal request.");

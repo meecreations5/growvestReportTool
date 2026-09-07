@@ -12,6 +12,7 @@ import {
   writeBatch
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
 import { USER_ROLES } from "@/lib/constants/roles";
 import {
   ASSET_CLASS_COLORS,
@@ -47,6 +48,20 @@ function isIndexUnavailable(error) {
 
 function rowsFromSnapshot(snapshot) {
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+}
+
+
+async function migrateMonthlyReportPeriod(sourceReportId, targetReportId) {
+  if (!sourceReportId || !targetReportId || sourceReportId === targetReportId) return targetReportId || sourceReportId;
+  const headers = await authenticatedApiHeaders({ "Content-Type": "application/json" });
+  const response = await fetch(`/api/reports/${encodeURIComponent(sourceReportId)}/migrate-period`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ targetReportId })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || "Unable to move the Monthly Report to the selected reporting month.");
+  return payload.reportId || targetReportId;
 }
 
 function isPrivileged(currentUser) {
@@ -667,6 +682,12 @@ export async function saveMonthlyReport(payload, currentUser, { reportId = null,
     throw new Error(`A report already exists for ${normalised.investorName} for ${getMonthLabel(normalised.reportMonth)} ${normalised.reportYear}.`);
   }
 
+  const expectedVersion = Number(payload.version || 0);
+  const existingVersion = Number(existingSnapshot.data()?.version || 0);
+  if (reportId && existingSnapshot.exists() && expectedVersion > 0 && existingVersion > expectedVersion) {
+    throw new Error("This Monthly Report was updated in another session. Refresh the report before saving so newer changes are not overwritten.");
+  }
+
   if (reportId && canonicalPeriodId !== reportId) {
     const targetPeriodSnapshot = await getDoc(doc(db, "monthlyReports", canonicalPeriodId));
     if (targetPeriodSnapshot.exists()) {
@@ -677,14 +698,15 @@ export async function saveMonthlyReport(payload, currentUser, { reportId = null,
   const batch = writeBatch(db);
   const activityRef = doc(collection(db, "activityLogs"));
   const existing = existingSnapshot.data() || {};
-  const hasPublishedSnapshot = Boolean(existing.investorVisible && existing.activePublishedVersionId);
-  const reportingPeriodChanged = existingSnapshot.exists()
-    && Boolean(existing.reportMonthKey)
-    && existing.reportMonthKey !== normalised.reportMonthKey;
+  const hasPublishedSnapshot = Boolean(existing.activePublishedVersionId || Number(existing.publishedVersion || 0) > 0 || existing.publicationStatus === "published");
+  if (reportId && canonicalPeriodId !== reportId && hasPublishedSnapshot) {
+    throw new Error("A published Monthly Report cannot be moved to another reporting month. Create a new report or use the controlled revision workflow.");
+  }
   const generatedReportCode = `GV-RPT-${normalised.reportYear}-${String(normalised.reportMonth).padStart(2, "0")}-${normalised.clientCode || documentId.slice(-8)}`;
-  const reportCode = reportingPeriodChanged && !hasPublishedSnapshot
-    ? generatedReportCode
-    : (existing.reportCode || generatedReportCode);
+  // Preserve the immutable browser-side reportCode while editing an existing
+  // draft. If the reporting month changed, the authenticated server migration
+  // recalculates the canonical code when it moves the document ID.
+  const reportCode = existing.reportCode || generatedReportCode;
   const version = autosave && existingSnapshot.exists()
     ? Math.max(1, Number(existing.version || 1))
     : Number(existing.version || 0) + 1;
@@ -764,14 +786,20 @@ export async function saveMonthlyReport(payload, currentUser, { reportId = null,
   });
 
   await batch.commit();
+
+  let finalDocumentId = documentId;
+  if (reportId && canonicalPeriodId !== reportId && !hasPublishedSnapshot) {
+    finalDocumentId = await migrateMonthlyReportPeriod(reportId, canonicalPeriodId);
+  }
+
   if (!autosave) {
     try {
-      await syncMonthlyReportActions(documentId);
+      await syncMonthlyReportActions(finalDocumentId);
     } catch (syncError) {
       console.warn("Monthly report saved but action workflow sync could not complete", syncError);
     }
   }
-  return { id: documentId, ...reportWrite };
+  return { id: finalDocumentId, ...reportWrite };
 }
 
 export async function setReportInvestorVisibility(reportId, investorVisible, currentUser) {

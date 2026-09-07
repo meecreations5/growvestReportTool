@@ -3,6 +3,7 @@ import {
   createReportTemplateSnapshot,
   getSystemReportTemplate
 } from "@/lib/constants/reportTemplates";
+import { businessDateKey, businessDateParts } from "@/lib/utils/date";
 import {
   GENERAL_WEALTH_BUCKET_ID,
   GENERAL_WEALTH_BUCKET_NAME,
@@ -87,22 +88,19 @@ export function getReportMonthKey(year, month) {
 }
 
 export function getDefaultReportPeriod(referenceDate = new Date()) {
-  const reference = referenceDate instanceof Date ? new Date(referenceDate) : new Date(referenceDate);
-  const year = reference.getFullYear();
-  const monthIndex = reference.getMonth();
-  const previous = new Date(year, monthIndex - 1, 1);
-  return { month: previous.getMonth() + 1, year: previous.getFullYear() };
+  const reference = businessDateParts(referenceDate);
+  const previous = new Date(Date.UTC(reference.year, reference.month - 2, 1));
+  return { month: previous.getUTCMonth() + 1, year: previous.getUTCFullYear() };
 }
 
 export function getReportPeriodEndDate(year, month) {
-  const end = new Date(Number(year), Number(month), 0);
-  return `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`;
+  const end = new Date(Date.UTC(Number(year), Number(month), 0));
+  return `${end.getUTCFullYear()}-${String(end.getUTCMonth() + 1).padStart(2, "0")}-${String(end.getUTCDate()).padStart(2, "0")}`;
 }
 
 export function getReportPeriodCutoffDate(year, month, referenceDate = new Date()) {
   const periodEnd = getReportPeriodEndDate(year, month);
-  const reference = referenceDate instanceof Date ? referenceDate : new Date(referenceDate);
-  const today = `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}-${String(reference.getDate()).padStart(2, "0")}`;
+  const today = businessDateKey(referenceDate);
   return periodEnd > today ? today : periodEnd;
 }
 
@@ -158,6 +156,8 @@ export function buildPortfolioReportVerification(portfolioSource, asOfDate) {
 
   const checks = [];
   const snapshotAgeDays = dateAgeDays(referenceDate, snapshot.snapshotDate);
+  const snapshotCapturedDate = snapshot.capturedSnapshotDate || snapshot.snapshotDate || "";
+  const postCutoffCapture = Boolean(snapshot.capturedSnapshotDate && snapshot.capturedSnapshotDate !== snapshot.snapshotDate);
   let snapshotStatus = "pass";
   if (snapshotAgeDays === null) snapshotStatus = "warn";
   else if (snapshotAgeDays > PORTFOLIO_REPORT_BLOCK_DAYS) snapshotStatus = "block";
@@ -166,9 +166,11 @@ export function buildPortfolioReportVerification(portfolioSource, asOfDate) {
     "verified_snapshot",
     "Verified portfolio snapshot",
     snapshotStatus,
-    snapshotAgeDays === null
-      ? `Snapshot ${snapshot.snapshotDate || "date unavailable"} is verified; freshness could not be calculated.`
-      : `Verified snapshot dated ${snapshot.snapshotDate}${snapshotAgeDays ? ` (${snapshotAgeDays} day${snapshotAgeDays === 1 ? "" : "s"} before report date)` : " (report-date snapshot)"}.`
+    postCutoffCapture
+      ? `Verified source values effective ${snapshot.snapshotDate || referenceDate} were captured on ${snapshotCapturedDate} within the month-end reporting grace window.`
+      : snapshotAgeDays === null
+        ? `Snapshot ${snapshot.snapshotDate || "date unavailable"} is verified; freshness could not be calculated.`
+        : `Verified snapshot dated ${snapshot.snapshotDate}${snapshotAgeDays ? ` (${snapshotAgeDays} day${snapshotAgeDays === 1 ? "" : "s"} before report date)` : " (report-date snapshot)"}.`
   ));
 
   const sourceFreshness = (snapshot.sourceFreshness || []).map((item) => {
@@ -272,6 +274,7 @@ export function buildPortfolioReportVerification(portfolioSource, asOfDate) {
     asOfDate: referenceDate,
     snapshotId: snapshot.id || "",
     snapshotDate: snapshot.snapshotDate || "",
+    snapshotCapturedDate,
     snapshotAgeDays,
     openingSnapshotId: openingSnapshot?.id || "",
     openingSnapshotDate: openingSnapshot?.snapshotDate || "",
@@ -359,7 +362,10 @@ export function createEmptyHighlight(index = 0) {
   };
 }
 
-export function createReportFromInvestor(investor, month = new Date().getMonth() + 1, year = new Date().getFullYear()) {
+export function createReportFromInvestor(investor, month = null, year = null) {
+  const today = businessDateParts();
+  month = Number(month || today.month);
+  year = Number(year || today.year);
   const goals = (investor?.bucketList?.length ? investor.bucketList : investor?.goals || []).map((goal, index) => ({
     goalId: goal.id || `goal-${index + 1}`,
     name: goal.name || "",
@@ -650,7 +656,10 @@ function buildMonthlyPortfolioChanges({ positions = [], openingPositions = [], t
   return changes.slice(0, 24);
 }
 
-export function createReportFromPortfolioSource(investor, portfolioSource, month = new Date().getMonth() + 1, year = new Date().getFullYear()) {
+export function createReportFromPortfolioSource(investor, portfolioSource, month = null, year = null) {
+  const today = businessDateParts();
+  month = Number(month || today.month);
+  year = Number(year || today.year);
   const base = createReportFromInvestor(investor, month, year);
   const snapshot = portfolioSource?.snapshot || null;
   const positions = Array.isArray(portfolioSource?.positions) ? portfolioSource.positions : [];

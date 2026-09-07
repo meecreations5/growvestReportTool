@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Printer } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { subscribeInvestorReports, subscribeMonthlyReport, subscribePublishedInvestorReports, subscribeReportVersion } from "@/services/reportService";
+import { subscribeInvestorReports, subscribeMonthlyReport } from "@/services/reportService";
+import { getInvestorReportDetail } from "@/services/investorAppService";
 import MonthlyReportPrintDocument from "@/components/reports/MonthlyReportPrintDocument";
 
 export default function ReportPrintClient({ reportId }) {
@@ -21,13 +22,34 @@ export default function ReportPrintClient({ reportId }) {
   useEffect(() => {
     if (authLoading) return undefined;
     if (!firebaseUser?.uid) {
-      router.replace("/staff-login");
+      router.replace(profile?.role === "investor" ? "/investor-login" : "/staff-login");
       return undefined;
     }
+
+    if (profile?.role === "investor") {
+      let active = true;
+      setLoading(true);
+      setError("");
+      getInvestorReportDetail(reportId)
+        .then((payload) => {
+          if (!active) return;
+          setReportMeta(payload.reportMeta || null);
+          setPublishedVersion(payload.publishedVersion ? { ...payload.publishedVersion, id: reportId } : null);
+          setHistory(payload.history || []);
+        })
+        .catch((nextError) => {
+          if (!active) return;
+          console.error(nextError);
+          setError(nextError?.message || "You do not have access to this report.");
+        })
+        .finally(() => { if (active) setLoading(false); });
+      return () => { active = false; };
+    }
+
     return subscribeMonthlyReport(reportId, (item) => {
       setReportMeta(item);
       if (!item) setError("Monthly report was not found.");
-      if (profile?.role !== "investor") setLoading(false);
+      setLoading(false);
     }, (nextError) => {
       console.error(nextError);
       setError("You do not have access to this report.");
@@ -35,24 +57,11 @@ export default function ReportPrintClient({ reportId }) {
     });
   }, [authLoading, firebaseUser?.uid, profile?.role, reportId, router]);
 
-  useEffect(() => {
-    if (profile?.role !== "investor" || !reportMeta?.activePublishedVersionId) return undefined;
-    return subscribeReportVersion(reportMeta.activePublishedVersionId, (item) => {
-      setPublishedVersion(item ? { ...item, id: reportId, versionId: item.id } : null);
-      setLoading(false);
-    }, (nextError) => {
-      console.error(nextError);
-      setError("The published report version could not be loaded.");
-      setLoading(false);
-    });
-  }, [profile?.role, reportId, reportMeta?.activePublishedVersionId]);
-
   const report = profile?.role === "investor" ? publishedVersion : reportMeta;
 
   useEffect(() => {
-    if (!report?.investorId) return undefined;
-    const subscribe = profile?.role === "investor" ? subscribePublishedInvestorReports : subscribeInvestorReports;
-    return subscribe(report.investorId, setHistory, () => {});
+    if (profile?.role === "investor" || !report?.investorId) return undefined;
+    return subscribeInvestorReports(report.investorId, setHistory, () => {});
   }, [profile?.role, report?.investorId]);
 
   useEffect(() => {

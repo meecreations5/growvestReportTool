@@ -4,17 +4,20 @@ import { useMemo, useState } from "react";
 import {
   BellRing,
   CalendarClock,
+  ChartNoAxesCombined,
   CheckCheck,
   ChevronRight,
   FileBarChart2,
   FileText,
+  CircleDollarSign,
   Info,
   Megaphone,
   Send,
   Settings2,
   ShieldCheck,
   Smartphone,
-  Sparkles
+  Sparkles,
+  Target
 } from "lucide-react";
 import InvestorPageHeader from "@/components/investor/InvestorPageHeader";
 import { useInvestorNotifications } from "@/contexts/InvestorNotificationContext";
@@ -25,16 +28,45 @@ const FILTERS = [
   { value: "unread", label: "Unread" }
 ];
 
+const MOBILE_FILTERS = [
+  { value: "action", label: "Action Required" },
+  { value: "updates", label: "Updates" }
+];
+
+function isActionRequired(item) {
+  const type = String(item?.eventType || "").toLowerCase();
+  const text = `${item?.title || ""} ${item?.message || ""}`.toLowerCase();
+  return /insurance.*(due|overdue|expiry|renew)|document.*(request|reject|expire)|investor_action|sip.*(due|fund)|goal.*(attention|below)|bucket_list_request_needs_information|action_required/.test(type)
+    || /overdue|renewal due|expires? in|needs attention|action required|below target|pending document|upload required/.test(text);
+}
+
+function notificationTone(item) {
+  const type = String(item?.eventType || "").toLowerCase();
+  const text = `${item?.title || ""} ${item?.message || ""}`.toLowerCase();
+  if (/overdue|expired|failed|lapsed/.test(text)) return "bg-[#FFF0EF] text-[#E53935]";
+  if (type.includes("sip") || type.includes("bucket") || type.includes("insurance") || type.includes("document")) {
+    if (isActionRequired(item)) return "bg-[#FFF8DF] text-[#8A5B00]";
+  }
+  if (type.includes("portfolio") || type.includes("report") || type.includes("meeting") || type.includes("mom") || type.includes("bucket")) return "bg-[#EAF0FF] text-[#1F4ED8]";
+  return "bg-slate-50 text-slate-600";
+}
+
 const PUSH_CATEGORIES = [
-  { key: "reports", label: "Reports", description: "New monthly reports and published revisions." },
+  { key: "portfolio", label: "Portfolio updates", description: "A verified daily portfolio refresh is ready to view." },
+  { key: "sip", label: "SIP reminders", description: "Upcoming SIP debit and funding reminders." },
+  { key: "bucketList", label: "Bucket List", description: "Goal requests, GrowVest review and confirmation updates." },
+  { key: "reports", label: "Monthly Review", description: "New monthly reviews and published revisions." },
   { key: "meetings", label: "Meetings & MOM", description: "Review schedules, reminders and meeting summaries." },
   { key: "documents", label: "Documents", description: "New documents and document-status updates." },
-  { key: "insurance", label: "Insurance & renewals", description: "Premium, renewal and policy expiry reminders." },
-  { key: "general", label: "General updates", description: "Important GrowVest service announcements." }
+  { key: "insurance", label: "Protection & renewals", description: "Premium, renewal and policy expiry reminders." },
+  { key: "general", label: "GrowVest updates", description: "Important GrowVest service announcements." }
 ];
 
 function iconFor(item) {
   const type = String(item?.eventType || "").toLowerCase();
+  if (type.includes("portfolio")) return ChartNoAxesCombined;
+  if (type.includes("sip")) return CircleDollarSign;
+  if (type.includes("bucket") || type.includes("goal_request")) return Target;
   if (type.includes("report")) return FileBarChart2;
   if (type.includes("meeting") || type.includes("mom")) return CalendarClock;
   if (type.includes("document")) return FileText;
@@ -68,16 +100,73 @@ function pushDescription(notifications) {
   if (!notifications.pushSupported) return "This browser does not support web push notifications.";
   if (!notifications.pushConfigured) return "Web Push is not configured for this deployment yet.";
   if (notifications.pushPermission === "denied") return "Notifications are blocked. Enable them from the browser or phone site settings.";
-  if (notifications.pushEnabled) return "Receive report, meeting, insurance and document alerts even when the GrowVest app is closed.";
+  if (notifications.pushEnabled) return "Receive portfolio, SIP, Bucket List, review and service alerts even when the GrowVest app is closed.";
   return "Enable alerts on this phone or computer for important Investor Portal updates.";
+}
+
+
+function MobileNotificationsApp({ notifications, mobileFilter, setMobileFilter, visibleItems, togglePush, pushDisabled, settingsOpen, setSettingsOpen }) {
+  return (
+    <div className="gv-mobile-app-stack md:hidden">
+      <section className="px-0.5 pt-1">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="gv-mobile-section-title text-[var(--gv-blue)]">Notifications</p>
+            <h1 className="mt-1 font-heading text-[1.45rem] font-bold text-slate-950">Stay informed and take action</h1>
+            <p className="mt-1 text-[11px] leading-4 text-slate-500">Only the updates that matter to your wealth journey.</p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            {notifications.unreadCount ? <button type="button" onClick={notifications.markAllRead} className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 bg-white text-slate-500" aria-label="Mark all notifications read"><CheckCheck size={15} /></button> : null}
+            <button type="button" onClick={() => setSettingsOpen(true)} className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 bg-white text-slate-600" aria-label="Notification settings"><Settings2 size={15} /></button>
+          </div>
+        </div>
+      </section>
+
+      <div className="gv-mobile-segment" role="tablist" aria-label="Notification categories">
+        {MOBILE_FILTERS.map((item) => <button key={item.value} type="button" onClick={() => setMobileFilter(item.value)} className={`text-[10px] font-bold ${mobileFilter === item.value ? "bg-white text-[var(--gv-blue)] shadow-sm" : "text-slate-500"}`}>{item.label}</button>)}
+      </div>
+
+      {notifications.loading ? (
+        <div className="space-y-2.5"><div className="gv-skeleton h-20 rounded-[18px]" /><div className="gv-skeleton h-20 rounded-[18px]" /><div className="gv-skeleton h-20 rounded-[18px]" /></div>
+      ) : notifications.error ? <div className="rounded-[18px] border border-red-200 bg-red-50 p-4 text-xs font-semibold text-red-700">{notifications.error}</div> : visibleItems.length ? (
+        <section className="gv-mobile-deferred overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,.04)]">
+          {visibleItems.map((item, index) => {
+            const Icon = iconFor(item);
+            const unread = item.status !== "read";
+            return (
+              <button key={item.id} type="button" onClick={() => notifications.openNotification(item)} className={`flex min-h-[78px] w-full items-start gap-3 px-3.5 py-3.5 text-left active:bg-slate-50 ${index ? "border-t border-slate-100" : ""}`}>
+                <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-[13px] ${notificationTone(item)}`}><Icon size={17} /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-start gap-2"><span className="min-w-0 flex-1 text-[11px] font-extrabold leading-4 text-slate-950">{item.title || "GrowVest update"}</span>{unread ? <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--gv-blue)]" /> : null}</span>
+                  <span className="mt-1 block line-clamp-2 text-[9px] leading-4 text-slate-500">{item.message}</span>
+                  <span className="mt-1.5 block text-[8px] font-semibold text-slate-400">{formatDateTime(item.createdAt)}</span>
+                </span>
+                {item.link ? <ChevronRight size={15} className="mt-2 shrink-0 text-slate-300" /> : null}
+              </button>
+            );
+          })}
+        </section>
+      ) : (
+        <section className="gv-mobile-app-card grid place-items-center px-6 py-14 text-center"><span className="grid h-14 w-14 place-items-center rounded-3xl bg-[var(--gv-blue-soft)] text-[var(--gv-blue)]"><Sparkles size={23} /></span><h2 className="mt-4 font-heading text-lg font-bold text-slate-950">{mobileFilter === "action" ? "Nothing needs your attention" : "No new updates"}</h2><p className="mt-2 text-xs text-slate-500">{mobileFilter === "action" ? "You are up to date with your GrowVest actions." : "New portfolio, report and service updates will appear here."}</p></section>
+      )}
+
+      {settingsOpen ? <div className="fixed inset-0 z-[95] md:hidden" role="dialog" aria-modal="true" aria-label="Notification preferences"><button type="button" className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" onClick={() => setSettingsOpen(false)} aria-label="Close notification preferences" /><section className="gv-safe-bottom absolute inset-x-0 bottom-0 max-h-[86dvh] overflow-y-auto rounded-t-[30px] bg-white px-4 pb-5 pt-3 shadow-2xl"><div className="mx-auto h-1.5 w-11 rounded-full bg-slate-200" /><div className="mt-4 flex items-center justify-between"><div><p className="gv-mobile-section-title">Preferences</p><h3 className="mt-1 font-heading text-xl font-bold text-slate-950">Choose your alerts</h3></div><button type="button" onClick={() => setSettingsOpen(false)} className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-600">×</button></div><div className="mt-4 rounded-[18px] bg-slate-50 px-3"><Toggle checked={notifications.pushEnabled} onChange={togglePush} disabled={pushDisabled} label="App alerts" description={pushDescription(notifications)} /></div><div className="mt-2 divide-y divide-slate-100"><Toggle checked={notifications.inAppAlerts} onChange={notifications.setInAppAlerts} label="In-app banners" description="Show an alert while you are using the GrowVest app." />{PUSH_CATEGORIES.map((item) => <Toggle key={item.key} checked={notifications.pushCategories[item.key] !== false} onChange={(enabled) => notifications.updatePushCategory(item.key, enabled)} disabled={!notifications.pushEnabled} label={item.label} description={item.description} />)}</div>{notifications.pushEnabled ? <button type="button" onClick={notifications.testPush} disabled={notifications.pushBusy} className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-xs font-black text-[var(--gv-blue)] disabled:opacity-50"><Send size={15} /> Send test notification</button> : null}<p className="mt-4 text-[10px] leading-4 text-slate-400">Financial details stay protected inside your signed-in GrowVest Investor App.</p></section></div> : null}
+    </div>
+  );
 }
 
 export default function InvestorNotificationsPage() {
   const notifications = useInvestorNotifications();
   const [filter, setFilter] = useState("all");
+  const [mobileFilter, setMobileFilter] = useState("action");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const visibleItems = useMemo(
     () => filter === "unread" ? notifications.unreadItems : notifications.items,
     [filter, notifications.items, notifications.unreadItems]
+  );
+  const mobileItems = useMemo(
+    () => notifications.items.filter((item) => mobileFilter === "action" ? isActionRequired(item) : !isActionRequired(item)),
+    [mobileFilter, notifications.items]
   );
   const pushDisabled = notifications.pushBusy || (!notifications.pushEnabled && (!notifications.pushSupported || !notifications.pushConfigured || notifications.pushPermission === "denied"));
 
@@ -103,7 +192,9 @@ export default function InvestorNotificationsPage() {
           </button>
         ) : null}
       />
+      <MobileNotificationsApp notifications={notifications} mobileFilter={mobileFilter} setMobileFilter={setMobileFilter} visibleItems={mobileItems} togglePush={togglePush} pushDisabled={pushDisabled} settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen} />
 
+      <div className="hidden gap-6 md:grid">
       <section className={`overflow-hidden rounded-[24px] border p-4 shadow-[var(--gv-shadow-card)] sm:p-5 ${notifications.pushEnabled ? "border-emerald-200 bg-emerald-50/70" : "border-blue-200 bg-blue-50/70"}`}>
         <div className="flex items-start gap-3">
           <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${notifications.pushEnabled ? "bg-emerald-600 text-white" : "bg-[var(--gv-blue)] text-white"}`}>
@@ -196,6 +287,7 @@ export default function InvestorNotificationsPage() {
           <div className="mt-3 flex items-start gap-2 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-xs leading-5 text-blue-800"><Info size={16} className="mt-0.5 shrink-0" /> Push preferences are separate from email delivery and apply to the devices where notifications are enabled.</div>
         </aside>
       </section>
+      </div>
     </div>
   );
 }

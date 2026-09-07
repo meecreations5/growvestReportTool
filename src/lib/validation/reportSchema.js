@@ -54,9 +54,26 @@ export function validateCompletedReport(payload) {
       errors.push("Review and confirm the portfolio verification warnings before completing the report.");
     }
   }
-  if (Number(payload.summary?.totalCorpus || 0) <= 0) errors.push("Total corpus must be greater than zero.");
-  if (!payload.holdings?.some((item) => Number(item.currentValue || 0) > 0)) errors.push("Add at least one holdings breakdown row with a current value.");
+  const totalCorpus = Number(payload.summary?.totalCorpus || 0);
+  const verificationCounts = verification?.counts || {};
+  const hasExitEvidence = Number(verificationCounts.exitedHoldings || 0) > 0
+    || Number(verificationCounts.transactions || 0) > 0
+    || Number(payload.summary?.totalWithdrawals || 0) > 0
+    || Boolean(verification?.openingSnapshotId)
+    || payload.funds?.some((item) => Number(item.openingValue || 0) > 0 || Number(item.withdrawal || 0) > 0);
+  const hasVerifiedClosingSource = !verification?.required
+    || Boolean(payload.sourcePortfolioSnapshotId && verification?.snapshotId);
+  const legitimateZeroClosingBalance = totalCorpus === 0 && hasExitEvidence && hasVerifiedClosingSource;
+
+  if (totalCorpus <= 0 && !legitimateZeroClosingBalance) {
+    errors.push("Total corpus must be greater than zero unless this is a verified fully-exited portfolio month.");
+  }
+  if (!legitimateZeroClosingBalance && !payload.holdings?.some((item) => Number(item.currentValue || 0) > 0)) {
+    errors.push("Add at least one holdings breakdown row with a current value.");
+  }
   if (!payload.advisorNote?.content?.trim()) errors.push("Advisor note is required before completion.");
-  if (!payload.funds?.some((item) => item.instrumentName?.trim() && Number(item.currentValue || 0) > 0)) errors.push("Add at least one fund or instrument with a current value.");
+  if (!legitimateZeroClosingBalance && !payload.funds?.some((item) => item.instrumentName?.trim() && Number(item.currentValue || 0) > 0)) {
+    errors.push("Add at least one fund or instrument with a current value.");
+  }
   return errors;
 }

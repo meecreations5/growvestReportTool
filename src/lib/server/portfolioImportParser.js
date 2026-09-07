@@ -1817,6 +1817,8 @@ function parseFundbazaarLedger(matrix = []) {
       holding.transactionCount = holdingTransactions.length;
       const latestSip = [...sipTransactions].sort((a, b) => String(b.transactionDate).localeCompare(String(a.transactionDate)))[0];
       holding.monthlySip = Math.abs(Number(latestSip?.investedAmount || 0));
+      holding.latestSipDate = latestSip?.transactionDate || "";
+      holding.sipDebitDay = holding.latestSipDate ? Number(String(holding.latestSipDate).slice(8, 10)) || 0 : 0;
 
       if (marketRow) {
         const marketValue = sourceNumber(anchorValue(marketRow, anchors, "transactionType"));
@@ -2006,10 +2008,12 @@ function parseFundbazaarRows(rows = []) {
     const weightedCagr = holding.weightedCagrDenominator > 0
       ? holding.weightedCagrNumerator / holding.weightedCagrDenominator
       : 0;
-    const { modes: _modes, weightedCagrNumerator: _n, weightedCagrDenominator: _d, latestSipDate: _s, ...clean } = holding;
+    const { modes: _modes, weightedCagrNumerator: _n, weightedCagrDenominator: _d, ...clean } = holding;
     return {
       ...clean,
       investmentMode,
+      latestSipDate: holding.latestSipDate || "",
+      sipDebitDay: holding.latestSipDate ? Number(String(holding.latestSipDate).slice(8, 10)) || 0 : 0,
       averagePurchaseNav: Number(averagePurchaseNav.toFixed(6)),
       totalInvested: Number(holding.totalInvested.toFixed(2)),
       totalUnits: Number(holding.totalUnits.toFixed(6)),

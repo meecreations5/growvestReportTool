@@ -1,3 +1,4 @@
+import { businessDateKey } from "@/lib/utils/date";
 import * as XLSX from "xlsx";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb, AppRequestError } from "@/lib/server/firebaseAdmin";
@@ -169,6 +170,8 @@ export function normaliseInsurancePayload(payload = {}, { actor = {}, investor =
     previousPolicyId: cleanInsuranceText(payload.previousPolicyId || existing?.previousPolicyId, 180),
     renewedFromPolicyId: cleanInsuranceText(payload.renewedFromPolicyId || existing?.renewedFromPolicyId, 180),
     renewedToPolicyId: cleanInsuranceText(payload.renewedToPolicyId || existing?.renewedToPolicyId, 180),
+    linkedUlipPolicyId: cleanInsuranceText(payload.linkedUlipPolicyId || existing?.linkedUlipPolicyId, 180),
+    linkedUlipPolicyNumber: cleanInsuranceText(payload.linkedUlipPolicyNumber || existing?.linkedUlipPolicyNumber, 180),
     investorVisible: payload.investorVisible !== false,
     updatedAt: now,
     updatedByUid: actor.uid,
@@ -184,6 +187,21 @@ export function normaliseInsurancePayload(payload = {}, { actor = {}, investor =
 
 export function insurancePolicyIdentity(record = {}) {
   return `${String(record.insurer || "").trim().toLowerCase()}|${String(record.policyNumber || "").trim().toLowerCase()}`;
+}
+
+export async function assertInsurancePolicyIdentityAvailable(investorId, record = {}, { allowedPolicyIds = [] } = {}) {
+  const identity = insurancePolicyIdentity(record);
+  if (!investorId || identity === "|") return;
+  const allowed = new Set((allowedPolicyIds || []).filter(Boolean).map(String));
+  const policies = await loadInsurancePoliciesForInvestor(investorId);
+  const duplicate = policies.find((item) => !allowed.has(String(item.id)) && insurancePolicyIdentity(item) === identity);
+  if (duplicate) {
+    throw new AppRequestError(
+      `Policy ${record.policyNumber || ""} for ${record.insurer || "this insurer"} already exists for this Investor. Open the existing policy or use Renew.`,
+      409,
+      "insurance_policy_duplicate"
+    );
+  }
 }
 
 export function insuranceEventPayload({ policyId, policy = {}, actor = {}, eventType, note = "", fromStatus = "", toStatus = "", metadata = {} }) {
@@ -374,19 +392,38 @@ export async function buildInsurancePortfolioOverview(actor = {}, asOfDate = "")
     throw new AppRequestError("This protection overview is available to GrowVest staff only.", 403, "insurance_staff_required");
   }
 
-  const reference = asOfDate || new Date().toISOString().slice(0, 10);
-  const investorSnapshot = await adminDb.collection("investors").get();
-  const accessibleInvestors = investorSnapshot.docs
+  const reference = asOfDate || businessDateKey();
+  let investorDocs = [];
+  if (["super_admin", "admin"].includes(actor.role)) {
+    investorDocs = (await adminDb.collection("investors").get()).docs;
+  } else {
+    const [assigned, legacy] = await Promise.all([
+      adminDb.collection("investors").where("assignedAdvisorUid", "==", actor.uid).get(),
+      adminDb.collection("investors").where("advisorUid", "==", actor.uid).get()
+    ]);
+    const unique = new Map();
+    [...assigned.docs, ...legacy.docs].forEach((item) => unique.set(item.id, item));
+    investorDocs = [...unique.values()];
+  }
+  const accessibleInvestors = investorDocs
     .map((item) => ({ id: item.id, ...item.data() }))
-    .filter((investor) => String(investor.status || "active").toLowerCase() !== "deleted")
-    .filter((investor) => {
-      if (["super_admin", "admin"].includes(actor.role)) return true;
-      return insuranceAdvisorUid(investor) === actor.uid;
-    });
+    .filter((investor) => investor.isDeleted !== true && investor.lifecycleStatus !== "deleted")
+    .filter((investor) => String(investor.status || "active").toLowerCase() !== "inactive" || ["super_admin", "admin"].includes(actor.role));
 
   const investorMap = new Map(accessibleInvestors.map((investor) => [investor.id, investor]));
-  const allPolicySnapshot = await adminDb.collection("insurancePolicies").get();
-  const policies = allPolicySnapshot.docs
+  let policyDocs = [];
+  const investorIds = [...investorMap.keys()];
+  if (["super_admin", "admin"].includes(actor.role)) {
+    policyDocs = (await adminDb.collection("insurancePolicies").get()).docs;
+  } else {
+    for (let start = 0; start < investorIds.length; start += 30) {
+      const ids = investorIds.slice(start, start + 30);
+      if (!ids.length) continue;
+      const snapshot = await adminDb.collection("insurancePolicies").where("investorId", "in", ids).get();
+      policyDocs.push(...snapshot.docs);
+    }
+  }
+  const policies = policyDocs
     .map((item) => ({ id: item.id, ...item.data() }))
     .filter((policy) => investorMap.has(policy.investorId));
 
@@ -462,7 +499,7 @@ export async function buildInsurancePortfolioOverview(actor = {}, asOfDate = "")
 }
 
 export function buildInsuranceProtectionSnapshot(policies = [], asOfDate = "") {
-  const reference = asOfDate || new Date().toISOString().slice(0, 10);
+  const reference = asOfDate || businessDateKey();
   const started = (policies || []).filter((policy) => !policy.policyStartDate || policy.policyStartDate <= reference);
   const rows = started.map((policy) => insurancePolicyReportRow(policy, reference));
   const activeRows = rows.filter((policy) => !["Expired", "Lapsed", "Cancelled", "Claimed / Closed", "Renewed"].includes(policy.policyStatus));

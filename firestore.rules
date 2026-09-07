@@ -551,6 +551,12 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Report deletion is journalled server-side so an interrupted secure-file
+    // cleanup can be retried without exposing deletion state to browser clients.
+    match /reportDeletionJobs/{jobId} {
+      allow read, create, update, delete: if false;
+    }
+
 
     match /investorDocuments/{documentId} {
       allow create: if isStaff()
@@ -678,6 +684,10 @@ service cloud.firestore {
     }
 
     match /insuranceReminderEvents/{eventId} {
+      allow read, create, update, delete: if false;
+    }
+
+    match /insuranceImportBatches/{batchId} {
       allow read, create, update, delete: if false;
     }
 

@@ -1,5 +1,5 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb, verifyAppRequest,
+import { AppRequestError, adminDb, verifyAppRequest,
   appRequestErrorStatus
 } from "@/lib/server/firebaseAdmin";
 import {
@@ -12,6 +12,45 @@ import {
 } from "@/lib/server/actionServer";
 
 export const runtime = "nodejs";
+
+
+function actionTimestamp(value) {
+  if (!value) return 0;
+  if (typeof value?.toMillis === "function") return value.toMillis();
+  if (typeof value?.toDate === "function") return value.toDate().getTime();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+
+function serialise(value) {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map(serialise);
+  if (typeof value?.toDate === "function") return value.toDate().toISOString();
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, serialise(child)]));
+  return value;
+}
+
+export async function GET(request) {
+  try {
+    const actor = await verifyAppRequest(request);
+    const { searchParams } = new URL(request.url);
+    const requestedInvestorId = String(searchParams.get("investorId") || "").trim();
+    const investor = await getAccessibleActionInvestor(actor, requestedInvestorId);
+    const snapshot = await adminDb.collection("investorActions").where("investorId", "==", investor.id).get();
+    const actions = snapshot.docs
+      .map((item) => ({ id: item.id, ...item.data() }))
+      .filter((item) => actor.role !== "investor" || item.investorVisible !== false)
+      .filter((item) => actor.role !== "advisor" || [item.advisorUid, item.assignedAdvisorUid].includes(actor.uid))
+      .sort((a, b) => actionTimestamp(b.updatedAt || b.createdAt) - actionTimestamp(a.updatedAt || a.createdAt))
+      .slice(0, 200);
+    return Response.json(serialise({ actions }), { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    console.error("Investor action read failed", error);
+    const status = error instanceof AppRequestError ? error.status : appRequestErrorStatus(error, 500);
+    return Response.json({ error: error?.message || "Unable to load action requests." }, { status });
+  }
+}
 
 export async function POST(request) {
   try {

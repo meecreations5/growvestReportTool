@@ -214,6 +214,9 @@ function resolveReminder(meeting, minutes, forcedReminder) {
 
 async function processMeeting(snapshot, now, forcedReminder = "") {
   const meeting = { id: snapshot.id, ...snapshot.data() };
+  if (meeting.remindersPausedByInvestorLifecycle === true) {
+    return { meetingId: meeting.id, status: "skipped", reason: "Investor lifecycle has paused meeting reminders." };
+  }
   if (!["scheduled", "rescheduled"].includes(meeting.status)) {
     return { meetingId: meeting.id, status: "skipped", reason: `Meeting status is ${meeting.status}.` };
   }

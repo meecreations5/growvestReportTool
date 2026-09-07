@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Clock3 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatDateTime } from "@/lib/utils/date";
-import { subscribeActionEvents } from "@/services/actionService";
+import { getActionDetail, subscribeActionEvents } from "@/services/actionService";
 
 export default function ActionTimeline({ actionId }) {
   const { profile } = useAuth();
@@ -12,6 +12,17 @@ export default function ActionTimeline({ actionId }) {
 
   useEffect(() => {
     if (!actionId || !profile) return undefined;
+
+    // Investor App reads protected action history through the authenticated
+    // server API. Staff retains the existing realtime workflow.
+    if (profile.role === "investor") {
+      let active = true;
+      getActionDetail(actionId)
+        .then((payload) => { if (active) setEvents(payload.events || []); })
+        .catch(() => { if (active) setEvents([]); });
+      return () => { active = false; };
+    }
+
     return subscribeActionEvents(actionId, profile, setEvents, () => setEvents([]));
   }, [actionId, profile]);
 

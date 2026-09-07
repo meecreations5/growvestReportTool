@@ -1,0 +1,15 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gvA" x1="34" y1="54" x2="186" y2="190" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#20B8CD"/>
+      <stop offset="1" stop-color="#1F4ED8"/>
+    </linearGradient>
+    <linearGradient id="gvB" x1="96" y1="48" x2="218" y2="160" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#20B8CD"/>
+      <stop offset="1" stop-color="#1F4ED8"/>
+    </linearGradient>
+  </defs>
+  <path d="M28 64H66L102 146L126 94L145 136L118 194H83L28 64Z" fill="url(#gvA)"/>
+  <path d="M78 64H116L145 131L165 89L184 131L158 194H126L78 64Z" fill="url(#gvB)" opacity="0.98"/>
+  <path d="M156 52H226V122L204 100L170 134L148 112L182 78L156 52Z" fill="#20B8CD"/>
+</svg>

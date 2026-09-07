@@ -12,7 +12,7 @@ import {
   UserRoundCheck
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { subscribeInvestors } from "@/services/assessmentService";
+import { getInvestors } from "@/services/investorListService";
 import { getPrimaryGoal } from "@/lib/constants/assessment";
 import { formatCurrency, formatDate } from "@/lib/utils/format";
 import { inputClassName } from "@/components/ui/Field";
@@ -85,18 +85,25 @@ export default function InvestorsTable() {
 
   useEffect(() => {
     if (!profile) return undefined;
-    return subscribeInvestors(
-      profile,
-      (items) => {
+    let active = true;
+    setLoading(true);
+    setError("");
+
+    getInvestors()
+      .then((items) => {
+        if (!active) return;
         setInvestors(items);
-        setLoading(false);
-      },
-      (nextError) => {
-        console.error(nextError);
-        setError("Unable to load investors. Deploy the Firestore indexes and try again.");
-        setLoading(false);
-      }
-    );
+      })
+      .catch((nextError) => {
+        if (!active) return;
+        console.error("Unable to load Investor list", nextError);
+        setError(nextError?.message || "Unable to load investors. Please refresh and try again.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => { active = false; };
   }, [profile]);
 
   useEffect(() => {

@@ -1,4 +1,10 @@
-export default function AuthLoadingScreen({ label = "Loading GrowVest workspace…" }) {
+import InvestorAppSplash from "@/components/investor/mobile/InvestorAppSplash";
+
+export default function AuthLoadingScreen({ label = "Loading GrowVest workspace…", variant = "workspace" }) {
+  if (variant === "investor") {
+    return <InvestorAppSplash label={label} />;
+  }
+
   return (
     <div className="grid min-h-screen place-items-center bg-slate-50">
       <div className="flex items-center gap-3 text-sm font-medium text-slate-600">

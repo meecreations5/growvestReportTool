@@ -12,7 +12,7 @@ import {
 } from "@/services/notificationService";
 import { formatDateTime } from "@/lib/utils/date";
 
-export default function NotificationBell({ className = "", inverted = false }) {
+export default function NotificationBell({ className = "", inverted = false, compact = false }) {
   const router = useRouter();
   const { profile } = useAuth();
   const investorContext = useInvestorNotifications();
@@ -73,12 +73,12 @@ export default function NotificationBell({ className = "", inverted = false }) {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className={`relative grid h-11 w-11 place-items-center rounded-2xl border transition ${inverted ? "border-white/15 bg-white/10 text-white hover:bg-white/20" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`}
+        className={`relative grid place-items-center border transition ${compact ? "h-8 w-8 rounded-full" : "h-11 w-11 rounded-2xl"} ${inverted ? (compact ? "border-white/20 bg-transparent text-white hover:bg-white/10" : "border-white/15 bg-white/10 text-white hover:bg-white/20") : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`}
         aria-label={`Open notifications${unread.length ? `, ${unread.length} unread` : ""}`}
         aria-expanded={open}
       >
-        <Bell size={19} />
-        {unread.length ? <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[10px] font-black text-white ring-2 ring-white">{Math.min(unread.length, 99)}</span> : null}
+        <Bell size={compact ? 16 : 19} strokeWidth={compact ? 1.5 : 2} />
+        {unread.length ? (compact ? <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-[#E53935] ring-1 ring-[#1F4ED8]" aria-hidden="true" /> : <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[10px] font-black text-white ring-2 ring-white">{Math.min(unread.length, 99)}</span>) : null}
       </button>
 
       {open ? (

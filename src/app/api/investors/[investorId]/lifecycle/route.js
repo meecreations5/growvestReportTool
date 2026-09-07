@@ -50,12 +50,14 @@ async function investorImpact(investorId) {
     investmentTransactions: "investmentTransactions",
     tradingTransactions: "tradingTransactions",
     ulipPolicies: "ulipPolicies",
+    insurancePolicies: "insurancePolicies",
     portfolioSnapshots: "portfolioSnapshots",
     monthlyReports: "monthlyReports",
     documents: "investorDocuments",
     meetings: "meetings",
     advisorFollowUps: "investorActions",
-    sipSchedules: "sipFundingSchedules"
+    sipSchedules: "sipFundingSchedules",
+    scheduledEmailDeliveries: "emailDeliveries"
   };
 
   const entries = await Promise.all(Object.entries(collections).map(async ([key, collectionName]) => {
@@ -112,6 +114,96 @@ async function resumeLifecycleSipSchedules(investorId, batch) {
     batch.set(item.ref, {
       active: true,
       pausedByInvestorLifecycle: false,
+      resumedAt: new Date(),
+      updatedAt: new Date()
+    }, { merge: true });
+  });
+  return resumed;
+}
+
+async function pauseInsuranceReminders(investorId, batch) {
+  const policies = await adminDb.collection("insurancePolicies").where("investorId", "==", investorId).get();
+  let paused = 0;
+  policies.docs.forEach((item) => {
+    const data = item.data() || {};
+    if (data.remindersPausedByInvestorLifecycle === true) return;
+    paused += 1;
+    batch.set(item.ref, {
+      remindersPausedByInvestorLifecycle: true,
+      remindersPausedAt: new Date(),
+      updatedAt: new Date()
+    }, { merge: true });
+  });
+  return paused;
+}
+
+async function resumeInsuranceReminders(investorId, batch) {
+  const policies = await adminDb.collection("insurancePolicies").where("investorId", "==", investorId).get();
+  let resumed = 0;
+  policies.docs.forEach((item) => {
+    if (item.data()?.remindersPausedByInvestorLifecycle !== true) return;
+    resumed += 1;
+    batch.set(item.ref, {
+      remindersPausedByInvestorLifecycle: false,
+      remindersResumedAt: new Date(),
+      updatedAt: new Date()
+    }, { merge: true });
+  });
+  return resumed;
+}
+
+async function pauseMeetingReminders(investorId, batch) {
+  const meetings = await adminDb.collection("meetings").where("investorId", "==", investorId).get();
+  let paused = 0;
+  meetings.docs.forEach((item) => {
+    const data = item.data() || {};
+    if (!["scheduled", "rescheduled"].includes(String(data.status || "")) || data.remindersPausedByInvestorLifecycle === true) return;
+    paused += 1;
+    batch.set(item.ref, { remindersPausedByInvestorLifecycle: true, remindersPausedAt: new Date(), updatedAt: new Date() }, { merge: true });
+  });
+  return paused;
+}
+
+async function resumeMeetingReminders(investorId, batch) {
+  const meetings = await adminDb.collection("meetings").where("investorId", "==", investorId).get();
+  let resumed = 0;
+  meetings.docs.forEach((item) => {
+    if (item.data()?.remindersPausedByInvestorLifecycle !== true) return;
+    resumed += 1;
+    batch.set(item.ref, { remindersPausedByInvestorLifecycle: false, remindersResumedAt: new Date(), updatedAt: new Date() }, { merge: true });
+  });
+  return resumed;
+}
+
+async function pauseScheduledReportDeliveries(investorId, batch) {
+  const deliveries = await adminDb.collection("emailDeliveries").where("investorId", "==", investorId).get();
+  let paused = 0;
+  deliveries.docs.forEach((item) => {
+    const data = item.data() || {};
+    if (data.status !== "scheduled") return;
+    paused += 1;
+    batch.set(item.ref, {
+      status: "paused_investor_lifecycle",
+      lifecyclePreviousStatus: "scheduled",
+      pausedByInvestorLifecycle: true,
+      pausedAt: new Date(),
+      updatedAt: new Date()
+    }, { merge: true });
+  });
+  return paused;
+}
+
+async function resumeScheduledReportDeliveries(investorId, batch) {
+  const deliveries = await adminDb.collection("emailDeliveries").where("investorId", "==", investorId).get();
+  let resumed = 0;
+  deliveries.docs.forEach((item) => {
+    const data = item.data() || {};
+    if (data.pausedByInvestorLifecycle !== true || data.lifecyclePreviousStatus !== "scheduled") return;
+    resumed += 1;
+    batch.set(item.ref, {
+      status: "scheduled",
+      pausedByInvestorLifecycle: false,
+      lifecyclePreviousStatus: null,
       resumedAt: new Date(),
       updatedAt: new Date()
     }, { merge: true });
@@ -198,6 +290,9 @@ export async function POST(request, { params }) {
       const batch = adminDb.batch();
       const portalWasEnabled = investor.portalEnabled === true;
       const pausedSipSchedules = await pauseSipSchedules(investor.id, batch);
+      const pausedInsuranceReminders = await pauseInsuranceReminders(investor.id, batch);
+      const pausedMeetingReminders = await pauseMeetingReminders(investor.id, batch);
+      const pausedScheduledDeliveries = await pauseScheduledReportDeliveries(investor.id, batch);
 
       batch.set(investorRef, {
         status: "inactive",
@@ -232,11 +327,11 @@ export async function POST(request, { params }) {
         title: "Investor disabled",
         description: `${investor.fullName || "Investor"} was disabled by ${actor.fullName || actor.email || "Admin"}.`,
         reason,
-        metadata: { linkedPortalAccounts: linkedUsers.length, pausedSipSchedules, portalWasEnabled }
+        metadata: { linkedPortalAccounts: linkedUsers.length, pausedSipSchedules, pausedInsuranceReminders, pausedMeetingReminders, pausedScheduledDeliveries, portalWasEnabled }
       }));
 
       await batch.commit();
-      return NextResponse.json({ success: true, status: "inactive", pausedSipSchedules });
+      return NextResponse.json({ success: true, status: "inactive", pausedSipSchedules, pausedInsuranceReminders, pausedMeetingReminders, pausedScheduledDeliveries });
     }
 
     if (action === "enable") {
@@ -253,6 +348,9 @@ export async function POST(request, { params }) {
       if (authUsersToEnable.length) await setFirebaseUsersDisabled(authUsersToEnable, false);
       const batch = adminDb.batch();
       const resumedSipSchedules = await resumeLifecycleSipSchedules(investor.id, batch);
+      const resumedInsuranceReminders = await resumeInsuranceReminders(investor.id, batch);
+      const resumedMeetingReminders = await resumeMeetingReminders(investor.id, batch);
+      const resumedScheduledDeliveries = await resumeScheduledReportDeliveries(investor.id, batch);
 
       batch.set(investorRef, {
         status: "active",
@@ -289,11 +387,11 @@ export async function POST(request, { params }) {
         title: "Investor enabled",
         description: `${investor.fullName || "Investor"} was enabled by ${actor.fullName || actor.email || "Admin"}.`,
         reason,
-        metadata: { linkedPortalAccounts: linkedUsers.length, resumedSipSchedules, portalRestored: shouldRestorePortal }
+        metadata: { linkedPortalAccounts: linkedUsers.length, resumedSipSchedules, resumedInsuranceReminders, resumedMeetingReminders, resumedScheduledDeliveries, portalRestored: shouldRestorePortal }
       }));
 
       await batch.commit();
-      return NextResponse.json({ success: true, status: "active", resumedSipSchedules, portalRestored: shouldRestorePortal });
+      return NextResponse.json({ success: true, status: "active", resumedSipSchedules, resumedInsuranceReminders, resumedMeetingReminders, resumedScheduledDeliveries, portalRestored: shouldRestorePortal });
     }
 
     if (action === "delete") {
@@ -309,6 +407,9 @@ export async function POST(request, { params }) {
       await setFirebaseUsersDisabled(linkedUsers, true);
       const batch = adminDb.batch();
       const pausedSipSchedules = await pauseSipSchedules(investor.id, batch);
+      const pausedInsuranceReminders = await pauseInsuranceReminders(investor.id, batch);
+      const pausedMeetingReminders = await pauseMeetingReminders(investor.id, batch);
+      const pausedScheduledDeliveries = await pauseScheduledReportDeliveries(investor.id, batch);
       const disabledMappings = await deactivateExternalMappings(investor.id, batch);
 
       batch.set(investorRef, {
@@ -341,7 +442,7 @@ export async function POST(request, { params }) {
         title: "Investor deleted from active records",
         description: `${investor.fullName || "Investor"} was removed from active GrowVest Investor records by ${actor.fullName || actor.email || "Admin"}. Financial and audit history was retained.`,
         reason,
-        metadata: { ...impact, pausedSipSchedules, disabledMappings, deletionMode: "soft_delete_with_retention" }
+        metadata: { ...impact, pausedSipSchedules, pausedInsuranceReminders, pausedMeetingReminders, pausedScheduledDeliveries, disabledMappings, deletionMode: "soft_delete_with_retention" }
       }));
 
       await batch.commit();

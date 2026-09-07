@@ -1,3 +1,5 @@
+import { businessDateKey } from "@/lib/utils/date";
+import { INSURANCE_POLICY_STATUSES } from "@/lib/constants/insurance";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import {
@@ -8,6 +10,7 @@ import {
   AppRequestError
 } from "@/lib/server/firebaseAdmin";
 import {
+  assertInsurancePolicyIdentityAvailable,
   buildInsurancePortfolioOverview,
   buildInsuranceProtectionSnapshot,
   getAccessibleInsuranceInvestor,
@@ -19,6 +22,21 @@ import {
 } from "@/lib/server/insuranceServer";
 
 export const runtime = "nodejs";
+
+
+async function withUlipInvestmentLink(investorId, record = {}) {
+  if (record.insuranceType !== "ULIP Insurance" || !record.policyNumber) {
+    return { ...record, linkedUlipPolicyId: record.insuranceType === "ULIP Insurance" ? (record.linkedUlipPolicyId || "") : "", linkedUlipPolicyNumber: record.insuranceType === "ULIP Insurance" ? (record.linkedUlipPolicyNumber || "") : "" };
+  }
+  const snapshot = await adminDb.collection("ulipPolicies").where("investorId", "==", investorId).get();
+  const wanted = String(record.policyNumber || "").trim().toUpperCase();
+  const match = snapshot.docs.find((item) => String(item.data()?.policyNumber || "").trim().toUpperCase() === wanted);
+  return {
+    ...record,
+    linkedUlipPolicyId: match?.id || record.linkedUlipPolicyId || "",
+    linkedUlipPolicyNumber: match ? String(match.data()?.policyNumber || record.policyNumber) : (record.linkedUlipPolicyNumber || "")
+  };
+}
 
 function staffOnly(actor) {
   if (!["super_admin", "admin", "advisor"].includes(actor.role)) {
@@ -71,7 +89,7 @@ export async function GET(request) {
   try {
     const actor = await verifyAppRequest(request);
     const { searchParams } = new URL(request.url);
-    const asOfDate = searchParams.get("asOfDate") || new Date().toISOString().slice(0, 10);
+    const asOfDate = searchParams.get("asOfDate") || businessDateKey();
 
     if (searchParams.get("scope") === "portfolio") {
       staffOnly(actor);
@@ -102,7 +120,8 @@ export async function POST(request) {
 
     if (action === "create") {
       const investor = await getAccessibleInsuranceInvestor(actor, body.investorId);
-      const record = normaliseInsurancePayload(body.policy || {}, { actor, investor, source: "manual" });
+      const record = await withUlipInvestmentLink(investor.id, normaliseInsurancePayload(body.policy || {}, { actor, investor, source: "manual" }));
+      await assertInsurancePolicyIdentityAvailable(investor.id, record);
       const policyRef = adminDb.collection("insurancePolicies").doc();
       const batch = adminDb.batch();
       batch.set(policyRef, record);
@@ -117,7 +136,8 @@ export async function POST(request) {
     const investor = await getAccessibleInsuranceInvestor(actor, existing.investorId);
 
     if (action === "update") {
-      const record = normaliseInsurancePayload({ ...existing, ...(body.policy || {}) }, { actor, investor, existing, source: existing.source || "manual" });
+      const record = await withUlipInvestmentLink(investor.id, normaliseInsurancePayload({ ...existing, ...(body.policy || {}) }, { actor, investor, existing, source: existing.source || "manual" }));
+      await assertInsurancePolicyIdentityAvailable(investor.id, record, { allowedPolicyIds: [existing.id, existing.renewedFromPolicyId, existing.renewedToPolicyId] });
       const batch = adminDb.batch();
       batch.set(adminDb.collection("insurancePolicies").doc(existing.id), record, { merge: true });
       batch.set(adminDb.collection("insurancePolicyEvents").doc(), insuranceEventPayload({ policyId: existing.id, policy: { ...existing, ...record }, actor, eventType: "policy_updated", note: body.note || "Insurance policy details updated." }));
@@ -130,6 +150,7 @@ export async function POST(request) {
     if (action === "status") {
       const nextStatus = String(body.status || "").trim();
       if (!nextStatus) throw new AppRequestError("Policy status is required.", 400, "insurance_status_required");
+      if (!INSURANCE_POLICY_STATUSES.includes(nextStatus)) throw new AppRequestError("Select a valid Insurance policy status.", 400, "insurance_status_invalid");
       const batch = adminDb.batch();
       batch.update(adminDb.collection("insurancePolicies").doc(existing.id), {
         policyStatus: nextStatus,
@@ -146,7 +167,7 @@ export async function POST(request) {
     if (action === "renew") {
       const newPolicyInput = body.policy || {};
       const newRef = adminDb.collection("insurancePolicies").doc();
-      const renewalRecord = normaliseInsurancePayload({
+      const renewalRecord = await withUlipInvestmentLink(investor.id, normaliseInsurancePayload({
         ...existing,
         ...newPolicyInput,
         policyStatus: newPolicyInput.policyStatus || "Active",
@@ -154,7 +175,8 @@ export async function POST(request) {
         renewedFromPolicyId: existing.id,
         previousPolicyId: existing.id,
         renewedToPolicyId: ""
-      }, { actor, investor, source: "renewal" });
+      }, { actor, investor, source: "renewal" }));
+      await assertInsurancePolicyIdentityAvailable(investor.id, renewalRecord, { allowedPolicyIds: [existing.id] });
       const batch = adminDb.batch();
       batch.set(newRef, renewalRecord);
       batch.update(adminDb.collection("insurancePolicies").doc(existing.id), {

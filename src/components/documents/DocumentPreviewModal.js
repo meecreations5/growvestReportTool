@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Download, FileText, LoaderCircle, X } from "lucide-react";
 
@@ -17,21 +17,34 @@ function isPdf(preview = {}) {
 }
 
 export default function DocumentPreviewModal({ preview, onClose, onDownload }) {
+  const onCloseRef = useRef(onClose);
+  const isOpen = Boolean(preview);
+
   useEffect(() => {
-    if (!preview) return undefined;
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    // Do not lock <body> scrolling on phones. A body overflow lock can survive a
+    // mobile browser/PWA transition or Fast Refresh and leave the Investor App
+    // unable to scroll after the preview closes. The fixed preview already owns
+    // the full phone viewport, so background locking is unnecessary there.
+    const shouldLockBody = window.matchMedia("(min-width: 768px)").matches;
     const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    if (shouldLockBody) document.body.style.overflow = "hidden";
 
     const onKeyDown = (event) => {
-      if (event.key === "Escape") onClose?.();
+      if (event.key === "Escape") onCloseRef.current?.();
     };
     window.addEventListener("keydown", onKeyDown);
 
     return () => {
-      document.body.style.overflow = previousOverflow;
+      if (shouldLockBody) document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [preview, onClose]);
+  }, [isOpen]);
 
   if (!preview || typeof document === "undefined") return null;
 

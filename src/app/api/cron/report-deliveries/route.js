@@ -38,6 +38,26 @@ async function run(request) {
       const reportSnapshot = await adminDb.collection("monthlyReports").doc(delivery.reportId).get();
       if (!reportSnapshot.exists) throw new Error("Monthly report was not found.");
       const report = { id: reportSnapshot.id, ...reportSnapshot.data() };
+      if (report.investorId) {
+        const investorSnapshot = await adminDb.collection("investors").doc(report.investorId).get();
+        const investor = investorSnapshot.exists ? investorSnapshot.data() || {} : null;
+        const lifecyclePaused = !investor
+          || investor.isDeleted === true
+          || investor.lifecycleStatus === "deleted"
+          || investor.lifecycleStatus === "disabled"
+          || investor.status === "inactive";
+        if (lifecyclePaused) {
+          await item.ref.set({
+            status: "paused_investor_lifecycle",
+            lifecyclePreviousStatus: "scheduled",
+            pausedByInvestorLifecycle: true,
+            pausedAt: new Date(),
+            updatedAt: new Date()
+          }, { merge: true });
+          results.push({ deliveryId: item.id, status: "paused_investor_lifecycle" });
+          continue;
+        }
+      }
       const actor = {
         uid: delivery.createdByUid || "system",
         id: delivery.createdByUid || "system",

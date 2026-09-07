@@ -40,6 +40,7 @@ import {
 
 import MeetingStatusBadge from "@/components/meetings/MeetingStatusBadge";
 import InvestorDocumentsPanel from "@/components/investors/InvestorDocumentsPanel";
+import BucketListRequestReviewPanel from "@/components/investors/BucketListRequestReviewPanel";
 import InvestorPortalAccessCard from "@/components/investors/InvestorPortalAccessCard";
 import InvestorLifecycleCard from "@/components/investors/InvestorLifecycleCard";
 import InvestorPortfolioPanel from "@/components/portfolio/InvestorPortfolioPanel";
@@ -869,7 +870,9 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
       ) : null}
 
       {tab === "goals" ? (
-        <Card className="p-5 sm:p-6">
+        <div className="grid gap-5">
+          <BucketListRequestReviewPanel investorId={investor.id} />
+          <Card className="p-5 sm:p-6">
           <SectionHeader
             eyebrow="Goals & Bucket List"
             title="Financial goals, corpus and life milestones"
@@ -881,7 +884,8 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
               ? goals.map((goal, index) => <GoalCard key={goal.id || `${goal.name}-${index}`} goal={goal} />)
               : <div className="lg:col-span-2"><EmptyState title="General Wealth (Default)" description="Every investment remains mapped. Holdings not linked to a specific Bucket List are automatically assigned to General Wealth until you deliberately reallocate them." /></div>}
           </div>
-        </Card>
+          </Card>
+        </div>
       ) : null}
 
       {tab === "portfolio" ? (

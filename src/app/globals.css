@@ -3,7 +3,7 @@
 :root {
   /* Published brand palette. BrandingContext updates only these tokens. */
   --gv-brand-primary: #1f4ed8;
-  --gv-brand-secondary: #18b9d3;
+  --gv-brand-secondary: #1f4ed8;
   --gv-brand-dark: #0b0b0f;
   --gv-brand-surface: #f4f6f9;
   --gv-brand-muted: #6b7280;
@@ -94,7 +94,131 @@ img { max-width: 100%; }
 .gv-scrollbar::-webkit-scrollbar-track { background: transparent; }
 
 /* Keep horizontally scrollable investor carousels from widening the whole mobile viewport. */
-.gv-investor-viewport { width: 100%; min-width: 0; max-width: 100%; overflow-x: clip; }
+.gv-investor-viewport { width: 100%; min-width: 0; max-width: 100%; overflow-x: clip; overflow-y: visible; overscroll-behavior-y: contain; }
+.gv-mobile-scroll { -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.gv-mobile-scroll::-webkit-scrollbar { display: none; }
+.gv-investor-viewport a,
+.gv-investor-viewport button { touch-action: manipulation; }
+
+/* v0.33.5 Investor Mobile App Experience & Design System.
+   These rules intentionally stop at 767px so tablet and desktop keep the existing UI. */
+@media (max-width: 767px) {
+  .gv-investor-viewport {
+    --gv-mobile-card-radius: 1.375rem;
+    --gv-mobile-section-gap: 1rem;
+    background: color-mix(in srgb, var(--gv-surface) 92%, #eef3f9);
+    /* Use clip, not hidden: hidden can promote this app wrapper into an overflow container
+       on mobile browsers and interfere with normal document/body vertical scrolling. */
+    overflow-x: clip;
+    overflow-y: visible;
+  }
+  .gv-investor-viewport main {
+    padding-bottom: .5rem;
+    overflow-x: clip;
+    overflow-y: visible;
+  }
+  .gv-investor-viewport main,
+  .gv-investor-viewport main > *,
+  .gv-investor-viewport section,
+  .gv-investor-viewport article,
+  .gv-investor-viewport .gv-mobile-fit {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .gv-investor-viewport img,
+  .gv-investor-viewport video,
+  .gv-investor-viewport canvas,
+  .gv-investor-viewport iframe { max-width: 100%; }
+  .gv-investor-viewport .gv-mobile-wrap {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .gv-investor-viewport .gv-card,
+  .gv-investor-viewport .gv-card-flat { border-radius: var(--gv-mobile-card-radius); }
+  .gv-mobile-brand-panel {
+    border-color: color-mix(in srgb, var(--gv-blue) 18%, var(--gv-border));
+    background:
+      radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--gv-cyan) 14%, transparent), transparent 42%),
+      linear-gradient(145deg, color-mix(in srgb, var(--gv-blue) 9%, var(--gv-surface-raised)), var(--gv-surface-raised) 72%);
+  }
+  .gv-mobile-brand-soft {
+    border-color: color-mix(in srgb, var(--gv-blue) 22%, var(--gv-border));
+    background: color-mix(in srgb, var(--gv-blue) 8%, var(--gv-surface-raised));
+  }
+  .gv-mobile-cyan-soft {
+    border-color: color-mix(in srgb, var(--gv-cyan) 24%, var(--gv-border));
+    background: color-mix(in srgb, var(--gv-cyan) 9%, var(--gv-surface-raised));
+  }
+  .gv-mobile-yellow-soft {
+    border-color: color-mix(in srgb, var(--gv-warning) 32%, var(--gv-border));
+    background: color-mix(in srgb, var(--gv-warning) 11%, var(--gv-surface-raised));
+  }
+  .gv-mobile-status-strip {
+    border-color: color-mix(in srgb, var(--gv-blue) 16%, var(--gv-border));
+    background: var(--gv-surface-raised);
+    box-shadow: 0 10px 30px color-mix(in srgb, var(--gv-blue) 7%, transparent);
+  }
+  .gv-mobile-status-strip > * + * {
+    border-left: 1px solid color-mix(in srgb, var(--gv-blue) 12%, var(--gv-border));
+  }
+  .gv-mobile-bottom-nav {
+    padding-inline: max(.35rem, env(safe-area-inset-left)) max(.35rem, env(safe-area-inset-right));
+  }
+  .gv-mobile-bottom-nav a,
+  .gv-mobile-bottom-nav button { min-width: 0; }
+  .gv-mobile-bottom-nav span { -webkit-user-select: none; user-select: none; }
+
+  /* v0.33.6 finance-app visual system. Phone only. */
+  .gv-mobile-app-stack {
+    display: grid;
+    gap: 1rem;
+    min-width: 0;
+    width: 100%;
+  }
+  .gv-mobile-app-card {
+    min-width: 0;
+    max-width: 100%;
+    border: 1px solid color-mix(in srgb, var(--gv-blue) 9%, var(--gv-border));
+    border-radius: 1.45rem;
+    background: rgba(255,255,255,.96);
+    box-shadow: 0 12px 34px rgba(31,78,216,.07);
+  }
+  .gv-mobile-section-title {
+    font-size: .64rem;
+    font-weight: 900;
+    line-height: 1.2;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: #94a3b8;
+  }
+  .gv-mobile-segment {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0,1fr);
+    gap: .25rem;
+    border: 1px solid color-mix(in srgb, var(--gv-blue) 8%, var(--gv-border));
+    border-radius: 1.05rem;
+    padding: .25rem;
+    background: color-mix(in srgb, var(--gv-surface) 72%, white);
+  }
+  .gv-mobile-segment > a,
+  .gv-mobile-segment > button {
+    min-height: 2.65rem;
+    border-radius: .85rem;
+  }
+  .gv-mobile-hero-glow::after {
+    content: "";
+    position: absolute;
+    width: 10rem;
+    height: 10rem;
+    right: -4rem;
+    top: -4rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--gv-cyan) 25%, transparent);
+    filter: blur(24px);
+    pointer-events: none;
+  }
+}
 
 .gv-skeleton {
   overflow: hidden;
@@ -115,9 +239,18 @@ img { max-width: 100%; }
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 
-@media (max-width: 639px) {
+@media (max-width: 767px) {
   body { font-size: 14px; }
   .mobile-edge-to-edge { margin-inline: -1rem; border-inline: 0; border-radius: 0; }
+  /* iOS Safari zooms form controls smaller than 16px. Scope this to the Investor App. */
+  .gv-investor-viewport input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  .gv-investor-viewport select,
+  .gv-investor-viewport textarea { font-size: 16px; }
+  .gv-investor-viewport { -webkit-text-size-adjust: 100%; }
+}
+
+@media (display-mode: standalone) {
+  .gv-investor-viewport { min-height: 100dvh; }
 }
 
 @media print {
@@ -357,7 +490,7 @@ html, body { overscroll-behavior-y: none; }
   body { min-height: 100dvh; }
 }
 
-@media (max-width: 639px) {
+@media (max-width: 767px) {
   .gv-page-stack { gap: 1rem; }
   .gv-card, .gv-card-flat { border-radius: 1.25rem; }
 }
@@ -497,3 +630,724 @@ html.dark .email-output-preview .text-slate-800,
 html.dark .report-print-page .text-slate-950,
 html.dark .report-print-page .text-slate-900,
 html.dark .report-print-page .text-slate-800 { color: #0f172a !important; }
+
+@keyframes gv-investor-loader {
+  0% { transform: translateX(-115%); }
+  55% { transform: translateX(105%); }
+  100% { transform: translateX(105%); }
+}
+.gv-investor-loading-bar { animation: gv-investor-loader 1.45s ease-in-out infinite; }
+
+/* v0.33.6 Investor finance-app shell refinements. Phone only. */
+@media (max-width: 767px) {
+  .gv-investor-viewport {
+    padding-bottom: calc(6.7rem + env(safe-area-inset-bottom)) !important;
+    background:
+      radial-gradient(circle at 50% -12rem, color-mix(in srgb, var(--gv-blue) 7%, transparent), transparent 34rem),
+      #f4f6f9;
+  }
+  .gv-mobile-bottom-nav {
+    left: max(.7rem, env(safe-area-inset-left)) !important;
+    right: max(.7rem, env(safe-area-inset-right)) !important;
+    bottom: max(.55rem, env(safe-area-inset-bottom)) !important;
+    border: 1px solid color-mix(in srgb, var(--gv-blue) 8%, #dbe3ef) !important;
+    border-radius: 1.45rem !important;
+    padding: .35rem .35rem !important;
+    background: rgba(255,255,255,.96) !important;
+    box-shadow: 0 18px 52px rgba(7,18,47,.17) !important;
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+  .gv-mobile-bottom-nav > div { max-width: none; }
+  .gv-mobile-bottom-nav a,
+  .gv-mobile-bottom-nav button { min-height: 3.45rem !important; border-radius: 1rem; }
+  .gv-mobile-bottom-nav a[aria-current="page"],
+  .gv-mobile-bottom-nav button[aria-current="page"] { background: color-mix(in srgb, var(--gv-blue) 7%, white); }
+  .gv-mobile-bottom-nav a[aria-current="page"] > span:first-of-type,
+  .gv-mobile-bottom-nav button[aria-current="page"] > span:first-of-type {
+    background: var(--gv-blue) !important;
+    color: #fff;
+    box-shadow: 0 7px 16px rgba(31,78,216,.22);
+  }
+  .gv-mobile-bottom-nav [aria-current="page"] > span[aria-hidden="true"] { display: none; }
+  .gv-mobile-app-card { overflow: clip; }
+  .gv-mobile-section-title {
+    font-size: .61rem;
+    line-height: 1;
+    font-weight: 900;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: #8da0bb;
+  }
+}
+
+/* v0.33.6 official GrowVest SVG mobile-brand polish. Phone only. */
+@media (max-width: 767px) {
+  /* Base heading tokens set an explicit ink colour. When a component intentionally
+     uses a dark brand surface, headings must inherit the white foreground. */
+  .gv-investor-viewport .text-white h1,
+  .gv-investor-viewport .text-white h2,
+  .gv-investor-viewport .text-white h3,
+  .gv-investor-viewport .text-white h4,
+  .gv-investor-viewport .text-white h5,
+  .gv-investor-viewport .text-white h6 {
+    color: #fff;
+  }
+
+  .gv-investor-viewport .gv-official-brand-mark {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .gv-investor-viewport .gv-mobile-app-card,
+  .gv-investor-viewport .gv-mobile-segment,
+  .gv-investor-viewport .gv-mobile-bottom-nav {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* v0.33.7 Investor mobile professional polish. Phone only. */
+@keyframes gv-brand-outline-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-3px, 4px, 0) scale(1.015); }
+}
+@keyframes gv-mobile-card-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 767px) {
+  .gv-investor-viewport .gv-growvest-outline {
+    transform-origin: center;
+    animation: gv-brand-outline-drift 9s ease-in-out infinite;
+  }
+  .gv-investor-viewport .gv-mobile-app-card {
+    box-shadow: 0 10px 28px rgba(31,78,216,.055);
+  }
+  .gv-investor-viewport .gv-mobile-app-stack > section,
+  .gv-investor-viewport .gv-mobile-app-stack > article {
+    animation: gv-mobile-card-in .28s ease-out both;
+  }
+  .gv-investor-viewport summary::-webkit-details-marker { display: none; }
+  .gv-investor-viewport summary { list-style: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gv-investor-viewport .gv-growvest-outline,
+  .gv-investor-viewport .gv-mobile-app-stack > section,
+  .gv-investor-viewport .gv-mobile-app-stack > article {
+    animation: none !important;
+  }
+}
+
+/* v0.33.8 GrowVest Motion Language -------------------------------------------------
+   The official icon remains the asset. Motion is applied by layering the supplied
+   filled and outline SVGs, creating a consistent website -> Investor App handoff.
+*/
+@keyframes gv-motion-outline-reveal {
+  0% { clip-path: inset(100% 0 0 0); opacity: .15; transform: scale(.94); }
+  48% { clip-path: inset(0 0 0 0); opacity: 1; transform: scale(1); }
+  100% { clip-path: inset(0 0 0 0); opacity: .88; transform: scale(1); }
+}
+@keyframes gv-motion-fill-settle {
+  0%, 34% { opacity: 0; transform: scale(.9); filter: saturate(1.1) brightness(1.15); }
+  62% { opacity: 1; transform: scale(1.035); filter: saturate(1.18) brightness(1.18); }
+  100% { opacity: 1; transform: scale(1); filter: saturate(1) brightness(1); }
+}
+@keyframes gv-motion-sweep {
+  0%, 18% { transform: translateX(-170%) rotate(14deg); opacity: 0; }
+  30% { opacity: .85; }
+  68% { transform: translateX(170%) rotate(14deg); opacity: 0; }
+  100% { transform: translateX(170%) rotate(14deg); opacity: 0; }
+}
+@keyframes gv-motion-halo {
+  0%, 100% { transform: scale(.82); opacity: .12; }
+  55% { transform: scale(1.08); opacity: .32; }
+}
+@keyframes gv-motion-compact {
+  0% { clip-path: inset(100% 0 0 0); opacity: .25; }
+  42% { clip-path: inset(0 0 0 0); opacity: 1; }
+  78%, 100% { clip-path: inset(0 0 0 0); opacity: .25; }
+}
+@keyframes gv-splash-wordmark-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes gv-splash-watermark-drift {
+  0%, 100% { transform: translate3d(0,0,0) rotate(-2deg); }
+  50% { transform: translate3d(-7px,-5px,0) rotate(1deg); }
+}
+
+.gv-motion-mark {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  isolation: isolate;
+  overflow: visible;
+}
+.gv-motion-mark__outline,
+.gv-motion-mark__fill {
+  position: absolute;
+  inset: 8%;
+  width: 84%;
+  height: 84%;
+  object-fit: contain;
+  transform-origin: center;
+}
+.gv-motion-mark__outline { z-index: 2; }
+.gv-motion-mark__fill { z-index: 3; }
+.gv-motion-mark__halo {
+  position: absolute;
+  inset: 7%;
+  z-index: 0;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(32,184,205,.34) 0%, rgba(31,78,216,.18) 42%, transparent 72%);
+  filter: blur(10px);
+}
+.gv-motion-mark__sweep {
+  position: absolute;
+  left: 18%;
+  top: 5%;
+  z-index: 4;
+  width: 20%;
+  height: 90%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.82), rgba(32,184,205,.55), transparent);
+  filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
+}
+.gv-motion-mark.is-active:not(.gv-motion-mark--compact) .gv-motion-mark__outline {
+  animation: gv-motion-outline-reveal 1.2s cubic-bezier(.22,.78,.23,1) both;
+}
+.gv-motion-mark.is-active:not(.gv-motion-mark--compact) .gv-motion-mark__fill {
+  animation: gv-motion-fill-settle 1.35s cubic-bezier(.22,.78,.23,1) both;
+}
+.gv-motion-mark.is-active:not(.gv-motion-mark--compact) .gv-motion-mark__sweep {
+  animation: gv-motion-sweep 1.45s ease-out both;
+}
+.gv-motion-mark.is-active:not(.gv-motion-mark--compact) .gv-motion-mark__halo {
+  animation: gv-motion-halo 2.4s ease-in-out 1.1s infinite;
+}
+.gv-motion-mark--compact .gv-motion-mark__outline {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  animation: gv-motion-compact 1.05s ease-in-out infinite;
+}
+.gv-motion-mark--compact .gv-motion-mark__fill {
+  inset: 9%;
+  width: 82%;
+  height: 82%;
+  opacity: .92;
+  animation: gv-motion-halo 1.05s ease-in-out infinite;
+}
+.gv-motion-mark--compact .gv-motion-mark__sweep { display: none; }
+.gv-motion-mark--compact .gv-motion-mark__halo { inset: -18%; filter: blur(5px); animation: gv-motion-halo 1.05s ease-in-out infinite; }
+.gv-motion-mark.is-inverse .gv-motion-mark__outline { filter: brightness(0) invert(1); opacity: .88; }
+.gv-motion-mark.is-inverse .gv-motion-mark__fill { filter: drop-shadow(0 0 14px rgba(32,184,205,.28)); }
+
+.gv-investor-splash .gv-splash-wordmark {
+  opacity: 0;
+  animation: gv-splash-wordmark-in .5s ease-out .78s forwards;
+}
+.gv-investor-splash .gv-splash-label,
+.gv-investor-splash .gv-splash-progress {
+  opacity: 0;
+  animation: gv-splash-wordmark-in .45s ease-out 1.02s forwards;
+}
+.gv-investor-splash .gv-splash-outline-watermark {
+  animation: gv-splash-watermark-drift 8s ease-in-out infinite;
+}
+.gv-investor-entry-motion {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  opacity: 1;
+  transform: translateZ(0);
+  transition: opacity .36s ease, transform .36s ease;
+}
+.gv-investor-entry-motion.is-leaving {
+  opacity: 0;
+  transform: scale(1.012);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gv-motion-mark__outline,
+  .gv-motion-mark__fill,
+  .gv-motion-mark__sweep,
+  .gv-motion-mark__halo,
+  .gv-investor-splash .gv-splash-wordmark,
+  .gv-investor-splash .gv-splash-label,
+  .gv-investor-splash .gv-splash-progress,
+  .gv-investor-splash .gv-splash-outline-watermark {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    clip-path: none !important;
+  }
+  .gv-investor-entry-motion { transition-duration: .16s; }
+}
+
+/* v0.33.9 Investor Mobile App Recomposition -------------------------------------
+   First-principles phone UI: calmer surfaces, one visual focal point per screen,
+   stronger hierarchy, smaller navigation chrome and no dashboard-style clutter.
+*/
+@media (max-width: 767px) {
+  .gv-investor-viewport {
+    background: #f5f7fb !important;
+    padding-bottom: calc(6.2rem + env(safe-area-inset-bottom)) !important;
+  }
+
+  .gv-investor-viewport main {
+    overflow-x: clip;
+  }
+
+  .gv-mobile-app-stack {
+    gap: .82rem !important;
+  }
+
+  .gv-mobile-app-card {
+    border-color: #e3e9f1 !important;
+    border-radius: 1.25rem !important;
+    background: rgba(255,255,255,.985) !important;
+    box-shadow: 0 7px 22px rgba(15,23,42,.045) !important;
+  }
+
+  .gv-mobile-primary-hero {
+    isolation: isolate;
+  }
+
+  .gv-mobile-primary-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: linear-gradient(110deg, rgba(255,255,255,.035), transparent 44%);
+  }
+
+  .gv-mobile-section-title {
+    font-size: .57rem !important;
+    letter-spacing: .105em !important;
+    color: #93a1b6;
+  }
+
+  .gv-mobile-bottom-nav {
+    left: max(.65rem, env(safe-area-inset-left)) !important;
+    right: max(.65rem, env(safe-area-inset-right)) !important;
+    bottom: max(.38rem, env(safe-area-inset-bottom)) !important;
+    border: 1px solid rgba(208,218,231,.95) !important;
+    border-radius: 1.22rem !important;
+    padding: .2rem .28rem !important;
+    background: rgba(255,255,255,.975) !important;
+    box-shadow: 0 13px 34px rgba(15,23,42,.12) !important;
+  }
+
+  .gv-mobile-bottom-nav a,
+  .gv-mobile-bottom-nav button {
+    min-height: 3.2rem !important;
+    border-radius: .9rem !important;
+    font-size: .58rem !important;
+    gap: .12rem !important;
+  }
+
+  .gv-mobile-bottom-nav a[aria-current="page"],
+  .gv-mobile-bottom-nav button[aria-current="page"] {
+    background: transparent !important;
+    color: var(--gv-blue) !important;
+  }
+
+  .gv-mobile-bottom-nav a[aria-current="page"] > span:first-of-type,
+  .gv-mobile-bottom-nav button[aria-current="page"] > span:first-of-type {
+    background: color-mix(in srgb, var(--gv-blue) 9%, white) !important;
+    color: var(--gv-blue) !important;
+    box-shadow: none !important;
+  }
+
+  .gv-mobile-bottom-nav a:not([aria-current="page"]) > span:first-of-type,
+  .gv-mobile-bottom-nav button:not([aria-current="page"]) > span:first-of-type {
+    color: #64748b;
+  }
+
+  .gv-investor-report-nav {
+    scrollbar-width: none;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+  .gv-investor-report-nav::-webkit-scrollbar { display: none; }
+
+  .gv-investor-viewport .gv-growvest-outline {
+    opacity: .045 !important;
+    animation-duration: 14s !important;
+  }
+
+  .gv-investor-viewport .gv-mobile-app-stack > section,
+  .gv-investor-viewport .gv-mobile-app-stack > article {
+    animation-duration: .22s !important;
+  }
+}
+
+/* v0.34.0 Premium Mobile Reference Replication & Performance ----------------------
+   Phone-only polish derived from the approved GrowVest premium finance-app board.
+   The app uses one visual focal point per screen, calmer white surfaces, semantic
+   color, official brand motion and content-visibility for below-the-fold sections.
+*/
+@media (max-width: 767px) {
+  .gv-investor-viewport {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .gv-investor-viewport .gv-mobile-deferred {
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 360px;
+  }
+
+  .gv-investor-viewport .gv-mobile-app-card {
+    border-color: #e5eaf1 !important;
+    box-shadow: 0 6px 20px rgba(15,23,42,.038) !important;
+  }
+
+  .gv-investor-viewport .gv-mobile-segment {
+    border: 1px solid #e6ebf2;
+    background: #f2f5f9;
+    padding: .2rem;
+    border-radius: 999px;
+  }
+
+  .gv-investor-viewport .gv-mobile-segment > button {
+    min-height: 2.25rem;
+    border-radius: 999px;
+  }
+
+  .gv-investor-viewport .gv-mobile-bottom-nav {
+    box-shadow: 0 10px 28px rgba(15,23,42,.095) !important;
+  }
+
+  .gv-investor-viewport input,
+  .gv-investor-viewport select,
+  .gv-investor-viewport textarea {
+    font-size: 16px;
+  }
+
+  .gv-investor-viewport .gv-growvest-outline,
+  .gv-investor-viewport .gv-splash-outline-watermark {
+    opacity: .035 !important;
+  }
+}
+
+@supports not (content-visibility: auto) {
+  @media (max-width: 767px) {
+    .gv-investor-viewport .gv-mobile-deferred { contain: none; }
+  }
+}
+
+/* v0.34.1 Investor Mobile UX & Premium Design System Consolidation ---------------
+   Canonical phone layer. Future investor-mobile refinements should modify this
+   section instead of appending version-specific patches throughout the stylesheet.
+*/
+@media (max-width: 767px) {
+  .gv-investor-viewport {
+    --gv-mobile-meta-size: .6875rem;
+    --gv-mobile-support-size: .75rem;
+    --gv-mobile-body-size: .875rem;
+    --gv-mobile-card-radius: 1rem;
+    --gv-mobile-card-border: #e5eaf1;
+    --gv-mobile-card-shadow: 0 8px 24px rgba(15, 23, 42, .045);
+  }
+
+  /* A financial app should remain readable without relying on ultra-small type. */
+  .gv-investor-viewport .text-\[7px\],
+  .gv-investor-viewport .text-\[8px\],
+  .gv-investor-viewport .text-\[9px\] {
+    font-size: var(--gv-mobile-meta-size) !important;
+    line-height: 1.35 !important;
+  }
+
+  .gv-investor-viewport .text-\[9\.5px\],
+  .gv-investor-viewport .text-\[10px\] {
+    font-size: var(--gv-mobile-support-size) !important;
+    line-height: 1.4 !important;
+  }
+
+  .gv-investor-viewport .gv-mobile-section-title {
+    font-size: var(--gv-mobile-meta-size) !important;
+    line-height: 1.35 !important;
+    letter-spacing: .085em !important;
+  }
+
+  .gv-investor-viewport .gv-mobile-bottom-nav a,
+  .gv-investor-viewport .gv-mobile-bottom-nav button {
+    font-size: var(--gv-mobile-meta-size) !important;
+  }
+
+  .gv-investor-viewport .gv-mobile-app-card {
+    border-radius: var(--gv-mobile-card-radius) !important;
+    border-color: var(--gv-mobile-card-border) !important;
+    box-shadow: var(--gv-mobile-card-shadow) !important;
+  }
+
+  /* Keep navigation compact but comfortably tappable. */
+  .gv-investor-viewport button,
+  .gv-investor-viewport a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Proper mobile dark mode. v0.34.0 had light surfaces applied with !important. */
+  html.dark .gv-investor-viewport {
+    background: #08111f !important;
+  }
+
+  html.dark .gv-investor-viewport .gv-mobile-app-card {
+    background: #111b2b !important;
+    border-color: #26364c !important;
+    box-shadow: 0 8px 26px rgba(0, 0, 0, .18) !important;
+  }
+
+  html.dark .gv-investor-viewport .gv-mobile-segment {
+    border-color: #26364c !important;
+    background: #0c1625 !important;
+  }
+
+  html.dark .gv-investor-viewport .gv-mobile-bottom-nav {
+    border-color: #26364c !important;
+    background: rgba(9, 18, 31, .96) !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .28) !important;
+  }
+
+  html.dark .gv-investor-viewport .gv-mobile-section-title {
+    color: #93a4bb !important;
+  }
+}
+
+/* Investor financial privacy is deliberately app-wide. Values opt in through
+   .gv-private-value; charts use .gv-financial-chart. The preference is persisted
+   by InvestorPrivacyContext and applied at the document root. */
+html[data-gv-privacy="hidden"] .gv-private-value {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  color: transparent !important;
+  text-shadow: none !important;
+  user-select: none;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+html[data-gv-privacy="hidden"] .gv-private-value::after {
+  content: "••••";
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  color: var(--gv-private-mask-color, #64748b);
+  font: inherit;
+  letter-spacing: .08em;
+  white-space: nowrap;
+}
+
+html[data-gv-privacy="hidden"] .gv-financial-chart {
+  filter: blur(7px);
+  opacity: .3;
+  transform: scale(.985);
+  transform-origin: center;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* v0.34.2 GrowVest Signature Mobile UI ------------------------------------------
+   Human-crafted investor presentation based on the approved mobile reference.
+   Brand palette is intentionally restrained: Royal Trust Blue, Deep Premium Black,
+   Insight Yellow, Strategic Red, Soft Gray, Medium Gray and White. Financial green
+   remains semantic-only for positive returns. Icons use slim 1.45-1.55px strokes.
+*/
+@media (max-width: 767px) {
+  .gv-investor-viewport {
+    --gv-mobile-meta-size: .75rem;
+    --gv-mobile-support-size: .8125rem;
+    --gv-mobile-body-size: .875rem;
+    --gv-mobile-card-radius: 1rem;
+    --gv-mobile-card-border: #e5e7eb;
+    --gv-mobile-card-shadow: none;
+    background: #ffffff !important;
+  }
+
+  .gv-investor-viewport main {
+    background: #ffffff;
+  }
+
+  .gv-mobile-app-stack {
+    gap: 1.25rem !important;
+  }
+
+  /* Cards are reserved for major surfaces; ordinary information should stay flat. */
+  .gv-investor-viewport .gv-mobile-app-card {
+    border-color: #e5e7eb !important;
+    border-radius: 1rem !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+  }
+
+  /* Full-width app navigation with one floating GrowVest brand action. */
+  .gv-investor-viewport .gv-mobile-bottom-nav {
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    border: 0 !important;
+    border-top: 1px solid #e5e7eb !important;
+    border-radius: 0 !important;
+    padding: .15rem .4rem max(.3rem, env(safe-area-inset-bottom)) !important;
+    background: rgba(255,255,255,.985) !important;
+    box-shadow: 0 -7px 22px rgba(11,11,15,.055) !important;
+  }
+
+  .gv-investor-viewport .gv-mobile-bottom-nav .gv-signature-nav-item,
+  .gv-investor-viewport .gv-mobile-bottom-nav .gv-signature-center {
+    min-height: 3.75rem !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: .625rem !important;
+  }
+
+  /* Neutralize older nav rules that expected an icon-wrapper span. */
+  .gv-investor-viewport .gv-mobile-bottom-nav .gv-signature-nav-item > span:first-of-type,
+  .gv-investor-viewport .gv-mobile-bottom-nav .gv-signature-center > span:last-of-type {
+    background: transparent !important;
+    color: inherit !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
+  .gv-investor-viewport .gv-mobile-bottom-nav .gv-signature-center > span:first-of-type {
+    color: white !important;
+  }
+
+  /* No tiny dashboard typography in the signature mobile UI. */
+  .gv-investor-viewport .text-\[7px\],
+  .gv-investor-viewport .text-\[8px\],
+  .gv-investor-viewport .text-\[9px\],
+  .gv-investor-viewport .text-\[9\.5px\],
+  .gv-investor-viewport .text-\[10px\] {
+    font-size: .6875rem !important;
+    line-height: 1.4 !important;
+  }
+
+  .gv-investor-viewport .gv-mobile-section-title {
+    font-size: .75rem !important;
+    line-height: 1.35 !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+    font-weight: 600 !important;
+    color: #6b7280 !important;
+  }
+
+  /* v0.34.2 is a light-first investor experience. Preserve usable dark mode rather
+     than allowing historic !important light-card rules to create mixed surfaces. */
+  html.dark .gv-investor-viewport,
+  html.dark .gv-investor-viewport main {
+    background: #08111f !important;
+  }
+
+  html.dark .gv-investor-viewport .gv-mobile-bottom-nav {
+    border-top-color: #26364c !important;
+    background: rgba(9,18,31,.985) !important;
+  }
+}
+
+/* v0.34.4 GrowVest Brand Color System & Screen Refinement ----------------------
+   Royal Trust Blue leads the investor experience. Deep Premium Black carries
+   wealth and review emphasis; Insight Yellow is reserved for planning/reminders;
+   Strategic Red is reserved for genuine negative or urgent states.
+*/
+@media (max-width: 767px) {
+  /* The dashboard wealth hero deliberately breaks out of the shell's phone gutter
+     so the brand surface reads as one edge-to-edge app header. */
+  .gv-investor-viewport .gv-mobile-home-hero {
+    width: calc(100% + 1.75rem) !important;
+    max-width: none !important;
+    margin-left: -.875rem !important;
+    margin-right: -.875rem !important;
+    border-radius: 0 !important;
+  }
+
+  /* Keep semantic insight surfaces quiet and legible. */
+  .gv-investor-viewport .gv-insight-warning {
+    border-color: rgba(245, 179, 1, .32) !important;
+    background: #fff8df !important;
+    color: #8a5b00 !important;
+  }
+
+  .gv-investor-viewport .gv-insight-danger {
+    border-color: rgba(229, 57, 53, .22) !important;
+    background: #fff0ef !important;
+    color: #b42318 !important;
+  }
+
+  .gv-investor-viewport .gv-insight-primary {
+    border-color: rgba(31, 78, 216, .15) !important;
+    background: #eaf0ff !important;
+    color: #1f4ed8 !important;
+  }
+}
+
+
+/* v0.34.5 Investor Experience Reconciliation -----------------------------------
+   Home now receives a true full-bleed mobile canvas from InvestorShell. Content
+   sections keep the normal 14px reading gutter while the wealth hero remains
+   structurally edge-to-edge instead of escaping a clipped parent with negative
+   margins. */
+@media (max-width: 767px) {
+  .gv-investor-viewport .gv-mobile-home-hero {
+    width: 100% !important;
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    border-radius: 0 !important;
+  }
+  .gv-investor-viewport .gv-mobile-home-stack > :not(.gv-mobile-home-hero) {
+    margin-left: .875rem;
+    margin-right: .875rem;
+  }
+}
+
+/* v0.34.5 Exact Home Reference Lock -------------------------------------------
+   The approved Home screenshot is the visual source of truth. The Royal Trust
+   Blue hero hands off to a separate white sheet that overlaps upward and keeps
+   its rounded top shoulders visible behind the compact quick-action tray. This
+   preserves the reference's layered transition instead of stacking a floating
+   card over a flat white canvas. Functional data remains live.
+*/
+@media (max-width: 767px) {
+  .gv-investor-viewport .gv-mobile-home-stack > :not(.gv-mobile-home-hero) {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  .gv-investor-viewport .gv-mobile-home-content {
+    position: relative;
+    z-index: 10;
+    max-width: none;
+    margin-top: -26px !important;
+    border-radius: 26px 26px 0 0;
+    padding-top: 12px;
+    background: #fff;
+    box-shadow: 0 -8px 24px rgba(11, 11, 15, .035);
+  }
+
+  .gv-investor-viewport .gv-mobile-home-quick-actions {
+    z-index: 20;
+    max-width: none;
+    margin-top: 0 !important;
+    margin-left: .875rem !important;
+    margin-right: .875rem !important;
+    border-radius: 18px !important;
+    box-shadow: 0 8px 24px rgba(11, 11, 15, .08);
+  }
+
+  .gv-investor-viewport .gv-mobile-home-content > .space-y-4 {
+    padding-top: 14px !important;
+  }
+}

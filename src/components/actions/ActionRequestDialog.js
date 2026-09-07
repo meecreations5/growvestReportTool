@@ -87,7 +87,7 @@ export default function ActionRequestDialog({ open, onClose, onCreated, investor
       onCreated?.(result.action);
       onClose?.();
     } catch (nextError) {
-      setError(nextError.message || "Unable to create the Advisor follow-up.");
+      setError(nextError.message || "Unable to create your request.");
     } finally {
       setBusy(false);
     }
@@ -100,7 +100,7 @@ export default function ActionRequestDialog({ open, onClose, onCreated, investor
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-700"><MessageSquarePlus size={19} /></span>
-            <div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-700">{staff ? "Advisor workflow" : "Request your Advisor"}</p><h2 className="mt-1 font-heading text-xl font-bold text-slate-950">Create Advisor follow-up</h2><p className="mt-1 text-sm text-slate-500">{investor?.fullName || "Investor"}</p></div>
+            <div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-700">{staff ? "Advisor workflow" : "Your request"}</p><h2 className="mt-1 font-heading text-xl font-bold text-slate-950">{staff ? "Create Advisor follow-up" : "Send a request to GrowVest"}</h2><p className="mt-1 text-sm text-slate-500">{investor?.fullName || "Investor"}</p></div>
           </div>
           <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-slate-500"><X size={16} /></button>
         </div>
@@ -121,10 +121,10 @@ export default function ActionRequestDialog({ open, onClose, onCreated, investor
           {staff ? <Field label="Due date"><input type="date" className={inputClassName} value={form.dueDate || ""} onChange={(event) => set("dueDate", event.target.value)} /></Field> : null}
           <div className="sm:col-span-2"><Field label="Title (optional)"><input className={inputClassName} value={form.title || ""} onChange={(event) => set("title", event.target.value)} placeholder="GrowVest will generate a title if left blank" /></Field></div>
           {fields.changeDetails ? <div className="sm:col-span-2"><Field label="Information / correction details"><textarea rows={3} className={inputClassName} value={form.requestedChangeDetails || ""} onChange={(event) => set("requestedChangeDetails", event.target.value)} placeholder="Describe the investment, value or information you want GrowVest to verify." /></Field></div> : null}
-          <div className="sm:col-span-2"><Field label={staff ? "Action description" : "Anything else your Advisor should know?"}><textarea rows={4} className={inputClassName} value={form.description || ""} onChange={(event) => set("description", event.target.value)} placeholder="Add context, purpose or any other details." /></Field></div>
+          <div className="sm:col-span-2"><Field label={staff ? "Action description" : "Anything else your GrowVest Partner should know?"}><textarea rows={4} className={inputClassName} value={form.description || ""} onChange={(event) => set("description", event.target.value)} placeholder="Add context, purpose or any other details." /></Field></div>
         </div>
 
-        {!staff ? <p className="mt-5 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-900">Submitting this request does not directly change Portfolio Master or place a transaction. Your Advisor reviews the request first; verified provider data remains the source of financial values.</p> : null}
+        {!staff ? <p className="mt-5 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-900">Submitting this request does not directly change Portfolio Master or place a transaction. Your GrowVest Partner reviews the request first; verified provider data remains the source of financial values.</p> : null}
         <div className="mt-6 flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={submit} disabled={busy}>{busy ? <Loader2 size={16} className="animate-spin" /> : <MessageSquarePlus size={16} />} {staff ? "Create Follow-up" : "Send Request"}</Button></div>
       </section>
     </div>

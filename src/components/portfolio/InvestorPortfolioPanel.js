@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -9,6 +9,7 @@ import {
   BellRing,
   CandlestickChart,
   ChevronDown,
+  ChevronRight,
   CircleAlert,
   Layers3,
   Loader2,
@@ -28,8 +29,12 @@ import InvestorPortfolioBulkCleanupDialog from "@/components/portfolio/InvestorP
 import SipFundingScheduleDialog from "@/components/sip-funding/SipFundingScheduleDialog";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
+import { MobileDonutChart, MobileLineChart } from "@/components/investor/mobile/MobileFinanceCharts";
+import { MobileEmptyState, MobileSectionHeading } from "@/components/investor/mobile/InvestorMobilePrimitives";
 import { Field, inputClassName } from "@/components/ui/Field";
 import { formatCurrency, formatDate } from "@/lib/utils/format";
+import { businessDateKey } from "@/lib/utils/date";
+import { filterTrendByRange } from "@/lib/utils/investorExperience";
 import {
   MUTUAL_FUND_INVESTMENT_MODES,
   PORTFOLIO_PRODUCT_LABELS,
@@ -44,13 +49,8 @@ import { GENERAL_WEALTH_BUCKET_NAME, specificGoalAllocations } from "@/lib/portf
 import {
   createManualIntradayTrade,
   createManualPortfolioPosition,
+  getInvestorPortfolioView,
   recordDeliverySale,
-  subscribeInvestorPortfolio,
-  subscribeInvestorTrading,
-  subscribeInvestorUlipPolicies,
-  subscribeManualPortfolioAccounts,
-  subscribePortfolioSnapshotHistory,
-  subscribeRecentInvestmentTransactions,
   updatePortfolioGoal
 } from "@/services/portfolioService";
 
@@ -161,11 +161,123 @@ function ReconciliationBadge({ status, portal = false }) {
   return <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${verified ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{verified ? <ShieldCheck size={11} /> : <CircleAlert size={11} />}{label}</span>;
 }
 
+
+function mobileAssetLabel(position = {}) {
+  if (position.assetClass) return String(position.assetClass);
+  if (position.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND) return "Mutual Funds";
+  if (position.productType === PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY) return "Equity";
+  if (position.productType === PORTFOLIO_PRODUCT_TYPES.ULIP) return "ULIP";
+  const type = String(position.productType || "").toLowerCase();
+  if (type.includes("gold")) return "Gold";
+  if (type.includes("bond") || type.includes("fixed") || type.includes("debt")) return "Fixed Income";
+  return position.investmentTypeLabel || "Other";
+}
+
+function mobileTrendDateLabel(value) {
+  if (!value) return "";
+  const date = new Date(`${String(value).slice(0, 10)}T00:00:00+05:30`);
+  if (Number.isNaN(date.getTime())) return String(value).slice(5);
+  return date.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+}
+
+function mobileAllocationColor(label = "", index = 0) {
+  const text = String(label).toLowerCase();
+  if (/equity|stock/.test(text)) return "#1F4ED8";
+  if (/mutual/.test(text)) return "#6F8FF0";
+  if (/debt|fixed|bond/.test(text)) return "#F5B301";
+  if (/gold/.test(text)) return "#D39A00";
+  if (/ulip|retire|nps|ppf/.test(text)) return "#0B0B0F";
+  const fallback = ["#1F4ED8", "#6F8FF0", "#F5B301", "#0B0B0F", "#6B7280", "#AEB7C6"];
+  return fallback[index % fallback.length];
+}
+
+function MobilePortfolioAppView({ summary, positions, snapshots, snapshot, movement, monthComparison, goalHealth, intelligence, tradingSummary, error }) {
+  const rawTrend = [...(snapshots || [])].reverse().map((item) => ({ date: item.snapshotDate, label: String(item.snapshotDate || "").slice(5), value: Number(item.summary?.currentValue || 0) }));
+  const [range, setRange] = useState("1Y");
+  const trend = filterTrendByRange(rawTrend, range);
+  const allocationMap = new Map();
+  (positions || []).forEach((position) => {
+    const label = mobileAssetLabel(position);
+    allocationMap.set(label, (allocationMap.get(label) || 0) + Number(position.currentValue || 0));
+  });
+  const allocation = [...allocationMap.entries()].map(([label, value], index) => ({ label, value, color: mobileAllocationColor(label, index) })).filter((item) => item.value > 0).sort((a, b) => b.value - a.value);
+  const allocationTotal = allocation.reduce((sum, item) => sum + Number(item.value || 0), 0);
+  const [showAllHoldings, setShowAllHoldings] = useState(false);
+  const sortedHoldings = [...(positions || [])].sort((a, b) => Number(b.currentValue || 0) - Number(a.currentValue || 0));
+  const top = showAllHoldings ? sortedHoldings : sortedHoldings.slice(0, 5);
+  const displayGain = summary.invested > 0 ? Number(summary.current || 0) - Number(summary.invested || 0) : Number(summary.gain || 0);
+  const gainPercent = summary.invested > 0 ? displayGain / summary.invested * 100 : 0;
+  const trendLabels = trend.length ? [trend[0], trend[Math.floor((trend.length - 1) / 2)], trend[trend.length - 1]] : [];
+  const marketMovement = Number(monthComparison?.marketMovement ?? movement?.marketMovement ?? 0);
+  const freshInvestment = Number(monthComparison?.newMoney || movement?.newMoney || 0);
+  const rangeStart = trend[0]?.date || "";
+  const rangeEnd = trend[trend.length - 1]?.date || "";
+  const rangeDescription = trend.length > 1
+    ? `${range} · ${trend.length} verified points · ${mobileTrendDateLabel(rangeStart)} to ${mobileTrendDateLabel(rangeEnd)}`
+    : `${range} · Limited verified history`;
+
+  return (
+    <div className="gv-mobile-app-stack md:hidden">
+      {error ? <div className="rounded-[16px] border border-[#E53935]/20 bg-[#E53935]/5 p-3 text-xs font-semibold text-[#B42318]">{error}</div> : null}
+
+      <section className="px-0.5 pt-1">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[12px] font-medium text-[#6B7280]">Total Portfolio Value</p>
+            <p className="gv-private-value mt-1 font-heading text-[2.1rem] font-bold leading-none tracking-[-.03em] text-[#0B0B0F]">{formatCurrency(summary.current)}</p>
+            <p className={`mt-2 inline-flex items-center gap-1 text-[12px] font-bold ${displayGain >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>{displayGain >= 0 ? <TrendingUp size={14} strokeWidth={1.55} /> : <TrendingDown size={14} strokeWidth={1.55} />}<span className="gv-private-value">{displayGain >= 0 ? "+" : ""}{formatCurrency(displayGain)} ({gainPercent >= 0 ? "+" : ""}{gainPercent.toFixed(1)}%)</span></p>
+          </div>
+          <div className="pt-1"><ReconciliationBadge status={intelligence?.status || snapshot?.reconciliationStatus} portal /></div>
+        </div>
+
+        <div className="mt-5 flex items-center gap-1 rounded-[14px] bg-[#F4F6F9] p-1">
+          {["1M", "3M", "6M", "1Y", "All"].map((item) => <button key={item} type="button" aria-pressed={range === item} onClick={() => setRange(item)} className={`min-h-8 flex-1 rounded-[10px] text-[10px] font-bold transition ${range === item ? "bg-[#1F4ED8] text-white shadow-sm" : "text-[#6B7280]"}`}>{item}</button>)}
+        </div>
+        <div className="mt-4 min-h-[140px] overflow-hidden bg-white">
+          <MobileLineChart points={trend} height={132} showDots={trend.length <= 8} />
+        </div>
+        {trendLabels.length ? <div className="mt-1 flex items-center justify-between text-[10px] text-[#6B7280]">{trendLabels.map((item, index) => <span key={`${item.date || item.label}-${index}`}>{mobileTrendDateLabel(item.date)}</span>)}</div> : null}
+        <div className="mt-2 flex items-center justify-between gap-3 text-[10px] text-[#6B7280]"><span>{rangeDescription}</span><span>{snapshot?.snapshotDate ? `Verified ${formatDate(snapshot.snapshotDate)}` : "Latest"}</span></div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2.5">
+          <div className="rounded-[16px] bg-[#F4F6F9] p-3.5"><p className="text-[11px] text-[#6B7280]">Amount Invested</p><p className="gv-private-value mt-1 font-heading text-[1.05rem] font-bold text-[#0B0B0F]">{formatCurrency(summary.invested)}</p></div>
+          <div className="rounded-[16px] bg-[#F4F6F9] p-3.5"><p className="text-[11px] text-[#6B7280]">Gain / Loss vs invested</p><p className={`gv-private-value mt-1 font-heading text-[1.05rem] font-bold ${displayGain >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>{displayGain >= 0 ? "+" : ""}{formatCurrency(displayGain)}</p><p className={`mt-0.5 text-[10px] font-semibold ${displayGain >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>{gainPercent >= 0 ? "+" : ""}{gainPercent.toFixed(1)}%</p></div>
+        </div>
+      </section>
+
+      {allocation.length ? <section className="border-t border-slate-200 pt-4 gv-mobile-deferred">
+        <div className="flex items-center justify-between gap-3"><div><h2 className="font-heading text-[1.12rem] font-bold text-[#0B0B0F]">Asset Allocation</h2><p className="mt-0.5 text-[11px] text-[#6B7280]">Where your money is invested</p></div><span className="text-[10px] font-medium text-[#6B7280]">{positions.length} holdings</span></div>
+        <div className="mt-4 flex items-center gap-5"><MobileDonutChart segments={allocation.slice(0, 6)} size={126} centerValue={formatCurrency(summary.current)} privateValue centerLabel="Total" /><div className="min-w-0 flex-1 space-y-2.5">{allocation.slice(0, 5).map((item) => <div key={item.label} className="flex items-center gap-2"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} /><span className="min-w-0 flex-1 truncate text-[11px] font-medium text-[#6B7280]">{item.label}</span><strong className="text-[11px] text-[#0B0B0F]">{(Number(item.value || 0) / allocationTotal * 100).toFixed(0)}%</strong></div>)}</div></div>
+      </section> : null}
+
+      {Number(goalHealth?.allocationPercentage || 0) > 0 || freshInvestment || marketMovement ? <section className="border-t border-slate-200 pt-4 gv-mobile-deferred">
+        <h2 className="font-heading text-[1.12rem] font-bold text-[#0B0B0F]">Portfolio Snapshot</h2>
+        <div className="mt-3 grid grid-cols-3 divide-x divide-slate-200 rounded-[16px] bg-[#F4F6F9] py-3">
+          <div className="px-2"><p className="text-[10px] text-[#6B7280]">Fresh money</p><p className="gv-private-value mt-1 truncate text-[11px] font-bold text-[#0B0B0F]">{formatCurrency(freshInvestment)}</p></div>
+          <div className="px-2"><p className="text-[10px] text-[#6B7280]">Market move</p><p className={`gv-private-value mt-1 truncate text-[11px] font-bold ${marketMovement >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>{marketMovement >= 0 ? "+" : ""}{formatCurrency(marketMovement)}</p></div>
+          <div className="px-2"><p className="text-[10px] text-[#6B7280]">To Bucket List</p><p className="mt-1 truncate text-[11px] font-bold text-[#0B0B0F]">{Number(goalHealth?.allocationPercentage || 0).toFixed(0)}%</p></div>
+        </div>
+      </section> : null}
+
+      <section className="gv-mobile-deferred">
+        <div className="mb-2.5 flex items-end justify-between gap-3"><div><h2 className="font-heading text-[1.12rem] font-bold text-[#0B0B0F]">Top Holdings</h2><p className="mt-0.5 text-[11px] text-[#6B7280]">What you own</p></div>{sortedHoldings.length > 5 ? <button type="button" onClick={() => setShowAllHoldings((value) => !value)} className="text-[11px] font-bold text-[#1F4ED8]">{showAllHoldings ? "Top 5" : "See all"}</button> : null}</div>
+        {top.length ? <div className="overflow-hidden rounded-[18px] border border-slate-200 bg-white">{top.map((position, index) => {
+          const value = Number(position.currentValue || 0);
+          const gain = Number(position.gainLoss || 0);
+          const pct = summary.current > 0 ? value / summary.current * 100 : 0;
+          return <Link key={position.id} href={`/investor/portfolio/${position.id}`} className={`flex min-h-[70px] items-center gap-3 px-4 py-3 active:bg-[#F4F6F9] ${index ? "border-t border-slate-100" : ""}`}><span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#F4F6F9] text-[#1F4ED8]"><WalletCards size={17} strokeWidth={1.5} /></span><div className="min-w-0 flex-1"><p className="line-clamp-1 text-[12px] font-bold text-[#0B0B0F]">{position.instrumentName || position.schemeName || position.stockName || position.fundName || "Investment"}</p><p className="mt-0.5 text-[10px] text-[#6B7280]">{mobileAssetLabel(position)} · {pct.toFixed(1)}% of portfolio</p></div><div className="shrink-0 text-right"><p className="gv-private-value font-heading text-[12px] font-bold text-[#0B0B0F]">{formatCurrency(value)}</p><p className={`gv-private-value mt-0.5 text-[9px] font-semibold ${gain >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>{gain >= 0 ? "+" : ""}{formatCurrency(gain)}</p></div><ChevronRight size={16} strokeWidth={1.5} className="shrink-0 text-slate-300" /></Link>;
+        })}</div> : <MobileEmptyState icon={WalletCards} title="No verified holdings yet" copy="Your holdings will appear here after the Portfolio Master is updated." />}
+      </section>
+
+      {Number(tradingSummary?.net || 0) !== 0 || Number(tradingSummary?.gross || 0) !== 0 ? <section className="border-t border-slate-200 pt-4 gv-mobile-deferred"><h2 className="font-heading text-[1.12rem] font-bold text-[#0B0B0F]">Trading Account</h2><p className="mt-0.5 text-[11px] text-[#6B7280]">Intraday activity stays separate from your long-term wealth.</p><div className="mt-3 grid grid-cols-3 divide-x divide-slate-200 rounded-[16px] bg-[#F4F6F9] py-3"><div className="px-2"><p className="text-[10px] text-[#6B7280]">Gross P&L</p><p className="gv-private-value mt-1 text-[11px] font-bold text-[#0B0B0F]">{formatCurrency(tradingSummary.gross)}</p></div><div className="px-2"><p className="text-[10px] text-[#6B7280]">Charges</p><p className="gv-private-value mt-1 text-[11px] font-bold text-[#0B0B0F]">{formatCurrency(tradingSummary.charges)}</p></div><div className="px-2"><p className="text-[10px] text-[#6B7280]">Net</p><p className={`gv-private-value mt-1 text-[11px] font-bold ${Number(tradingSummary.net || 0) >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>{formatCurrency(tradingSummary.net)}</p></div></div></section> : null}
+    </div>
+  );
+}
+
 function UlipPolicyCard({ policy, funds = [] }) {
   const linkedGoals = [...new Set(funds.flatMap((item) => (item.goalAllocations || []).map((goal) => goal?.goalName).filter(Boolean)))];
   return (
-    <article className={`rounded-xl border bg-white p-4 sm:p-5 ${selected ? "border-red-300 ring-2 ring-red-100" : "border-slate-200"}`}>
-      {selectionMode ? <label className="mb-3 flex cursor-pointer items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700"><input type="checkbox" checked={selected} onChange={() => onToggle?.(position.id)} className="h-4 w-4 accent-red-600" /> Select this investment for cleanup</label> : null}
+    <article className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -300,7 +412,7 @@ function PositionCard({ position, investor, editable, portal, busyId, onGoalChan
   );
 }
 
-function DeliverySaleForm({ position, onClose }) {
+function DeliverySaleForm({ position, onClose, onSaved }) {
   const [form, setForm] = useState({ sellDate: new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -310,6 +422,7 @@ function DeliverySaleForm({ position, onClose }) {
     setBusy(true); setError("");
     try {
       await recordDeliverySale(position.id, form);
+      await onSaved?.();
       onClose();
     } catch (nextError) {
       setError(nextError.message || "Unable to record delivery sale.");
@@ -346,17 +459,18 @@ function ManualHoldingForm({ investor, onClose, onSaved }) {
     </div><div className="mt-5 flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={save} disabled={busy}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Save Holding</Button></div></Card>;
 }
 
-function IntradayForm({ investor, onClose }) {
-  const [form, setForm] = useState({ provider: "Bajaj Broking", exchange: "NSE", tradeDate: new Date().toISOString().slice(0, 10) });
+function IntradayForm({ investor, onClose, onSaved }) {
+  const [form, setForm] = useState({ provider: "Bajaj Broking", exchange: "NSE", tradeDate: businessDateKey() });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const set = (field, value) => setForm((current) => ({ ...current, [field]: value }));
-  async function save() { setBusy(true); setError(""); try { await createManualIntradayTrade({ investorId: investor.id, ...form }); onClose(); } catch (nextError) { setError(nextError.message || "Unable to save trade."); } finally { setBusy(false); } }
+  async function save() { setBusy(true); setError(""); try { await createManualIntradayTrade({ investorId: investor.id, ...form }); await onSaved?.(); onClose(); } catch (nextError) { setError(nextError.message || "Unable to save trade."); } finally { setBusy(false); } }
   return <Card className="border-amber-200 bg-amber-50/20 p-5"><div className="flex items-start justify-between"><div><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-700">Bajaj Broking</p><h3 className="mt-1 font-heading text-xl font-bold text-slate-950">Add closed intraday trade</h3></div><button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white"><X size={16} /></button></div>{error ? <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}<div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4"><Field label="Trade Date"><input type="date" className={inputClassName} value={form.tradeDate} onChange={(e) => set("tradeDate", e.target.value)} /></Field><Field label="Stock"><input className={inputClassName} value={form.stockName || ""} onChange={(e) => set("stockName", e.target.value)} /></Field><Field label="Symbol"><input className={inputClassName} value={form.symbol || ""} onChange={(e) => set("symbol", e.target.value)} /></Field><Field label="Quantity"><input type="number" className={inputClassName} value={form.quantity || ""} onChange={(e) => set("quantity", e.target.value)} /></Field><Field label="Buy Rate"><input type="number" className={inputClassName} value={form.buyRate || ""} onChange={(e) => set("buyRate", e.target.value)} /></Field><Field label="Sell Rate"><input type="number" className={inputClassName} value={form.sellRate || ""} onChange={(e) => set("sellRate", e.target.value)} /></Field><Field label="Brokerage"><input type="number" className={inputClassName} value={form.brokerage || ""} onChange={(e) => set("brokerage", e.target.value)} /></Field><Field label="STT"><input type="number" className={inputClassName} value={form.stt || ""} onChange={(e) => set("stt", e.target.value)} /></Field><Field label="Exchange Charges"><input type="number" className={inputClassName} value={form.exchangeCharges || ""} onChange={(e) => set("exchangeCharges", e.target.value)} /></Field><Field label="GST"><input type="number" className={inputClassName} value={form.gst || ""} onChange={(e) => set("gst", e.target.value)} /></Field><Field label="Stamp Duty"><input type="number" className={inputClassName} value={form.stampDuty || ""} onChange={(e) => set("stampDuty", e.target.value)} /></Field><Field label="Other Charges"><input type="number" className={inputClassName} value={form.otherCharges || ""} onChange={(e) => set("otherCharges", e.target.value)} /></Field></div><div className="mt-5 flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={save} disabled={busy}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Save Trade</Button></div></Card>;
 }
 
 export default function InvestorPortfolioPanel({ investor, editable = false, portal = false }) {
   const { profile } = useAuth();
+  const [portfolioInvestor, setPortfolioInvestor] = useState(null);
   const [positions, setPositions] = useState([]);
   const [ulipPolicies, setUlipPolicies] = useState([]);
   const [snapshots, setSnapshots] = useState([]);
@@ -377,49 +491,46 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [sipPosition, setSipPosition] = useState(null);
 
-  useEffect(() => subscribeInvestorPortfolio(
-    investor?.id,
-    profile,
-    (items) => { setPositions(items); setLoading(false); },
-    (nextError) => { console.error(nextError); setError("Unable to load portfolio positions."); setLoading(false); }
-  ), [investor?.id, profile]);
+  const loadPortfolio = useCallback(async ({ quiet = false } = {}) => {
+    if (!investor?.id) {
+      setPortfolioInvestor(null);
+      setPositions([]);
+      setUlipPolicies([]);
+      setSnapshots([]);
+      setTransactions([]);
+      setTrades([]);
+      setManualAccounts([]);
+      setLoading(false);
+      return;
+    }
+    if (!quiet) setLoading(true);
+    setError("");
+    try {
+      const result = await getInvestorPortfolioView(investor.id);
+      setPortfolioInvestor(result.investor || null);
+      setPositions(result.positions || []);
+      setUlipPolicies(result.ulipPolicies || []);
+      setSnapshots(result.snapshots || []);
+      setTransactions(result.transactions || []);
+      setTrades(result.trades || []);
+      setManualAccounts(result.manualAccounts || []);
+    } catch (nextError) {
+      console.error("Unable to load investor portfolio", nextError);
+      setError(nextError.message || "Unable to load investor portfolio.");
+    } finally {
+      setLoading(false);
+    }
+  }, [investor?.id]);
 
-  useEffect(() => subscribeInvestorUlipPolicies(
-    investor?.id,
-    profile,
-    setUlipPolicies,
-    (nextError) => console.error("Unable to load ULIP policies", nextError)
-  ), [investor?.id, profile]);
+  useEffect(() => {
+    let active = true;
+    loadPortfolio().catch((nextError) => {
+      if (active) console.error("Unable to initialise investor portfolio", nextError);
+    });
+    return () => { active = false; };
+  }, [loadPortfolio]);
 
-  useEffect(() => subscribePortfolioSnapshotHistory(
-    investor?.id,
-    profile,
-    setSnapshots,
-    (nextError) => console.error("Unable to load portfolio snapshot history", nextError),
-    70
-  ), [investor?.id, profile]);
-
-  useEffect(() => subscribeRecentInvestmentTransactions(
-    investor?.id,
-    profile,
-    setTransactions,
-    (nextError) => console.error("Unable to load portfolio transaction history", nextError),
-    300
-  ), [investor?.id, profile]);
-
-  useEffect(() => subscribeInvestorTrading(
-    investor?.id,
-    profile,
-    setTrades,
-    (nextError) => console.error("Unable to load trading history", nextError)
-  ), [investor?.id, profile]);
-
-  useEffect(() => subscribeManualPortfolioAccounts(
-    investor?.id,
-    profile,
-    setManualAccounts,
-    (nextError) => console.error("Unable to load Manual Portfolio accounts", nextError)
-  ), [investor?.id, profile]);
+  const effectiveInvestor = useMemo(() => ({ ...(investor || {}), ...(portfolioInvestor || {}) }), [investor, portfolioInvestor]);
 
   const snapshot = snapshots[0] || null;
   const previousSnapshot = snapshots.find((item, index) => index > 0 && String(item.snapshotDate || "") < String(snapshot?.snapshotDate || "")) || null;
@@ -436,16 +547,20 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
         .map((item) => [String(item.policyNumber).toUpperCase(), Number(item.policyTotalPremiumPaid || 0)])).values()]
         .reduce((sum, value) => sum + Number(value || 0), 0);
     const invested = regularInvested + policyPremium;
-    const gain = positions.reduce((sum, item) => {
+    const positionGain = positions.reduce((sum, item) => {
       if (item.productType === PORTFOLIO_PRODUCT_TYPES.ULIP && item.gainLossAvailable === false) return sum;
       return sum + Number(item.gainLoss || 0);
     }, 0);
-    const gainPartial = positions.some((item) => item.productType === PORTFOLIO_PRODUCT_TYPES.ULIP && item.gainLossAvailable === false);
+    // Current value and invested amount are the two portfolio-level source-of-truth
+    // figures shown to the investor. Derive the portfolio-level gain/loss from
+    // those totals so the three displayed numbers can never contradict each other.
+    const gain = invested > 0 ? current - invested : positionGain;
+    const gainPartial = false;
     const monthlySip = positions.reduce((sum, item) => sum + Number(item.monthlySip || 0), 0);
     return { current, invested, gain, gainPartial, monthlySip };
   }, [positions, ulipPolicies]);
 
-  const goals = useMemo(() => goalRows(investor), [investor]);
+  const goals = useMemo(() => goalRows(effectiveInvestor), [effectiveInvestor]);
   const availableSources = useMemo(() => [...new Set(positions.map((item) => item.source || "manual"))].sort(), [positions]);
   const visible = useMemo(() => positions.filter((item) => {
     const productMatches = filter === "all"
@@ -616,6 +731,7 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
     setError("");
     try {
       await updatePortfolioGoal(positionId, goalId);
+      await loadPortfolio({ quiet: true });
     } catch (nextError) {
       setError(nextError.message || "Unable to update goal allocation.");
     } finally {
@@ -626,7 +742,9 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
   if (loading) return <div className="grid gap-4"><div className="h-32 animate-pulse rounded-xl bg-slate-100" /><div className="h-64 animate-pulse rounded-xl bg-slate-100" /></div>;
 
   return (
-    <div className="grid gap-5">
+    <>
+      {portal ? <MobilePortfolioAppView summary={summary} positions={positions} snapshots={snapshots} snapshot={snapshot} movement={movement} monthComparison={monthComparison} goalHealth={goalHealth} intelligence={intelligence} tradingSummary={tradingSummary} error={error} /> : null}
+      <div className={`${portal ? "hidden md:grid" : "grid"} gap-5`}>
       {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
@@ -727,15 +845,54 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
             <ReconciliationBadge status={displayReconciliationStatus} portal={portal} />
           </div>
         </div>
-        <div className="grid gap-4 p-5 sm:p-6">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid gap-4 p-4 sm:p-6">
+          {/* Phone-first intelligence hierarchy: one lead movement card, then compact supporting facts. */}
+          <div className="grid gap-3 md:hidden">
+            <div className="gv-mobile-brand-panel rounded-[20px] border p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[9px] font-black uppercase tracking-[0.12em] text-[var(--gv-blue)]">Monthly movement</p>
+                  <p className={`mt-1 font-heading text-2xl font-bold ${Number(monthComparison?.change || 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}>{monthComparison ? formatCurrency(monthComparison.change) : "—"}</p>
+                  <p className="mt-1 text-[11px] leading-4 text-slate-500">{monthComparison ? `${percent(monthComparison.changePercentage)} vs ${formatDate(monthComparison.from)}` : "Available after a previous-month snapshot"}</p>
+                </div>
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-[var(--gv-blue)] shadow-sm"><TrendingUp size={17} /></span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="gv-mobile-cyan-soft rounded-[18px] border p-3.5">
+                <p className="text-[9px] font-black uppercase tracking-[0.09em] text-[var(--gv-blue)]">Holding changes</p>
+                <p className="mt-1.5 font-heading text-lg font-bold text-[var(--gv-ink)]">{Number(intelligence?.counts?.newHoldings || 0)} new · {Number(intelligence?.counts?.exitedHoldings || 0)} exited</p>
+                <p className="mt-1 text-[11px] leading-4 text-slate-500">{Number(intelligence?.counts?.partialExits || 0)} partial exit/reduction{Number(intelligence?.counts?.partialExits || 0) === 1 ? "" : "s"}</p>
+              </div>
+              <div className="gv-mobile-brand-soft rounded-[18px] border p-3.5">
+                <p className="text-[9px] font-black uppercase tracking-[0.09em] text-[var(--gv-blue)]">Largest asset class</p>
+                <p className="gv-mobile-wrap mt-1.5 font-heading text-lg font-bold leading-tight text-[var(--gv-ink)]">{intelligence?.concentration?.largestAssetClass?.name || "—"}</p>
+                <p className="mt-1 text-[11px] leading-4 text-slate-500">{intelligence?.concentration?.largestAssetClass ? `${Number(intelligence.concentration.largestAssetClass.percentage || 0).toFixed(1)}% of portfolio` : "No allocation data"}</p>
+              </div>
+              <div className="col-span-2 rounded-[18px] border border-[var(--gv-border)] bg-white p-3.5">
+                <p className="text-[9px] font-black uppercase tracking-[0.09em] text-slate-400">Largest holding</p>
+                <p className="gv-mobile-wrap mt-1.5 font-heading text-base font-bold leading-5 text-[var(--gv-ink)]">{intelligence?.concentration?.largestHolding?.instrumentName || "—"}</p>
+                <p className="mt-1 text-[11px] text-slate-500">{intelligence?.concentration?.largestHolding ? `${Number(intelligence.concentration.largestHolding.percentage || 0).toFixed(1)}% of portfolio` : "No concentration data"}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="hidden grid-cols-2 gap-3 md:grid lg:grid-cols-4">
             <div className="rounded-xl bg-slate-50 p-4"><p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Month-on-Month</p><p className={`mt-2 font-heading text-xl font-bold ${Number(monthComparison?.change || 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}>{monthComparison ? formatCurrency(monthComparison.change) : "—"}</p><p className="mt-1 text-xs text-slate-500">{monthComparison ? `${percent(monthComparison.changePercentage)} vs ${formatDate(monthComparison.from)}` : "Available after previous-month snapshot"}</p></div>
             <div className="rounded-xl bg-blue-50 p-4"><p className="text-[9px] font-bold uppercase tracking-wide text-blue-600">Holding Changes</p><p className="mt-2 font-heading text-xl font-bold text-blue-950">{Number(intelligence?.counts?.newHoldings || 0)} new · {Number(intelligence?.counts?.exitedHoldings || 0)} exited</p><p className="mt-1 text-xs text-blue-700">{Number(intelligence?.counts?.partialExits || 0)} partial exit/reduction{Number(intelligence?.counts?.partialExits || 0) === 1 ? "" : "s"}</p></div>
             <div className="rounded-xl bg-slate-50 p-4"><p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Largest Holding</p><p className="mt-2 truncate font-heading text-lg font-bold text-slate-950">{intelligence?.concentration?.largestHolding?.instrumentName || "—"}</p><p className="mt-1 text-xs text-slate-500">{intelligence?.concentration?.largestHolding ? `${Number(intelligence.concentration.largestHolding.percentage || 0).toFixed(1)}% of portfolio` : "No concentration data"}</p></div>
             <div className="rounded-xl bg-slate-50 p-4"><p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Largest Asset Class</p><p className="mt-2 font-heading text-lg font-bold text-slate-950">{intelligence?.concentration?.largestAssetClass?.name || "—"}</p><p className="mt-1 text-xs text-slate-500">{intelligence?.concentration?.largestAssetClass ? `${Number(intelligence.concentration.largestAssetClass.percentage || 0).toFixed(1)}% of portfolio` : "No allocation data"}</p></div>
           </div>
 
-          {monthComparison ? <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {monthComparison ? <div className="grid grid-cols-2 gap-2.5 md:hidden">
+            <div className="rounded-[17px] border border-[var(--gv-border)] bg-white p-3"><p className="text-[9px] font-black uppercase tracking-wide text-slate-400">Previous value</p><p className="mt-1 text-sm font-bold text-[var(--gv-ink)]">{formatCurrency(monthComparison.openingValue)}</p></div>
+            <div className="gv-mobile-cyan-soft rounded-[17px] border p-3"><p className="text-[9px] font-black uppercase tracking-wide text-[var(--gv-blue)]">Fresh investment</p><p className="mt-1 text-sm font-bold text-[var(--gv-ink)]">{formatCurrency(monthComparison.newMoney)}</p></div>
+            <div className="gv-mobile-yellow-soft rounded-[17px] border p-3"><p className="text-[9px] font-black uppercase tracking-wide text-amber-700">Withdrawals</p><p className="mt-1 text-sm font-bold text-[var(--gv-ink)]">{formatCurrency(monthComparison.withdrawals)}</p></div>
+            <div className="gv-mobile-brand-soft rounded-[17px] border p-3"><p className="text-[9px] font-black uppercase tracking-wide text-[var(--gv-blue)]">Investment movement</p><p className={`mt-1 text-sm font-bold ${monthComparison.marketMovement >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatCurrency(monthComparison.marketMovement)}</p></div>
+          </div> : null}
+
+          {monthComparison ? <div className="hidden grid-cols-2 gap-3 md:grid md:grid-cols-4">
             <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Previous Month Value</p><p className="mt-1 text-sm font-bold text-slate-900">{formatCurrency(monthComparison.openingValue)}</p></div>
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3"><p className="text-[9px] font-bold uppercase tracking-wide text-emerald-700">Fresh Investment</p><p className="mt-1 text-sm font-bold text-emerald-950">{formatCurrency(monthComparison.newMoney)}</p></div>
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3"><p className="text-[9px] font-bold uppercase tracking-wide text-amber-700">Withdrawals</p><p className="mt-1 text-sm font-bold text-amber-950">{formatCurrency(monthComparison.withdrawals)}</p></div>
@@ -745,7 +902,7 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
           {intelligence?.priceMovements?.length ? <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">NAV / Price changes since previous verified snapshot</p>
             <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-              {intelligence.priceMovements.slice(0, 6).map((item) => <div key={item.positionId} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3"><div className="min-w-0"><p className="truncate text-xs font-bold text-slate-900">{item.instrumentName}</p><p className="mt-1 text-[10px] text-slate-500">{item.previousDate ? formatDate(item.previousDate) : "Previous"} → {item.currentDate ? formatDate(item.currentDate) : "Current"}</p></div><div className="text-right"><p className={`text-sm font-black ${Number(item.changePercentage || 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}>{percent(item.changePercentage)}</p><p className="mt-1 text-[10px] text-slate-500">₹{Number(item.currentRate || 0).toLocaleString("en-IN", { maximumFractionDigits: 4 })}</p></div></div>)}
+              {intelligence.priceMovements.slice(0, 6).map((item) => <div key={item.positionId} className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3"><div className="min-w-0"><p className="gv-mobile-wrap text-xs font-bold leading-4 text-slate-900 md:truncate">{item.instrumentName}</p><p className="mt-1 text-[10px] text-slate-500">{item.previousDate ? formatDate(item.previousDate) : "Previous"} → {item.currentDate ? formatDate(item.currentDate) : "Current"}</p></div><div className="shrink-0 text-right"><p className={`text-sm font-black ${Number(item.changePercentage || 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}>{percent(item.changePercentage)}</p><p className="mt-1 text-[10px] text-slate-500">₹{Number(item.currentRate || 0).toLocaleString("en-IN", { maximumFractionDigits: 4 })}</p></div></div>)}
             </div>
           </div> : null}
 
@@ -763,20 +920,20 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
         <div className="grid gap-3 p-5">{ulipPolicies.map((policy) => <UlipPolicyCard key={policy.id} policy={policy} funds={positions.filter((item) => item.productType === PORTFOLIO_PRODUCT_TYPES.ULIP && String(item.policyNumber || "") === String(policy.policyNumber || ""))} />)}</div>
       </Card> : null}
 
-      {editable && addHolding ? <ManualHoldingForm investor={investor} onClose={() => setAddHolding(false)} /> : null}
-      {editable && salePosition ? <DeliverySaleForm position={salePosition} onClose={() => setSalePosition(null)} /> : null}
+      {editable && addHolding ? <ManualHoldingForm investor={effectiveInvestor} onClose={() => setAddHolding(false)} onSaved={() => loadPortfolio({ quiet: true })} /> : null}
+      {editable && salePosition ? <DeliverySaleForm position={salePosition} onClose={() => setSalePosition(null)} onSaved={() => loadPortfolio({ quiet: true })} /> : null}
 
       <Card className="overflow-hidden">
         <div className="flex flex-col justify-between gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-center">
           <div><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">Investment Portfolio</p><h2 className="mt-1 font-heading text-2xl font-bold text-slate-950">Latest holdings</h2><p className="mt-1 text-sm text-slate-500">See investment type, SIP/Lump Sum mode, latest NAV or market rate, source freshness and the Goal / Bucket List linked to each holding.</p></div>
           {editable ? <div className="flex flex-wrap gap-2">
-            {canAdministerPortfolio ? <Link href={`/investors/${investor.id}/portfolio-admin`} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50"><Settings2 size={16} /> Portfolio Administration</Link> : null}
+            {canAdministerPortfolio ? <Link href={`/investors/${effectiveInvestor.id}/portfolio-admin`} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50"><Settings2 size={16} /> Portfolio Administration</Link> : null}
             <Button type="button" onClick={() => setAddHolding((value) => !value)}><Plus size={16} /> Add Holding</Button>
           </div> : null}
         </div>
         <div className="p-5">
           <div className="mb-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px_220px] xl:items-center">
-            <div className="flex flex-wrap gap-2">{FILTERS.map(([value, label]) => <button key={value} type="button" onClick={() => setFilter(value)} className={`min-h-9 rounded-full px-3 text-xs font-bold ${filter === value ? "bg-blue-700 text-white" : "border border-slate-200 bg-white text-slate-600"}`}>{label}</button>)}</div>
+            <div className="gv-mobile-scroll -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">{FILTERS.map(([value, label]) => <button key={value} type="button" onClick={() => setFilter(value)} className={`min-h-9 shrink-0 rounded-full px-3 text-xs font-bold ${filter === value ? "bg-blue-700 text-white" : "border border-slate-200 bg-white text-slate-600"}`}>{label}</button>)}</div>
             <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} className={inputClassName}>
               <option value="all">All Sources</option>
               {availableSources.map((source) => <option key={source} value={source}>{PORTFOLIO_SOURCE_LABELS[source] || source}</option>)}
@@ -800,17 +957,17 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
             </div>
           </div> : null}
 
-          <div className="grid gap-3">{visible.length ? visible.map((position) => <PositionCard key={position.id} position={position} investor={investor} editable={editable} portal={portal} busyId={goalBusyId} onGoalChange={changeGoal} onSell={setSalePosition} onSipReminder={setSipPosition} selectionMode={manageMode} selected={selectedSet.has(String(position.id))} onToggle={toggleSelection} />) : <EmptyState title="No portfolio holdings" description={portal ? "No holdings match this filter. Your verified portfolio appears here after GrowVest updates the Portfolio Master." : "Import portfolio data or add a holding manually."} />}</div>
+          <div className="grid gap-3">{visible.length ? visible.map((position) => <PositionCard key={position.id} position={position} investor={effectiveInvestor} editable={editable} portal={portal} busyId={goalBusyId} onGoalChange={changeGoal} onSell={setSalePosition} onSipReminder={setSipPosition} selectionMode={manageMode} selected={selectedSet.has(String(position.id))} onToggle={toggleSelection} />) : <EmptyState title="No portfolio holdings" description={portal ? "No holdings match this filter. Your verified portfolio appears here after GrowVest updates the Portfolio Master." : "Import portfolio data or add a holding manually."} />}</div>
         </div>
       </Card>
 
-      {sipPosition ? <SipFundingScheduleDialog open={Boolean(sipPosition)} onClose={() => setSipPosition(null)} investor={investor} position={sipPosition} /> : null}
+      {sipPosition ? <SipFundingScheduleDialog open={Boolean(sipPosition)} onClose={() => setSipPosition(null)} investor={effectiveInvestor} position={sipPosition} /> : null}
 
       {cleanupOpen ? <InvestorPortfolioBulkCleanupDialog
         open={cleanupOpen}
         onClose={() => setCleanupOpen(false)}
-        onCompleted={() => { setCleanupOpen(false); setManageMode(false); setSelectedPositionIds([]); }}
-        investor={investor}
+        onCompleted={() => { setCleanupOpen(false); setManageMode(false); setSelectedPositionIds([]); loadPortfolio({ quiet: true }); }}
+        investor={effectiveInvestor}
         positions={positions}
         selectedIds={selectedPositionIds}
       /> : null}
@@ -824,7 +981,7 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
         })}</div>
       </Card> : null}
 
-      {editable && addTrade ? <IntradayForm investor={investor} onClose={() => setAddTrade(false)} /> : null}
+      {editable && addTrade ? <IntradayForm investor={effectiveInvestor} onClose={() => setAddTrade(false)} onSaved={() => loadPortfolio({ quiet: true })} /> : null}
 
       <Card className="overflow-hidden">
         <div className="flex flex-col justify-between gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-center">
@@ -838,10 +995,19 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
             <div className="rounded-xl bg-amber-50 p-4"><p className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Charges</p><p className="mt-2 font-heading text-xl font-bold text-amber-950">{formatCurrency(tradingSummary.charges)}</p></div>
             <div className={`rounded-xl p-4 ${tradingSummary.net >= 0 ? "bg-blue-50" : "bg-red-50"}`}><p className={`text-[10px] font-bold uppercase tracking-wide ${tradingSummary.net >= 0 ? "text-blue-600" : "text-red-600"}`}>Net Realised P&L</p><p className="mt-2 font-heading text-xl font-bold text-slate-950">{formatCurrency(tradingSummary.net)}</p></div>
           </div>
-          {trades.length ? <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="border-y border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-3">Date</th><th className="px-3 py-3">Stock</th><th className="px-3 py-3 text-right">Qty</th><th className="px-3 py-3 text-right">Buy</th><th className="px-3 py-3 text-right">Sell</th><th className="px-3 py-3 text-right">Charges</th><th className="px-3 py-3 text-right">Net P&L</th></tr></thead><tbody className="divide-y divide-slate-100">{trades.slice(0, 30).map((trade) => <tr key={trade.id}><td className="px-3 py-3 text-slate-600">{formatDate(trade.tradeDate)}</td><td className="px-3 py-3 font-semibold text-slate-900">{trade.stockName || trade.symbol}</td><td className="px-3 py-3 text-right">{Number(trade.quantity || 0).toLocaleString("en-IN")}</td><td className="px-3 py-3 text-right">{formatCurrency(trade.buyRate)}</td><td className="px-3 py-3 text-right">{formatCurrency(trade.sellRate)}</td><td className="px-3 py-3 text-right">{formatCurrency(trade.totalCharges)}</td><td className={`px-3 py-3 text-right font-bold ${Number(trade.netPnl || 0) >= 0 ? "text-emerald-600" : "text-red-600"}`}>{formatCurrency(trade.netPnl)}</td></tr>)}</tbody></table></div> : <EmptyState title="No intraday trades recorded" description="Bajaj Trade Book import will populate this automatically once its exact file format is mapped. Manual entry is available to staff meanwhile." />}
+          {trades.length ? <>
+            <div className="grid gap-2.5 sm:hidden">
+              {trades.slice(0, 30).map((trade) => <article key={trade.id} className="rounded-xl border border-slate-200 bg-white p-3.5">
+                <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-950">{trade.stockName || trade.symbol}</p><p className="mt-0.5 text-[11px] text-slate-500">{formatDate(trade.tradeDate)} · Qty {Number(trade.quantity || 0).toLocaleString("en-IN")}</p></div><p className={`shrink-0 font-heading text-base font-bold ${Number(trade.netPnl || 0) >= 0 ? "text-emerald-600" : "text-red-600"}`}>{formatCurrency(trade.netPnl)}</p></div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-xs"><div className="rounded-lg bg-slate-50 p-2.5"><p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Buy</p><p className="mt-1 font-semibold text-slate-800">{formatCurrency(trade.buyRate)}</p></div><div className="rounded-lg bg-slate-50 p-2.5"><p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Sell</p><p className="mt-1 font-semibold text-slate-800">{formatCurrency(trade.sellRate)}</p></div><div className="rounded-lg bg-amber-50 p-2.5"><p className="text-[9px] font-bold uppercase tracking-wide text-amber-700">Charges</p><p className="mt-1 font-semibold text-amber-950">{formatCurrency(trade.totalCharges)}</p></div></div>
+              </article>)}
+            </div>
+            <div className="hidden overflow-x-auto sm:block"><table className="min-w-full text-left text-sm"><thead className="border-y border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-3">Date</th><th className="px-3 py-3">Stock</th><th className="px-3 py-3 text-right">Qty</th><th className="px-3 py-3 text-right">Buy</th><th className="px-3 py-3 text-right">Sell</th><th className="px-3 py-3 text-right">Charges</th><th className="px-3 py-3 text-right">Net P&L</th></tr></thead><tbody className="divide-y divide-slate-100">{trades.slice(0, 30).map((trade) => <tr key={trade.id}><td className="px-3 py-3 text-slate-600">{formatDate(trade.tradeDate)}</td><td className="px-3 py-3 font-semibold text-slate-900">{trade.stockName || trade.symbol}</td><td className="px-3 py-3 text-right">{Number(trade.quantity || 0).toLocaleString("en-IN")}</td><td className="px-3 py-3 text-right">{formatCurrency(trade.buyRate)}</td><td className="px-3 py-3 text-right">{formatCurrency(trade.sellRate)}</td><td className="px-3 py-3 text-right">{formatCurrency(trade.totalCharges)}</td><td className={`px-3 py-3 text-right font-bold ${Number(trade.netPnl || 0) >= 0 ? "text-emerald-600" : "text-red-600"}`}>{formatCurrency(trade.netPnl)}</td></tr>)}</tbody></table></div>
+          </> : <EmptyState title="No intraday trades recorded" description="Bajaj Trade Book import will populate this automatically once its exact file format is mapped. Manual entry is available to staff meanwhile." />}
         </div>
       </Card>
-    </div>
+      </div>
+    </>
   );
 }
 

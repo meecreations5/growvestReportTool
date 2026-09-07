@@ -8,11 +8,10 @@ import { addLeadFollowUp } from "@/services/leadService";
 import { useAuth } from "@/contexts/AuthContext";
 import Button from "@/components/ui/Button";
 import { Field, inputClassName } from "@/components/ui/Field";
+import { businessDateKey } from "@/lib/utils/date";
 
 function currentLocalDate() {
-  const now = new Date();
-  const offset = now.getTimezoneOffset() * 60000;
-  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+  return businessDateKey();
 }
 
 function initialValues(status) {

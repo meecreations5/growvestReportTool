@@ -14,7 +14,7 @@ import {
   WalletCards
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { subscribeInvestors } from "@/services/assessmentService";
+import { getInvestors } from "@/services/investorListService";
 import { getDataImport, linkDataImportToReport } from "@/services/dataImportService";
 import { getPortfolioReportSource, updatePortfolioGoal } from "@/services/portfolioService";
 import { getInsuranceProtectionSnapshot } from "@/services/insuranceService";
@@ -115,6 +115,16 @@ function reportPortfolioAsOfDate(year, month, statementDate = "") {
   return cutoff;
 }
 
+function hasMeaningfulPortfolioFacts(report = {}) {
+  return Boolean(
+    report.sourcePortfolioSnapshotId
+    || report.sourceImportId
+    || Number(report.summary?.totalCorpus || 0) > 0
+    || (report.holdings || []).some((item) => Number(item.currentValue || 0) > 0)
+    || (report.funds || []).some((item) => Number(item.currentValue || 0) > 0)
+  );
+}
+
 function SectionHeader({ number, title, description, action }) {
   return (
     <div className="flex flex-col justify-between gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center">
@@ -198,10 +208,16 @@ export default function ReportForm({ reportId = null }) {
 
   useEffect(() => {
     if (!profile?.id) return undefined;
-    return subscribeInvestors(profile, setInvestors, (nextError) => {
-      console.error(nextError);
-      setError("Unable to load investors.");
-    });
+    let active = true;
+    getInvestors()
+      .then((items) => {
+        if (active) setInvestors(items);
+      })
+      .catch((nextError) => {
+        console.error(nextError);
+        if (active) setError(nextError?.message || "Unable to load investors.");
+      });
+    return () => { active = false; };
   }, [profile]);
 
   useEffect(() => {
@@ -242,7 +258,11 @@ export default function ReportForm({ reportId = null }) {
         if (!report) throw new Error("Monthly report was not found.");
         if (active) {
           formReadyRef.current = false;
-          corpusTouchedRef.current = true;
+          // Existing reports normally preserve their frozen financial facts. A newly
+          // recreated draft can, however, be saved before Portfolio Master hydration
+          // finishes. Keep that empty draft eligible for automatic source hydration
+          // after the /reports/{id}/edit route remounts.
+          corpusTouchedRef.current = hasMeaningfulPortfolioFacts(report);
           setForm(withReportTemplateDefaults(report));
           setSaveState("saved");
         }
@@ -347,8 +367,18 @@ export default function ReportForm({ reportId = null }) {
     [form.investorId, investorsForSelection]
   );
 
+  const existingDraftNeedsPortfolioHydration = Boolean(
+    reportId
+    && form.status === "draft"
+    && !form.sourcePortfolioSnapshotId
+    && !form.sourceImportId
+    && !activeImportId
+    && ["", "pending", "blocked"].includes(String(form.portfolioVerification?.status || ""))
+    && !hasMeaningfulPortfolioFacts(form)
+  );
+
   useEffect(() => {
-    if ((reportId && portfolioRefreshToken === 0) || !form.investorId || !selectedInvestor || activeImportId || searchParams.get("importId")) {
+    if ((reportId && portfolioRefreshToken === 0 && !existingDraftNeedsPortfolioHydration) || !form.investorId || !selectedInvestor || activeImportId || searchParams.get("importId")) {
       if (!form.investorId) setPortfolioSource(null);
       return undefined;
     }
@@ -435,7 +465,35 @@ export default function ReportForm({ reportId = null }) {
             : `Verified portfolio snapshot as of ${source.snapshot.snapshotDate} populated this report automatically. Review the figures and add advisor recommendations before completion.`);
       } catch (nextError) {
         console.error("Unable to load portfolio report source", nextError);
-        if (active) setPortfolioSource(null);
+        if (active) {
+          const message = nextError?.message || "Unable to load Portfolio Master for this report.";
+          setPortfolioSource(null);
+          setError(message);
+          setForm((current) => ({
+            ...current,
+            portfolioVerification: {
+              required: true,
+              status: "blocked",
+              asOfDate,
+              snapshotId: "",
+              snapshotDate: "",
+              openingSnapshotId: "",
+              openingSnapshotDate: "",
+              checks: [{
+                id: "portfolio_source_access",
+                label: "Portfolio Master access",
+                status: "block",
+                detail: message
+              }],
+              sourceFreshness: [],
+              counts: { holdings: 0, transactions: 0, newHoldings: 0, exitedHoldings: 0, assignedHoldings: 0, generalWealthHoldings: 0 },
+              acknowledged: false,
+              acknowledgedAt: null,
+              acknowledgedByUid: "",
+              acknowledgedByName: ""
+            }
+          }));
+        }
       } finally {
         if (active) setPortfolioSourceLoading(false);
       }
@@ -443,7 +501,7 @@ export default function ReportForm({ reportId = null }) {
 
     loadPortfolioSource();
     return () => { active = false; };
-  }, [activeImportId, form.investorId, form.reportMonth, form.reportYear, form.statementDate, portfolioRefreshToken, profile, reportId, searchParams, selectedInvestor]);
+  }, [activeImportId, existingDraftNeedsPortfolioHydration, form.investorId, form.reportMonth, form.reportYear, form.statementDate, portfolioRefreshToken, profile, reportId, searchParams, selectedInvestor]);
 
   useEffect(() => {
     const importId = searchParams.get("importId");
@@ -1099,10 +1157,14 @@ export default function ReportForm({ reportId = null }) {
       }
       setSaveState("saved");
       setLastSavedAt(new Date());
-      formSignatureRef.current = JSON.stringify(form);
+      setForm((current) => {
+        const next = { ...current, version: Number(saved.version || current.version || 1) };
+        formSignatureRef.current = JSON.stringify(next);
+        return next;
+      });
       if (complete || redirectToPreview) {
         router.push(`/reports/${saved.id}`);
-      } else if (!existingWorkingId) {
+      } else if (!existingWorkingId || saved.id !== existingWorkingId) {
         router.replace(`/reports/${saved.id}/edit?step=${activeStep}`);
       }
       return saved;
@@ -1279,7 +1341,7 @@ export default function ReportForm({ reportId = null }) {
                           {form.portfolioVerification.status === "ready" ? <CheckCircle2 size={19} className="text-emerald-700" /> : <AlertTriangle size={19} className={form.portfolioVerification.status === "blocked" ? "text-red-700" : "text-amber-700"} />}
                           <p className="text-sm font-black text-slate-950">Monthly Portfolio Verification</p>
                         </div>
-                        <p className="mt-1 text-xs leading-5 text-slate-600">Portfolio verification as of {form.portfolioVerification.asOfDate || reportPortfolioAsOfDate(form.reportYear, form.reportMonth, form.statementDate)} · Snapshot {form.portfolioVerification.snapshotDate || "not available"}. A value source older than 7 days is flagged for review; data older than 31 days blocks completion.</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-600">Portfolio verification as of {form.portfolioVerification.asOfDate || reportPortfolioAsOfDate(form.reportYear, form.reportMonth, form.statementDate)} · Snapshot {form.portfolioVerification.snapshotDate || "not available"}{form.portfolioVerification.snapshotCapturedDate && form.portfolioVerification.snapshotCapturedDate !== form.portfolioVerification.snapshotDate ? ` (captured ${form.portfolioVerification.snapshotCapturedDate})` : ""}. A value source older than 7 days is flagged for review; data older than 31 days blocks completion.</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <span className={`inline-flex rounded-full px-3 py-1.5 text-xs font-bold ${form.portfolioVerification.status === "ready" ? "bg-emerald-100 text-emerald-800" : form.portfolioVerification.status === "review_required" ? "bg-amber-100 text-amber-800" : form.portfolioVerification.status === "blocked" ? "bg-red-100 text-red-800" : "bg-slate-100 text-slate-700"}`}>
