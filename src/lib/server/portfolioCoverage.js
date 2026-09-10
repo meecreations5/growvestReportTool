@@ -209,6 +209,8 @@ export async function buildDailyPortfolioCoverage(actor, { dateKey = indiaDateKe
       portfolioValue: Number(investor.latestPortfolioValue || 0),
       portfolioInvested: Number(investor.latestPortfolioInvested || 0),
       portfolioGainLoss: Number(investor.latestPortfolioGainLoss || 0),
+      portfolioGainLossPartial: Boolean(investor.latestPortfolioGainLossPartial),
+      pendingCostBasisCount: Number(investor.latestPortfolioPendingCostBasisCount || 0),
       externalClientName: mapping.externalClientName || "",
       externalPanLast4: String(mapping.externalPan || "").slice(-4)
     };

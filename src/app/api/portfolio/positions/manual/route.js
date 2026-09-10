@@ -41,7 +41,7 @@ export async function POST(request) {
     if (productType === PORTFOLIO_PRODUCT_TYPES.ULIP && source === PORTFOLIO_SOURCES.MANUAL) source = PORTFOLIO_SOURCES.ULIP;
 
     const quantity = number(payload.quantity);
-    const averageBuyRate = number(payload.averageBuyRate || payload.buyRate);
+    let averageBuyRate = number(payload.averageBuyRate || payload.buyRate);
     const currentRate = number(payload.currentRate);
     const totalUnits = number(payload.totalUnits || payload.units);
     const currentNav = number(payload.currentNav || payload.nav);
@@ -54,8 +54,6 @@ export async function POST(request) {
     } else if ([PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND, PORTFOLIO_PRODUCT_TYPES.ULIP].includes(productType)) {
       if (!currentValue && totalUnits && currentNav) currentValue = totalUnits * currentNav;
     }
-    const gainLoss = currentValue - totalInvested;
-    const returnPercentage = totalInvested > 0 ? gainLoss / totalInvested * 100 : 0;
 
     let goalAllocations = [generalWealthAllocation()];
     const goalId = clean(payload.goalId);
@@ -76,6 +74,21 @@ export async function POST(request) {
     });
     const positionRef = adminDb.collection("portfolioPositions").doc(positionId);
     const existing = await positionRef.get();
+    const previous = existing.exists ? existing.data() || {} : {};
+    // Editing a valuation must preserve a previously known purchase cost when
+    // the user only updates Current Rate / NAV / Current Value.
+    if (!(totalInvested > 0) && Number(previous.totalInvested ?? previous.investedAmount ?? 0) > 0) {
+      totalInvested = Number(previous.totalInvested ?? previous.investedAmount ?? 0);
+    }
+    if (!(averageBuyRate > 0)) {
+      averageBuyRate = Number(previous.averageBuyRate ?? previous.averagePurchaseNav ?? 0);
+    }
+    if (!(currentValue > 0) && !(currentRate > 0) && !(currentNav > 0) && Number(previous.currentValue || 0) > 0) {
+      currentValue = Number(previous.currentValue || 0);
+    }
+    const costBasisAvailable = totalInvested > 0;
+    const gainLoss = costBasisAvailable ? currentValue - totalInvested : 0;
+    const returnPercentage = costBasisAvailable ? gainLoss / totalInvested * 100 : 0;
 
     await positionRef.set({
       investorId,
@@ -113,6 +126,9 @@ export async function POST(request) {
       currentValue: Number(currentValue.toFixed(2)),
       gainLoss: Number(gainLoss.toFixed(2)),
       returnPercentage: Number(returnPercentage.toFixed(2)),
+      costBasisAvailable,
+      costBasisStatus: costBasisAvailable ? "available" : "pending",
+      performanceAvailable: costBasisAvailable,
       monthlySip: number(payload.monthlySip),
       premiumAmount: number(payload.premiumAmount),
       premiumFrequency: clean(payload.premiumFrequency),

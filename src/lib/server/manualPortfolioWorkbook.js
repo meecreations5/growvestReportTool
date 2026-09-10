@@ -8,6 +8,7 @@ import {
 } from "@/lib/constants/portfolio";
 import { createPortfolioSnapshot, indiaDateKey } from "@/lib/server/portfolioServer";
 import { stableHash } from "@/lib/server/portfolioImportParser";
+import { summarisePortfolioPerformance } from "@/lib/portfolioPerformance";
 import {
   GENERAL_WEALTH_BUCKET_NAME,
   generalWealthAllocation,
@@ -706,8 +707,9 @@ async function refreshAccountSummaries(investor, actor, batchId) {
     const income = incomeRows.filter((item) => item.accountCode === accountCode);
     const charges = chargeRows.filter((item) => item.accountCode === accountCode);
     const transactions = txRows.filter((item) => item.manualPortfolioAccountCode === accountCode);
-    const investedAmount = round(holdings.reduce((sum, item) => sum + Number(item.totalInvested || item.investedAmount || 0), 0));
-    const currentHoldingsValue = round(holdings.reduce((sum, item) => sum + Number(item.currentValue || 0), 0));
+    const holdingPerformance = summarisePortfolioPerformance(holdings);
+    const investedAmount = round(holdingPerformance.totalInvested);
+    const currentHoldingsValue = round(holdingPerformance.currentValue);
     const cashBalance = round(cash.reduce((sum, item) => sum + Number(item.signedAmount ?? signedCashAmount(item)), 0));
     const currentPortfolioValue = round(currentHoldingsValue + cashBalance);
     const assetClasses = holdings.reduce((totals, item) => {
@@ -716,7 +718,7 @@ async function refreshAccountSummaries(investor, actor, batchId) {
       return totals;
     }, {});
     if (Math.abs(cashBalance) > 0.005) assetClasses.Cash = round(cashBalance);
-    const unrealizedGainLoss = round(currentHoldingsValue - investedAmount);
+    const unrealizedGainLoss = round(holdingPerformance.gainLoss);
     const realizedPnl = round(transactions.reduce((sum, item) => sum + Number(item.realizedPnl || 0), 0));
     const incomeTotal = round(income.reduce((sum, item) => sum + Number(item.netAmount || 0), 0));
     const chargesTotal = round(charges.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0));
@@ -757,6 +759,11 @@ async function refreshAccountSummaries(investor, actor, batchId) {
         currentValue: cashBalance,
         gainLoss: 0,
         returnPercentage: 0,
+        costBasisAvailable: false,
+        costBasisStatus: "not_applicable",
+        performanceAvailable: false,
+        performanceExcluded: true,
+        performanceExcludedReason: "cash_balance",
         valuationDate: terminalDate,
         goalAllocations: [generalWealthAllocation()],
         allocationStatus: "general_wealth",
@@ -782,6 +789,9 @@ async function refreshAccountSummaries(investor, actor, batchId) {
       cashBalance,
       currentPortfolioValue,
       unrealizedGainLoss,
+      gainLossPartial: holdingPerformance.gainLossPartial,
+      pendingCostBasisCount: holdingPerformance.pendingCostBasisCount,
+      pendingCurrentValue: holdingPerformance.pendingCurrentValue,
       realizedPnl,
       incomeTotal,
       chargesTotal,
@@ -851,11 +861,22 @@ export async function commitManualPortfolioWorkbook({ actor, file, mode, parsed,
 
     let createdHoldings = 0; let updatedHoldings = 0;
     const existingPositionIds = new Set(existing.portfolioPositions.map((item) => item.id));
+    const existingPositionsById = new Map(existing.portfolioPositions.map((item) => [item.id, item]));
     for (const row of group.holdings) {
       const ref = adminDb.collection("portfolioPositions").doc(row.positionId);
+      const previous = existingPositionsById.get(row.positionId) || {};
       const goalAllocations = normalisePortfolioGoalAllocations(allocationsByPosition.get(row.positionId) || []);
-      const gainLoss = round(row.currentValue - row.totalInvested);
-      const returnPercentage = row.totalInvested > 0 ? round(gainLoss / row.totalInvested * 100) : 0;
+      let totalInvested = Number(row.totalInvested || 0);
+      let averageBuyRate = Number(row.averageBuyRate || 0);
+      if (mode === "merge" && !(totalInvested > 0) && Number(previous.totalInvested ?? previous.investedAmount ?? 0) > 0) {
+        totalInvested = Number(previous.totalInvested ?? previous.investedAmount ?? 0);
+      }
+      if (mode === "merge" && !(averageBuyRate > 0)) {
+        averageBuyRate = Number(previous.averageBuyRate ?? previous.averagePurchaseNav ?? 0);
+      }
+      const costBasisAvailable = totalInvested > 0;
+      const gainLoss = costBasisAvailable ? round(row.currentValue - totalInvested) : 0;
+      const returnPercentage = costBasisAvailable ? round(gainLoss / totalInvested * 100) : 0;
       writer.set(ref, {
         investorId, investorName: investor.fullName || investor.name || "Investor", clientCode: investor.clientCode || "",
         advisorUid: investor.assignedAdvisorUid || investor.advisorUid || actor.uid, assignedAdvisorUid: investor.assignedAdvisorUid || investor.advisorUid || actor.uid,
@@ -865,14 +886,16 @@ export async function commitManualPortfolioWorkbook({ actor, file, mode, parsed,
         schemeName: row.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? row.instrumentName : "",
         stockName: row.productType === PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY ? row.instrumentName : "",
         symbol: row.symbol, isin: row.isin, exchange: row.exchange, folioNo: row.folioNo, investmentMode: row.investmentMode,
-        totalInvested: row.totalInvested, investedAmount: row.totalInvested,
+        totalInvested: round(totalInvested), investedAmount: round(totalInvested),
         quantity: row.productType === PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY ? row.quantity : 0,
         totalUnits: row.productType !== PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY ? row.quantity : 0,
-        averageBuyRate: row.averageBuyRate, currentRate: row.currentRate,
+        averageBuyRate: round(averageBuyRate, 6), currentRate: row.currentRate,
         currentNav: row.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? row.currentRate : 0,
         navDate: row.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? row.valuationDate : "",
         valuationDate: row.valuationDate, purchaseDate: row.purchaseDate, maturityDate: row.maturityDate,
-        currentValue: row.currentValue, gainLoss, returnPercentage, monthlySip: row.monthlySip,
+        currentValue: row.currentValue, gainLoss, returnPercentage,
+        costBasisAvailable, costBasisStatus: costBasisAvailable ? "available" : "pending", performanceAvailable: costBasisAvailable,
+        monthlySip: row.monthlySip,
         goalAllocations, allocationStatus: portfolioAllocationStatus(goalAllocations), defaultBucketApplied: goalAllocations.some((item) => !item.goalId), notes: row.notes, status: row.status || "active",
         manualPortfolioManaged: true, manualPortfolioAccountId: row.accountId, manualPortfolioAccountCode: row.accountCode, manualHoldingKey: row.holdingKey,
         manualImportFileName: parsed.fileName, manualImportMode: mode, manualBulkImportId: batchId,

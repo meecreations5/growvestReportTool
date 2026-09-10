@@ -1278,13 +1278,23 @@ async function commitGenericFile({ actor, batchId, file, fileRef, investor, inve
       goalAllocations = normalisePortfolioGoalAllocations(goalAllocations);
       const productType = holding.productType || previous.productType || "other";
       const quantity = Number(holding.quantity ?? holding.totalUnits ?? 0);
-      const averagePurchaseRate = Number(holding.averagePurchaseRate ?? holding.averageBuyRate ?? holding.averagePurchaseNav ?? 0);
+      let averagePurchaseRate = Number(holding.averagePurchaseRate ?? holding.averageBuyRate ?? holding.averagePurchaseNav ?? 0);
       let totalInvested = Number(holding.totalInvested ?? holding.investedAmount ?? 0);
       let currentRate = Number(holding.currentRate ?? holding.currentNav ?? 0);
       let currentValue = Number(holding.currentValue || 0);
       if (!totalInvested && quantity && averagePurchaseRate) totalInvested = quantity * averagePurchaseRate;
+      // Generic valuation-only uploads must preserve any prior purchase cost.
+      // Otherwise a simple stock price refresh can accidentally turn the full
+      // market value into reported profit.
+      if (!(totalInvested > 0) && Number(previous.totalInvested ?? previous.investedAmount ?? 0) > 0) {
+        totalInvested = Number(previous.totalInvested ?? previous.investedAmount ?? 0);
+      }
+      if (!(averagePurchaseRate > 0)) {
+        averagePurchaseRate = Number(previous.averagePurchaseRate ?? previous.averageBuyRate ?? previous.averagePurchaseNav ?? 0);
+      }
       if (!currentValue && quantity && currentRate) currentValue = quantity * currentRate;
-      const gainLoss = currentValue - totalInvested;
+      const costBasisAvailable = totalInvested > 0;
+      const gainLoss = costBasisAvailable ? currentValue - totalInvested : 0;
       const valuationDate = holding.valuationDate || holding.navDate || file.summary?.valuationDate || file.reportPeriodEnd || "";
       const accountReference = genericHoldingReference(holding);
       const valuationChanged = Boolean(previous.currentValue || previous.currentRate || previous.currentNav || previous.valuationDate) && (
@@ -1327,7 +1337,10 @@ async function commitGenericFile({ actor, batchId, file, fileRef, investor, inve
         currentNav: ["mutual_fund", "ulip"].includes(productType) ? Number(currentRate.toFixed(6)) : Number(previous.currentNav || 0),
         currentValue: Number(currentValue.toFixed(2)),
         gainLoss: Number(gainLoss.toFixed(2)),
-        returnPercentage: totalInvested > 0 ? Number((gainLoss / totalInvested * 100).toFixed(2)) : 0,
+        returnPercentage: costBasisAvailable ? Number((gainLoss / totalInvested * 100).toFixed(2)) : 0,
+        costBasisAvailable,
+        costBasisStatus: costBasisAvailable ? "available" : "pending",
+        performanceAvailable: costBasisAvailable,
         valuationDate,
         navDate: ["mutual_fund", "ulip"].includes(productType) ? valuationDate : (holding.navDate || previous.navDate || ""),
         priceDate: productType === "stock_delivery" ? valuationDate : (previous.priceDate || ""),

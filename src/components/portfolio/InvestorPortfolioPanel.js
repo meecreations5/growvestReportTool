@@ -46,6 +46,7 @@ import {
   positionGoal
 } from "@/lib/constants/portfolio";
 import { GENERAL_WEALTH_BUCKET_NAME, specificGoalAllocations } from "@/lib/portfolioGoalAllocation";
+import { positionPerformanceAvailable, positionPerformanceExcluded, summarisePortfolioByInvestmentType, summarisePortfolioPerformance } from "@/lib/portfolioPerformance";
 import {
   createManualIntradayTrade,
   createManualPortfolioPosition,
@@ -191,7 +192,7 @@ function mobileAllocationColor(label = "", index = 0) {
   return fallback[index % fallback.length];
 }
 
-function MobilePortfolioAppView({ summary, positions, snapshots, snapshot, movement, monthComparison, goalHealth, intelligence, tradingSummary, error }) {
+function MobilePortfolioAppView({ summary, positions, investmentBreakdown, snapshots, snapshot, movement, monthComparison, goalHealth, intelligence, tradingSummary, error }) {
   const rawTrend = [...(snapshots || [])].reverse().map((item) => ({ date: item.snapshotDate, label: String(item.snapshotDate || "").slice(5), value: Number(item.summary?.currentValue || 0) }));
   const [range, setRange] = useState("1Y");
   const trend = filterTrendByRange(rawTrend, range);
@@ -205,8 +206,9 @@ function MobilePortfolioAppView({ summary, positions, snapshots, snapshot, movem
   const [showAllHoldings, setShowAllHoldings] = useState(false);
   const sortedHoldings = [...(positions || [])].sort((a, b) => Number(b.currentValue || 0) - Number(a.currentValue || 0));
   const top = showAllHoldings ? sortedHoldings : sortedHoldings.slice(0, 5);
-  const displayGain = summary.invested > 0 ? Number(summary.current || 0) - Number(summary.invested || 0) : Number(summary.gain || 0);
-  const gainPercent = summary.invested > 0 ? displayGain / summary.invested * 100 : 0;
+  const displayGain = Number(summary.gain || 0);
+  const gainPercent = Number(summary.gainPercent ?? (summary.invested > 0 ? displayGain / summary.invested * 100 : 0));
+  const gainPartial = Boolean(summary.gainPartial);
   const trendLabels = trend.length ? [trend[0], trend[Math.floor((trend.length - 1) / 2)], trend[trend.length - 1]] : [];
   const marketMovement = Number(monthComparison?.marketMovement ?? movement?.marketMovement ?? 0);
   const freshInvestment = Number(monthComparison?.newMoney || movement?.newMoney || 0);
@@ -225,7 +227,7 @@ function MobilePortfolioAppView({ summary, positions, snapshots, snapshot, movem
           <div className="min-w-0">
             <p className="text-[12px] font-medium text-[#6B7280]">Total Portfolio Value</p>
             <p className="gv-private-value mt-1 font-heading text-[2.1rem] font-bold leading-none tracking-[-.03em] text-[#0B0B0F]">{formatCurrency(summary.current)}</p>
-            <p className={`mt-2 inline-flex items-center gap-1 text-[12px] font-bold ${displayGain >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>{displayGain >= 0 ? <TrendingUp size={14} strokeWidth={1.55} /> : <TrendingDown size={14} strokeWidth={1.55} />}<span className="gv-private-value">{displayGain >= 0 ? "+" : ""}{formatCurrency(displayGain)} ({gainPercent >= 0 ? "+" : ""}{gainPercent.toFixed(1)}%)</span></p>
+            <p className={`mt-2 inline-flex items-center gap-1 text-[12px] font-bold ${displayGain >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>{displayGain >= 0 ? <TrendingUp size={14} strokeWidth={1.55} /> : <TrendingDown size={14} strokeWidth={1.55} />}<span className="gv-private-value">{displayGain >= 0 ? "+" : ""}{formatCurrency(displayGain)} ({gainPercent >= 0 ? "+" : ""}{gainPercent.toFixed(1)}%)</span></p>{gainPartial ? <p className="mt-1 text-[10px] font-semibold text-[#6B7280]">Performance excludes {summary.pendingCostBasisCount} holding{summary.pendingCostBasisCount === 1 ? "" : "s"} with cost basis pending.</p> : null}
           </div>
           <div className="pt-1"><ReconciliationBadge status={intelligence?.status || snapshot?.reconciliationStatus} portal /></div>
         </div>
@@ -240,10 +242,21 @@ function MobilePortfolioAppView({ summary, positions, snapshots, snapshot, movem
         <div className="mt-2 flex items-center justify-between gap-3 text-[10px] text-[#6B7280]"><span>{rangeDescription}</span><span>{snapshot?.snapshotDate ? `Verified ${formatDate(snapshot.snapshotDate)}` : "Latest"}</span></div>
 
         <div className="mt-4 grid grid-cols-2 gap-2.5">
-          <div className="rounded-[16px] bg-[#F4F6F9] p-3.5"><p className="text-[11px] text-[#6B7280]">Amount Invested</p><p className="gv-private-value mt-1 font-heading text-[1.05rem] font-bold text-[#0B0B0F]">{formatCurrency(summary.invested)}</p></div>
-          <div className="rounded-[16px] bg-[#F4F6F9] p-3.5"><p className="text-[11px] text-[#6B7280]">Gain / Loss vs invested</p><p className={`gv-private-value mt-1 font-heading text-[1.05rem] font-bold ${displayGain >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>{displayGain >= 0 ? "+" : ""}{formatCurrency(displayGain)}</p><p className={`mt-0.5 text-[10px] font-semibold ${displayGain >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>{gainPercent >= 0 ? "+" : ""}{gainPercent.toFixed(1)}%</p></div>
+          <div className="rounded-[16px] bg-[#F4F6F9] p-3.5"><p className="text-[11px] text-[#6B7280]">{gainPartial ? "Known Invested Amount" : "Amount Invested"}</p><p className="gv-private-value mt-1 font-heading text-[1.05rem] font-bold text-[#0B0B0F]">{formatCurrency(summary.invested)}</p>{gainPartial ? <p className="mt-0.5 text-[10px] font-semibold text-[#6B7280]">{summary.pendingCostBasisCount} cost basis pending</p> : null}</div>
+          <div className="rounded-[16px] bg-[#F4F6F9] p-3.5"><p className="text-[11px] text-[#6B7280]">{gainPartial ? "Gain / Loss on known cost" : "Gain / Loss vs invested"}</p><p className={`gv-private-value mt-1 font-heading text-[1.05rem] font-bold ${displayGain >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>{displayGain >= 0 ? "+" : ""}{formatCurrency(displayGain)}</p><p className={`mt-0.5 text-[10px] font-semibold ${displayGain >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>{gainPercent >= 0 ? "+" : ""}{gainPercent.toFixed(1)}%{gainPartial ? " · partial" : ""}</p></div>
         </div>
       </section>
+
+      {investmentBreakdown.length || Number(tradingSummary?.turnover || 0) > 0 ? <section className="border-t border-slate-200 pt-4 gv-mobile-deferred">
+        <div className="flex items-end justify-between gap-3"><div><h2 className="font-heading text-[1.12rem] font-bold text-[#0B0B0F]">Investment Type Totals</h2><p className="mt-0.5 text-[11px] text-[#6B7280]">Invested amount, current value and return by category</p></div></div>
+        <div className="mt-3 overflow-hidden rounded-[18px] border border-slate-200 bg-white">
+          {investmentBreakdown.map((row, index) => <div key={row.key} className={`px-4 py-3 ${index ? "border-t border-slate-100" : ""}`}>
+            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[12px] font-bold text-[#0B0B0F]">{row.label}</p><p className="mt-0.5 text-[10px] text-[#6B7280]">{row.holdingCount} holding{row.holdingCount === 1 ? "" : "s"}{row.monthlySip > 0 ? ` · SIP ${formatCurrency(row.monthlySip)}/mo` : ""}</p></div><p className="gv-private-value shrink-0 text-[12px] font-bold text-[#0B0B0F]">{formatCurrency(row.current)}</p></div>
+            <div className="mt-2 flex items-center justify-between gap-3 text-[10px]"><span className="text-[#6B7280]">{row.performanceExcluded ? "Current balance" : row.gainPartial ? "Known invested" : "Invested"} <strong className="gv-private-value text-[#0B0B0F]">{row.performanceExcluded ? "—" : formatCurrency(row.invested)}</strong></span>{row.performanceExcluded ? <span className="font-semibold text-[#6B7280]">No investment return</span> : <span className={`gv-private-value font-bold ${row.gain >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>{row.gain >= 0 ? "+" : ""}{formatCurrency(row.gain)}{row.invested > 0 ? ` (${row.gainPercent >= 0 ? "+" : ""}${row.gainPercent.toFixed(1)}%)` : ""}{row.gainPartial ? " · partial" : ""}</span>}</div>
+          </div>)}
+        </div>
+        {Number(tradingSummary?.turnover || 0) > 0 ? <div className="mt-2 rounded-[16px] border border-[#F5B301]/30 bg-[#F5B301]/10 px-4 py-3"><div className="flex items-start justify-between gap-3"><div><p className="text-[12px] font-bold text-[#0B0B0F]">Trading / Derivatives</p><p className="mt-0.5 text-[10px] text-[#6B7280]">Separate from Total Invested · turnover {formatCurrency(tradingSummary.turnover)}</p></div><p className={`gv-private-value text-[12px] font-bold ${Number(tradingSummary.net || 0) >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>{Number(tradingSummary.net || 0) >= 0 ? "+" : ""}{formatCurrency(tradingSummary.net)}</p></div></div> : null}
+      </section> : null}
 
       {allocation.length ? <section className="border-t border-slate-200 pt-4 gv-mobile-deferred">
         <div className="flex items-center justify-between gap-3"><div><h2 className="font-heading text-[1.12rem] font-bold text-[#0B0B0F]">Asset Allocation</h2><p className="mt-0.5 text-[11px] text-[#6B7280]">Where your money is invested</p></div><span className="text-[10px] font-medium text-[#6B7280]">{positions.length} holdings</span></div>
@@ -263,9 +276,12 @@ function MobilePortfolioAppView({ summary, positions, snapshots, snapshot, movem
         <div className="mb-2.5 flex items-end justify-between gap-3"><div><h2 className="font-heading text-[1.12rem] font-bold text-[#0B0B0F]">Top Holdings</h2><p className="mt-0.5 text-[11px] text-[#6B7280]">What you own</p></div>{sortedHoldings.length > 5 ? <button type="button" onClick={() => setShowAllHoldings((value) => !value)} className="text-[11px] font-bold text-[#1F4ED8]">{showAllHoldings ? "Top 5" : "See all"}</button> : null}</div>
         {top.length ? <div className="overflow-hidden rounded-[18px] border border-slate-200 bg-white">{top.map((position, index) => {
           const value = Number(position.currentValue || 0);
-          const gain = Number(position.gainLoss || 0);
+          const performanceAvailable = positionPerformanceAvailable(position);
+          const performanceExcluded = positionPerformanceExcluded(position);
+          const invested = Number(position.totalInvested ?? position.investedAmount ?? 0);
+          const gain = performanceAvailable ? value - invested : 0;
           const pct = summary.current > 0 ? value / summary.current * 100 : 0;
-          return <Link key={position.id} href={`/investor/portfolio/${position.id}`} className={`flex min-h-[70px] items-center gap-3 px-4 py-3 active:bg-[#F4F6F9] ${index ? "border-t border-slate-100" : ""}`}><span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#F4F6F9] text-[#1F4ED8]"><WalletCards size={17} strokeWidth={1.5} /></span><div className="min-w-0 flex-1"><p className="line-clamp-1 text-[12px] font-bold text-[#0B0B0F]">{position.instrumentName || position.schemeName || position.stockName || position.fundName || "Investment"}</p><p className="mt-0.5 text-[10px] text-[#6B7280]">{mobileAssetLabel(position)} · {pct.toFixed(1)}% of portfolio</p></div><div className="shrink-0 text-right"><p className="gv-private-value font-heading text-[12px] font-bold text-[#0B0B0F]">{formatCurrency(value)}</p><p className={`gv-private-value mt-0.5 text-[9px] font-semibold ${gain >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>{gain >= 0 ? "+" : ""}{formatCurrency(gain)}</p></div><ChevronRight size={16} strokeWidth={1.5} className="shrink-0 text-slate-300" /></Link>;
+          return <Link key={position.id} href={`/investor/portfolio/${position.id}`} className={`flex min-h-[70px] items-center gap-3 px-4 py-3 active:bg-[#F4F6F9] ${index ? "border-t border-slate-100" : ""}`}><span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#F4F6F9] text-[#1F4ED8]"><WalletCards size={17} strokeWidth={1.5} /></span><div className="min-w-0 flex-1"><p className="line-clamp-1 text-[12px] font-bold text-[#0B0B0F]">{position.instrumentName || position.schemeName || position.stockName || position.fundName || "Investment"}</p><p className="mt-0.5 text-[10px] text-[#6B7280]">{mobileAssetLabel(position)} · {pct.toFixed(1)}% of portfolio</p></div><div className="shrink-0 text-right"><p className="gv-private-value font-heading text-[12px] font-bold text-[#0B0B0F]">{formatCurrency(value)}</p>{performanceAvailable ? <p className={`gv-private-value mt-0.5 text-[9px] font-semibold ${gain >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>{gain >= 0 ? "+" : ""}{formatCurrency(gain)}</p> : <p className="mt-0.5 text-[9px] font-semibold text-[#6B7280]">Return pending</p>}</div><ChevronRight size={16} strokeWidth={1.5} className="shrink-0 text-slate-300" /></Link>;
         })}</div> : <MobileEmptyState icon={WalletCards} title="No verified holdings yet" copy="Your holdings will appear here after the Portfolio Master is updated." />}
       </section>
 
@@ -308,7 +324,12 @@ function UlipPolicyCard({ policy, funds = [] }) {
 
 function PositionCard({ position, investor, editable, portal, busyId, onGoalChange, onSell, onSipReminder, selectionMode = false, selected = false, onToggle }) {
   const goal = positionGoal(position);
-  const positive = Number(position.gainLoss || 0) >= 0;
+  const performanceAvailable = positionPerformanceAvailable(position);
+  const performanceExcluded = positionPerformanceExcluded(position);
+  const investedForPerformance = Number(position.totalInvested ?? position.investedAmount ?? 0);
+  const holdingGain = performanceAvailable ? Number(position.currentValue || 0) - investedForPerformance : 0;
+  const holdingReturn = performanceAvailable && investedForPerformance > 0 ? holdingGain / investedForPerformance * 100 : 0;
+  const positive = holdingGain >= 0;
   const goals = goalRows(investor);
   const valuationDate = sourceDate(position);
   const navDelta = position.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? navMovement(position) : null;
@@ -329,12 +350,12 @@ function PositionCard({ position, investor, editable, portal, busyId, onGoalChan
         </div>
         <div className="text-left sm:text-right">
           <p className="font-heading text-xl font-bold text-slate-950">{formatCurrency(position.currentValue)}</p>
-          {position.productType === PORTFOLIO_PRODUCT_TYPES.ULIP && position.gainLossAvailable === false ? (
-            <p className="mt-1 text-xs font-semibold text-slate-500">Fund-level return unavailable</p>
+          {!performanceAvailable ? (
+            <p className="mt-1 text-xs font-semibold text-slate-500">{performanceExcluded ? "Performance not applicable" : position.productType === PORTFOLIO_PRODUCT_TYPES.ULIP ? "Fund-level return unavailable" : "Cost basis pending"}</p>
           ) : (
             <p className={`mt-1 inline-flex items-center gap-1 text-xs font-bold ${positive ? "text-emerald-600" : "text-red-600"}`}>
               {positive ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
-              {formatCurrency(position.gainLoss)} · {percent(position.returnPercentage)}
+              {formatCurrency(holdingGain)} · {percent(holdingReturn)}
             </p>
           )}
         </div>
@@ -343,7 +364,7 @@ function PositionCard({ position, investor, editable, portal, busyId, onGoalChan
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
         <div>
           <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{position.productType === PORTFOLIO_PRODUCT_TYPES.ULIP ? "Fund cost basis" : "Invested"}</p>
-          <p className="mt-1 text-sm font-semibold text-slate-800">{position.productType === PORTFOLIO_PRODUCT_TYPES.ULIP && !Number(position.totalInvested ?? position.investedAmount ?? 0) ? "Not provided" : formatCurrency(position.totalInvested ?? position.investedAmount)}</p>
+          <p className="mt-1 text-sm font-semibold text-slate-800">{performanceExcluded ? "Not applicable" : !performanceAvailable && !Number(position.totalInvested ?? position.investedAmount ?? 0) ? (position.productType === PORTFOLIO_PRODUCT_TYPES.ULIP ? "Not provided" : "Cost basis pending") : formatCurrency(position.totalInvested ?? position.investedAmount)}</p>
         </div>
 
         {position.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? <>
@@ -536,29 +557,20 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
   const previousSnapshot = snapshots.find((item, index) => index > 0 && String(item.snapshotDate || "") < String(snapshot?.snapshotDate || "")) || null;
 
   const summary = useMemo(() => {
-    const current = positions.reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
-    const regularInvested = positions
-      .filter((item) => item.productType !== PORTFOLIO_PRODUCT_TYPES.ULIP)
-      .reduce((sum, item) => sum + Number(item.totalInvested ?? item.investedAmount ?? 0), 0);
-    const policyPremium = ulipPolicies.length
-      ? ulipPolicies.reduce((sum, policy) => sum + Number(policy.totalPremiumPaid || 0), 0)
-      : [...new Map(positions
-        .filter((item) => item.productType === PORTFOLIO_PRODUCT_TYPES.ULIP && item.policyNumber)
-        .map((item) => [String(item.policyNumber).toUpperCase(), Number(item.policyTotalPremiumPaid || 0)])).values()]
-        .reduce((sum, value) => sum + Number(value || 0), 0);
-    const invested = regularInvested + policyPremium;
-    const positionGain = positions.reduce((sum, item) => {
-      if (item.productType === PORTFOLIO_PRODUCT_TYPES.ULIP && item.gainLossAvailable === false) return sum;
-      return sum + Number(item.gainLoss || 0);
-    }, 0);
-    // Current value and invested amount are the two portfolio-level source-of-truth
-    // figures shown to the investor. Derive the portfolio-level gain/loss from
-    // those totals so the three displayed numbers can never contradict each other.
-    const gain = invested > 0 ? current - invested : positionGain;
-    const gainPartial = false;
-    const monthlySip = positions.reduce((sum, item) => sum + Number(item.monthlySip || 0), 0);
-    return { current, invested, gain, gainPartial, monthlySip };
+    const performance = summarisePortfolioPerformance(positions, ulipPolicies);
+    return {
+      current: performance.currentValue,
+      invested: performance.totalInvested,
+      gain: performance.gainLoss,
+      gainPercent: performance.gainLossPercentage,
+      gainPartial: performance.gainLossPartial,
+      pendingCostBasisCount: performance.pendingCostBasisCount,
+      pendingCurrentValue: performance.pendingCurrentValue,
+      monthlySip: performance.monthlySip
+    };
   }, [positions, ulipPolicies]);
+
+  const investmentBreakdown = useMemo(() => summarisePortfolioByInvestmentType(positions, ulipPolicies), [positions, ulipPolicies]);
 
   const goals = useMemo(() => goalRows(effectiveInvestor), [effectiveInvestor]);
   const availableSources = useMemo(() => [...new Set(positions.map((item) => item.source || "manual"))].sort(), [positions]);
@@ -718,13 +730,18 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
   const currentMonth = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }).slice(0, 7);
   const monthTrades = useMemo(() => trades.filter((item) => String(item.tradeDate || "").startsWith(currentMonth)), [currentMonth, trades]);
   const tradingSummary = useMemo(() => monthTrades.reduce((total, item) => {
+    const quantity = Number(item.quantity || 0);
+    const buyQuantity = Number(item.buyQuantity ?? quantity);
+    const sellQuantity = Number(item.sellQuantity ?? quantity);
+    const calculatedTurnover = Number(item.buyRate || 0) * buyQuantity + Number(item.sellRate || 0) * sellQuantity;
     total.net += Number(item.netPnl || 0);
     total.gross += Number(item.grossPnl || 0);
     total.charges += Number(item.totalCharges || 0);
+    total.turnover += Number(item.turnover || calculatedTurnover || 0);
     if (Number(item.netPnl || 0) > 0) total.wins += 1;
     if (Number(item.netPnl || 0) < 0) total.losses += 1;
     return total;
-  }, { net: 0, gross: 0, charges: 0, wins: 0, losses: 0 }), [monthTrades]);
+  }, { net: 0, gross: 0, charges: 0, turnover: 0, wins: 0, losses: 0 }), [monthTrades]);
 
   async function changeGoal(positionId, goalId) {
     setGoalBusyId(positionId);
@@ -743,16 +760,45 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
 
   return (
     <>
-      {portal ? <MobilePortfolioAppView summary={summary} positions={positions} snapshots={snapshots} snapshot={snapshot} movement={movement} monthComparison={monthComparison} goalHealth={goalHealth} intelligence={intelligence} tradingSummary={tradingSummary} error={error} /> : null}
+      {portal ? <MobilePortfolioAppView summary={summary} positions={positions} investmentBreakdown={investmentBreakdown} snapshots={snapshots} snapshot={snapshot} movement={movement} monthComparison={monthComparison} goalHealth={goalHealth} intelligence={intelligence} tradingSummary={tradingSummary} error={error} /> : null}
       <div className={`${portal ? "hidden md:grid" : "grid"} gap-5`}>
       {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Stat label="Current Portfolio" value={formatCurrency(summary.current)} helper={snapshot?.snapshotDate ? `Verified ${formatDate(snapshot.snapshotDate)}` : "Latest available"} icon={WalletCards} tone="blue" />
-        <Stat label="Total Invested" value={formatCurrency(summary.invested)} helper={`${positions.length} active holding${positions.length === 1 ? "" : "s"}`} icon={BadgeIndianRupee} tone="slate" />
-        <Stat label="Gain / Loss" value={formatCurrency(summary.gain)} helper={summary.gainPartial ? "Excludes ULIP funds without fund-level cost basis" : summary.invested ? percent(summary.gain / summary.invested * 100) : "—"} icon={summary.gain >= 0 ? TrendingUp : TrendingDown} tone={summary.gain >= 0 ? "green" : "red"} />
+        <Stat label={summary.gainPartial ? "Known Invested" : "Total Invested"} value={formatCurrency(summary.invested)} helper={summary.gainPartial ? `${summary.pendingCostBasisCount} holding${summary.pendingCostBasisCount === 1 ? "" : "s"} awaiting cost basis` : `${positions.length} active holding${positions.length === 1 ? "" : "s"}`} icon={BadgeIndianRupee} tone="slate" />
+        <Stat label={summary.gainPartial ? "Gain / Loss (Known Cost)" : "Gain / Loss"} value={formatCurrency(summary.gain)} helper={summary.invested ? `${percent(summary.gainPercent)}${summary.gainPartial ? " · partial until all cost basis is available" : ""}` : "—"} icon={summary.gain >= 0 ? TrendingUp : TrendingDown} tone={summary.gain >= 0 ? "green" : "red"} />
         <Stat label="Monthly SIP" value={formatCurrency(summary.monthlySip)} helper="Active mutual fund contribution" icon={RefreshCcw} tone="green" />
       </div>
+
+      {investmentBreakdown.length || Number(tradingSummary.turnover || 0) > 0 ? <Card className="overflow-hidden">
+        <div className="flex flex-col justify-between gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:p-6">
+          <div><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">Investment Type Totals</p><h2 className="mt-1 font-heading text-xl font-bold text-slate-950">How Total Invested is built</h2><p className="mt-1 text-sm text-slate-500">Each long-term investment category reconciles to the portfolio total. Trading and derivatives stay separate so turnover never inflates invested wealth.</p></div>
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-700"><Layers3 size={19} /></span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-[760px] w-full text-left">
+            <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400"><tr><th className="px-5 py-3 sm:px-6">Investment Type</th><th className="px-4 py-3 text-right">Holdings</th><th className="px-4 py-3 text-right">Total Invested</th><th className="px-4 py-3 text-right">Current Value</th><th className="px-5 py-3 text-right sm:px-6">Gain / Loss</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {investmentBreakdown.map((row) => <tr key={row.key} className="bg-white">
+                <td className="px-5 py-3.5 sm:px-6"><p className="text-sm font-bold text-slate-950">{row.label}</p>{row.monthlySip > 0 ? <p className="mt-0.5 text-[11px] text-slate-500">Monthly SIP {formatCurrency(row.monthlySip)}</p> : row.performanceExcluded ? <p className="mt-0.5 text-[11px] text-slate-500">Balance only · no investment return</p> : row.gainPartial ? <p className="mt-0.5 text-[11px] font-semibold text-amber-700">{row.pendingCostBasisCount} cost basis pending</p> : null}</td>
+                <td className="px-4 py-3.5 text-right text-sm font-semibold text-slate-600">{row.holdingCount}</td>
+                <td className="gv-private-value px-4 py-3.5 text-right text-sm font-bold text-slate-950">{row.performanceExcluded ? "—" : formatCurrency(row.invested)}{row.gainPartial ? <span className="block text-[9px] font-semibold text-slate-400">known cost</span> : null}</td>
+                <td className="gv-private-value px-4 py-3.5 text-right text-sm font-bold text-slate-950">{formatCurrency(row.current)}</td>
+                <td className={`gv-private-value px-5 py-3.5 text-right text-sm font-bold sm:px-6 ${row.performanceExcluded ? "text-slate-400" : row.gain >= 0 ? "text-emerald-700" : "text-red-700"}`}>{row.performanceExcluded ? "—" : <>{row.gain >= 0 ? "+" : ""}{formatCurrency(row.gain)}<span className="block text-[9px] font-semibold">{row.invested > 0 ? `${row.gainPercent >= 0 ? "+" : ""}${row.gainPercent.toFixed(2)}%${row.gainPartial ? " · partial" : ""}` : row.gainPartial ? "Return pending" : "—"}</span></>}</td>
+              </tr>)}
+              <tr className="bg-amber-50/50">
+                <td className="px-5 py-3.5 sm:px-6"><p className="text-sm font-bold text-slate-950">Trading / Derivatives</p><p className="mt-0.5 text-[11px] text-slate-500">Separate activity · never included in Total Invested or Bucket List corpus</p></td>
+                <td className="px-4 py-3.5 text-right text-sm font-semibold text-slate-600">{monthTrades.length}</td>
+                <td className="px-4 py-3.5 text-right text-sm font-bold text-slate-500">Not included</td>
+                <td className="gv-private-value px-4 py-3.5 text-right text-sm font-bold text-slate-950">{Number(tradingSummary.turnover || 0) > 0 ? formatCurrency(tradingSummary.turnover) : "—"}<span className="block text-[9px] font-semibold text-slate-400">{Number(tradingSummary.turnover || 0) > 0 ? "turnover this month" : "no activity this month"}</span></td>
+                <td className={`gv-private-value px-5 py-3.5 text-right text-sm font-bold sm:px-6 ${Number(tradingSummary.net || 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}>{Number(tradingSummary.net || 0) >= 0 ? "+" : ""}{formatCurrency(tradingSummary.net)}<span className="block text-[9px] font-semibold">net realised P&amp;L</span></td>
+              </tr>
+            </tbody>
+            <tfoot className="border-t border-slate-200 bg-slate-50"><tr><td className="px-5 py-3.5 text-sm font-black text-slate-950 sm:px-6">Long-term Portfolio Total</td><td className="px-4 py-3.5 text-right text-sm font-bold text-slate-600">{positions.length}</td><td className="gv-private-value px-4 py-3.5 text-right text-sm font-black text-slate-950">{formatCurrency(summary.invested)}{summary.gainPartial ? <span className="block text-[9px] font-semibold text-amber-700">known invested amount</span> : null}</td><td className="gv-private-value px-4 py-3.5 text-right text-sm font-black text-slate-950">{formatCurrency(summary.current)}</td><td className={`gv-private-value px-5 py-3.5 text-right text-sm font-black sm:px-6 ${summary.gain >= 0 ? "text-emerald-700" : "text-red-700"}`}>{summary.gain >= 0 ? "+" : ""}{formatCurrency(summary.gain)}<span className="block text-[9px] font-semibold">{summary.invested > 0 ? `${percent(summary.gainPercent)}${summary.gainPartial ? " · partial" : ""}` : "—"}</span></td></tr></tfoot>
+          </table>
+        </div>
+      </Card> : null}
 
       {manualAccounts.length ? <Card className="overflow-hidden">
         <div className="border-b border-slate-200 p-5 sm:p-6">

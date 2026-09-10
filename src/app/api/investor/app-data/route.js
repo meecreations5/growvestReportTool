@@ -11,6 +11,7 @@ import {
 } from "@/lib/server/insuranceServer";
 import { businessDateKey } from "@/lib/utils/date";
 import { normalisePortfolioGoalAllocations } from "@/lib/portfolioGoalAllocation";
+import { positionPerformanceAvailable, summarisePortfolioPerformance } from "@/lib/portfolioPerformance";
 
 export const runtime = "nodejs";
 
@@ -137,18 +138,25 @@ function portfolioVisuals(positions = [], snapshots = []) {
   const topHoldings = [...active]
     .sort((a, b) => Number(b.currentValue || 0) - Number(a.currentValue || 0))
     .slice(0, 6)
-    .map((item) => ({
-      id: item.id,
-      instrumentName: item.instrumentName || item.schemeName || item.stockName || item.fundName || "Investment",
-      provider: item.provider || "",
-      productType: item.productType || "",
-      assetClass: portfolioAssetLabel(item),
-      currentValue: Number(item.currentValue || 0),
-      totalInvested: Number(item.totalInvested ?? item.investedAmount ?? 0),
-      gainLoss: Number(item.gainLoss || 0),
-      gainLossPercentage: Number(item.gainLossPercentage || 0),
-      valuationDate: positionDate(item)
-    }));
+    .map((item) => {
+      const currentValue = Number(item.currentValue || 0);
+      const totalInvested = Number(item.totalInvested ?? item.investedAmount ?? 0);
+      const performanceAvailable = positionPerformanceAvailable(item);
+      const gainLoss = performanceAvailable ? currentValue - totalInvested : 0;
+      return {
+        id: item.id,
+        instrumentName: item.instrumentName || item.schemeName || item.stockName || item.fundName || "Investment",
+        provider: item.provider || "",
+        productType: item.productType || "",
+        assetClass: portfolioAssetLabel(item),
+        currentValue,
+        totalInvested,
+        gainLoss: Number(gainLoss.toFixed(2)),
+        gainLossPercentage: performanceAvailable && totalInvested > 0 ? Number((gainLoss / totalInvested * 100).toFixed(2)) : 0,
+        performanceAvailable,
+        valuationDate: positionDate(item)
+      };
+    });
 
   return { assetAllocation, trend, topHoldings };
 }
@@ -287,27 +295,14 @@ async function loadPortfolio(investorId) {
     return dateCompare || timestampMillis(b.updatedAt || b.createdAt) - timestampMillis(a.updatedAt || a.createdAt);
   });
   const liveSummary = computePositionSummary(positions);
-  // Keep dashboard totals identical to the Portfolio screen. ULIP current value
-  // comes from its fund positions, while the invested basis comes from policy
-  // premiums when available. Protection cover itself is never added to AUM.
   const livePositions = activePositions(positions);
-  const regularInvested = livePositions
-    .filter((item) => String(item.productType || "") !== "ulip")
-    .reduce((sum, item) => sum + Number(item.totalInvested ?? item.investedAmount ?? 0), 0);
-  const fallbackUlipPremiumByPolicy = [...new Map(livePositions
-    .filter((item) => String(item.productType || "") === "ulip" && item.policyNumber)
-    .map((item) => [String(item.policyNumber).toUpperCase(), Number(item.policyTotalPremiumPaid || 0)])).values()]
-    .reduce((sum, value) => sum + Number(value || 0), 0);
-  const ulipPremiumPaid = ulipPolicies.length
-    ? ulipPolicies.reduce((sum, policy) => sum + Number(policy.totalPremiumPaid || 0), 0)
-    : fallbackUlipPremiumByPolicy;
-  const liveInvested = regularInvested + ulipPremiumPaid;
-  const positionGain = livePositions.reduce((sum, item) => {
-    if (String(item.productType || "") === "ulip" && item.gainLossAvailable === false) return sum;
-    return sum + Number(item.gainLoss ?? (Number(item.currentValue || 0) - Number(item.totalInvested ?? item.investedAmount ?? 0)));
-  }, 0);
-  const liveGain = liveInvested > 0 ? Number(liveSummary.currentValue || 0) - liveInvested : positionGain;
-  const liveGainPartial = false;
+  // Performance is calculated only where a genuine purchase-cost basis exists.
+  // A delivery stock with market value but missing purchase cost must not appear
+  // as 100% profit. Mutual-fund SIP losses remain fully included when cost is known.
+  const livePerformance = summarisePortfolioPerformance(livePositions, ulipPolicies);
+  const liveInvested = livePerformance.totalInvested;
+  const liveGain = livePerformance.gainLoss;
+  const liveGainPartial = livePerformance.gainLossPartial;
   const latestSnapshot = snapshots[0] || null;
   const previousSnapshot = snapshots.find((item, index) => index > 0 && String(item.snapshotDate || "") < String(latestSnapshot?.snapshotDate || "")) || null;
   const latestSnapshotValue = Number(latestSnapshot?.summary?.currentValue || 0);
@@ -315,7 +310,7 @@ async function loadPortfolio(investorId) {
   const currentValue = liveSummary.positionCount ? liveSummary.currentValue : latestSnapshotValue;
   const totalInvested = liveSummary.positionCount ? liveInvested : Number(latestSnapshot?.summary?.totalInvested || 0);
   const gainLoss = liveSummary.positionCount ? liveGain : Number(latestSnapshot?.summary?.gainLoss || 0);
-  const monthlySip = liveSummary.positionCount ? liveSummary.monthlySip : Number(latestSnapshot?.summary?.monthlySip || 0);
+  const monthlySip = liveSummary.positionCount ? livePerformance.monthlySip : Number(latestSnapshot?.summary?.monthlySip || 0);
   const movement = previousSnapshot
     ? currentValue - previousSnapshotValue
     : Number(latestSnapshot?.intelligence?.valueChange || 0);
@@ -339,7 +334,9 @@ async function loadPortfolio(investorId) {
     snapshotDate: latestSnapshot?.snapshotDate || "",
     previousSnapshotDate: previousSnapshot?.snapshotDate || "",
     reconciliationStatus: latestSnapshot?.reconciliationStatus || "",
-    gainLossPartial: liveSummary.positionCount ? liveGainPartial : false,
+    gainLossPartial: liveSummary.positionCount ? liveGainPartial : Boolean(latestSnapshot?.summary?.gainLossPartial),
+    pendingCostBasisCount: liveSummary.positionCount ? livePerformance.pendingCostBasisCount : Number(latestSnapshot?.summary?.pendingCostBasisCount || 0),
+    pendingCurrentValue: liveSummary.positionCount ? livePerformance.pendingCurrentValue : Number(latestSnapshot?.summary?.pendingCurrentValue || 0),
     goalTotals,
     goalInvestments,
     assetAllocation: visuals.assetAllocation,

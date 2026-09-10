@@ -675,6 +675,8 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
   const totalCorpus = Number(snapshot.summary?.currentValue || positions.reduce((sum, item) => sum + Number(item.currentValue || 0), 0));
   const totalInvested = Number(snapshot.summary?.totalInvested || positions.reduce((sum, item) => sum + Number(item.totalInvested ?? item.investedAmount ?? 0), 0));
   const portfolioGainLoss = Number(snapshot.summary?.gainLoss ?? (totalCorpus - totalInvested));
+  const portfolioGainLossPartial = Boolean(snapshot.summary?.gainLossPartial);
+  const pendingCostBasisCount = Number(snapshot.summary?.pendingCostBasisCount || 0);
   const monthlySip = Number(snapshot.summary?.monthlySip || positions.reduce((sum, item) => sum + Number(item.monthlySip || 0), 0));
   const portfolioTransactions = Array.isArray(portfolioSource?.transactions) ? portfolioSource.transactions : [];
   const openingPositions = Array.isArray(portfolioSource?.openingPositions) ? portfolioSource.openingPositions : [];
@@ -852,6 +854,8 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
       totalCorpus: Number(totalCorpus.toFixed(2)),
       totalInvested: Number(totalInvested.toFixed(2)),
       portfolioGainLoss: Number(portfolioGainLoss.toFixed(2)),
+      portfolioGainLossPartial,
+      pendingCostBasisCount,
       generalWealthCorpus: Number(generalWealthCorpus.toFixed(2)),
       lifetimeTarget,
       overallProgress: lifetimeTarget > 0 ? calculatePercentage(goalCurrentCorpus, lifetimeTarget) : 0,

@@ -59,6 +59,8 @@ function publicInvestor(investor = {}) {
     latestPortfolioValue: Number(investor.latestPortfolioValue || 0),
     latestPortfolioInvested: Number(investor.latestPortfolioInvested || 0),
     latestPortfolioGainLoss: Number(investor.latestPortfolioGainLoss || 0),
+    latestPortfolioGainLossPartial: Boolean(investor.latestPortfolioGainLossPartial),
+    latestPortfolioPendingCostBasisCount: Number(investor.latestPortfolioPendingCostBasisCount || 0),
     latestPortfolioMonthlySip: Number(investor.latestPortfolioMonthlySip || 0),
     latestPortfolioReconciliationStatus: investor.latestPortfolioReconciliationStatus || ""
   };

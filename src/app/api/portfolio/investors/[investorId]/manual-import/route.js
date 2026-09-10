@@ -309,8 +309,19 @@ export async function POST(request, { params }) {
       const goalAllocations = normalisePortfolioGoalAllocations(goal
         ? [{ goalId: goal.id || goal.goalId, goalName: goal.name || goal.goalName || "Goal", percentage: 100 }]
         : (Array.isArray(existing?.goalAllocations) ? existing.goalAllocations : []));
-      const gainLoss = row.currentValue - row.totalInvested;
-      const returnPercentage = row.totalInvested > 0 ? gainLoss / row.totalInvested * 100 : 0;
+      // Merge-mode valuation updates must never erase an already-known purchase
+      // cost just because the new sheet contains only current market values.
+      const previousInvested = Number(existing?.totalInvested ?? existing?.investedAmount ?? 0);
+      const totalInvested = mode === "merge" && existing && !(Number(row.totalInvested || 0) > 0)
+        ? previousInvested
+        : Number(row.totalInvested || 0);
+      const previousAverageBuyRate = Number(existing?.averageBuyRate ?? existing?.averagePurchaseNav ?? 0);
+      const averageBuyRate = mode === "merge" && existing && !(Number(row.averageBuyRate || 0) > 0)
+        ? previousAverageBuyRate
+        : Number(row.averageBuyRate || 0);
+      const costBasisAvailable = totalInvested > 0;
+      const gainLoss = costBasisAvailable ? Number(row.currentValue || 0) - totalInvested : 0;
+      const returnPercentage = costBasisAvailable ? gainLoss / totalInvested * 100 : 0;
       const ref = adminDb.collection("portfolioPositions").doc(positionId);
       writer.set(ref, {
         investorId,
@@ -334,12 +345,12 @@ export async function POST(request, { params }) {
         investmentMode: row.investmentMode,
         investmentDate: row.investmentDate,
         purchaseDate: row.investmentDate,
-        totalInvested: row.totalInvested,
-        investedAmount: row.totalInvested,
+        totalInvested: Number(totalInvested.toFixed(2)),
+        investedAmount: Number(totalInvested.toFixed(2)),
         quantity: row.productType === PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY ? row.quantity : Number(existing?.quantity || 0),
         totalUnits: row.productType !== PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY ? row.quantity : Number(existing?.totalUnits || 0),
-        averageBuyRate: row.averageBuyRate,
-        averagePurchaseNav: row.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? row.averageBuyRate : Number(existing?.averagePurchaseNav || 0),
+        averageBuyRate: Number(averageBuyRate.toFixed(6)),
+        averagePurchaseNav: row.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? Number(averageBuyRate.toFixed(6)) : Number(existing?.averagePurchaseNav || 0),
         currentRate: row.currentRate,
         currentNav: row.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? row.currentRate : Number(existing?.currentNav || 0),
         navDate: row.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? row.valuationDate : (existing?.navDate || ""),
@@ -347,6 +358,9 @@ export async function POST(request, { params }) {
         currentValue: row.currentValue,
         gainLoss: Number(gainLoss.toFixed(2)),
         returnPercentage: Number(returnPercentage.toFixed(2)),
+        costBasisAvailable,
+        costBasisStatus: costBasisAvailable ? "available" : "pending",
+        performanceAvailable: costBasisAvailable,
         monthlySip: row.monthlySip,
         scheduledMonthlySip: row.scheduledMonthlySip,
         sipStatus: row.sipStatus,

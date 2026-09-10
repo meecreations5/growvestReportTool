@@ -692,11 +692,15 @@ function mergeGenericHoldings(rows = [], rowMode = "holdings") {
   return [...map.values()].map((holding) => {
     const invested = Number(holding.totalInvested ?? holding.investedAmount ?? 0);
     const currentValue = Number(holding.currentValue || 0);
-    const gainLoss = Number((currentValue - invested).toFixed(2));
+    const costBasisAvailable = invested > 0;
+    const gainLoss = costBasisAvailable ? Number((currentValue - invested).toFixed(2)) : 0;
     return {
       ...holding,
       gainLoss,
-      returnPercentage: invested > 0 ? Number((gainLoss / invested * 100).toFixed(2)) : Number(holding.returnPercentage || 0)
+      returnPercentage: costBasisAvailable ? Number((gainLoss / invested * 100).toFixed(2)) : 0,
+      costBasisAvailable,
+      costBasisStatus: costBasisAvailable ? "available" : "pending",
+      performanceAvailable: costBasisAvailable
     };
   });
 }
@@ -853,6 +857,9 @@ function parseGenericMatrix(matrix = [], config = {}, sheetName = "") {
       totalInvested: Number(summary.totalInvested.toFixed(2)),
       currentValue: Number(summary.currentValue.toFixed(2)),
       gainLoss: Number(summary.gainLoss.toFixed(2)),
+      gainLossPartial: mergedHoldings.some((item) => item.costBasisAvailable === false),
+      costBasisComplete: mergedHoldings.every((item) => item.costBasisAvailable === true),
+      costBasisPendingCount: mergedHoldings.filter((item) => item.costBasisAvailable === false).length,
       positionCount: mergedHoldings.length,
       transactionCount: transactions.length,
       valuationDate: mergedHoldings.map((item) => item.valuationDate).filter(Boolean).sort().at(-1) || ""
@@ -910,6 +917,9 @@ function mergeGenericResults(parts = []) {
       totalInvested: Number(summary.totalInvested.toFixed(2)),
       currentValue: Number(summary.currentValue.toFixed(2)),
       gainLoss: Number(summary.gainLoss.toFixed(2)),
+      gainLossPartial: mergedHoldings.some((item) => item.costBasisAvailable === false),
+      costBasisComplete: mergedHoldings.every((item) => item.costBasisAvailable === true),
+      costBasisPendingCount: mergedHoldings.filter((item) => item.costBasisAvailable === false).length,
       positionCount: mergedHoldings.length,
       transactionCount: transactions.length,
       valuationDate: mergedHoldings.map((item) => item.valuationDate).filter(Boolean).sort().at(-1) || ""

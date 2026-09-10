@@ -13,6 +13,7 @@ import {
   WalletCards
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils/format";
+import { positionPerformanceAvailable, positionPerformanceExcluded } from "@/lib/portfolioPerformance";
 import { getInvestorHoldingDetail } from "@/services/investorAppService";
 import InvestorPageHeader from "@/components/investor/InvestorPageHeader";
 import { MobileEmptyState, MobileSectionHeading } from "@/components/investor/mobile/InvestorMobilePrimitives";
@@ -79,8 +80,10 @@ export default function InvestorHoldingDetailPage() {
   const transactions = payload?.transactions || [];
   const currentValue = Number(position?.currentValue || 0);
   const invested = Number(position?.totalInvested ?? position?.investedAmount ?? 0);
-  const gain = Number(position?.gainLoss ?? (currentValue - invested));
-  const gainPct = invested > 0 ? gain / invested * 100 : Number(position?.gainLossPercentage || 0);
+  const performanceAvailable = position ? positionPerformanceAvailable(position) : false;
+  const performanceExcluded = position ? positionPerformanceExcluded(position) : false;
+  const gain = performanceAvailable ? currentValue - invested : 0;
+  const gainPct = performanceAvailable && invested > 0 ? gain / invested * 100 : 0;
   const allocations = Array.isArray(position?.goalAllocations) ? position.goalAllocations : [];
   const primaryGoal = allocations.find((item) => Number(item.percentage || 0) > 0) || null;
   const status = String(position?.status || "Active");
@@ -110,10 +113,10 @@ export default function InvestorHoldingDetailPage() {
           <div className="mt-6">
             <p className="text-[12px] text-[#6B7280]">Current Value</p>
             <p className="gv-private-value mt-1 font-heading text-[2rem] font-bold leading-none tracking-tight text-[#0B0B0F]">{formatCurrency(currentValue)}</p>
-            <p className={`gv-private-value mt-2 inline-flex items-center gap-1 text-[12px] font-semibold ${gain >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>
+            {performanceAvailable ? <p className={`gv-private-value mt-2 inline-flex items-center gap-1 text-[12px] font-semibold ${gain >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>
               {gain >= 0 ? <ArrowUpRight size={14} strokeWidth={1.5} /> : <ArrowDownLeft size={14} strokeWidth={1.5} />}
               {gain >= 0 ? "+" : ""}{formatCurrency(gain)} · {gainPct >= 0 ? "+" : ""}{gainPct.toFixed(1)}%
-            </p>
+            </p> : <p className="mt-2 text-[12px] font-semibold text-[#6B7280]">{performanceExcluded ? "Performance not applicable to this balance" : "Cost basis pending · return not calculated"}</p>}
           </div>
         </section>
 
@@ -123,10 +126,10 @@ export default function InvestorHoldingDetailPage() {
             <div><p className="text-[10px] font-semibold text-[#1F4ED8]">At a glance</p><h2 className="font-heading text-[1.05rem] font-bold text-[#0B0B0F]">Investment snapshot</h2></div>
           </div>
           <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-[14px] border border-[#1F4ED8]/10 bg-white/95">
-            <Metric label="Invested amount" value={formatCurrency(invested)} privateValue />
+            <Metric label="Invested amount" value={performanceExcluded ? "Not applicable" : performanceAvailable || invested > 0 ? formatCurrency(invested) : "Cost basis pending"} privateValue />
             <Metric label="Units" value={unitsOf(position) ? unitsOf(position).toLocaleString("en-IN", { maximumFractionDigits: 4 }) : "—"} privateValue />
             <Metric label={rateLabel(position)} value={rateOf(position) ? `₹${rateOf(position).toLocaleString("en-IN", { maximumFractionDigits: 4 })}` : "—"} helper={valuationDate ? formatDate(valuationDate) : ""} privateValue />
-            <Metric label="XIRR / return" value={xirr ? `${xirr.toFixed(1)}%` : `${gainPct.toFixed(1)}%`} privateValue />
+            <Metric label="XIRR / return" value={performanceAvailable ? (xirr ? `${xirr.toFixed(1)}%` : `${gainPct.toFixed(1)}%`) : performanceExcluded ? "Not applicable" : "Pending"} privateValue />
           </div>
         </section>
 
@@ -176,7 +179,7 @@ export default function InvestorHoldingDetailPage() {
       <div className="hidden rounded-[var(--gv-radius-lg)] border border-slate-200 bg-white p-6 shadow-[var(--gv-shadow-card)] md:block">
         <h1 className="font-heading text-2xl font-bold text-slate-950">{nameOf(position)}</h1>
         <p className="mt-2 text-sm text-slate-500">{productLabel(position)} · {source}</p>
-        <div className="mt-6 grid gap-3 sm:grid-cols-4"><Metric label="Current value" value={formatCurrency(currentValue)} privateValue /><Metric label="Invested" value={formatCurrency(invested)} privateValue /><Metric label="Gain / loss" value={`${gain >= 0 ? "+" : ""}${formatCurrency(gain)}`} privateValue /><Metric label="Portfolio allocation" value={`${Number(payload?.allocationPercentage || 0).toFixed(1)}%`} /></div>
+        <div className="mt-6 grid gap-3 sm:grid-cols-4"><Metric label="Current value" value={formatCurrency(currentValue)} privateValue /><Metric label="Invested" value={performanceExcluded ? "Not applicable" : performanceAvailable || invested > 0 ? formatCurrency(invested) : "Cost basis pending"} privateValue /><Metric label="Gain / loss" value={performanceAvailable ? `${gain >= 0 ? "+" : ""}${formatCurrency(gain)}` : performanceExcluded ? "Not applicable" : "Pending"} privateValue /><Metric label="Portfolio allocation" value={`${Number(payload?.allocationPercentage || 0).toFixed(1)}%`} /></div>
       </div>
     </div>
   );

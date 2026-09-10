@@ -918,3 +918,18 @@ See `docs/PERSONALISED_GUEST_INVESTOR_DEMO_v0.34.7.md` and `RELEASE_VALIDATION_v
 The Personalised Guest Investor Demo now treats `demo_investor` as Investor notification mode inside the shared notification bell. Demo sessions use the synthetic notification context and never attempt the Firebase-authenticated `/api/notifications` staff polling path. Staff notification polling is additionally gated by an active Firebase user. Installed Investor PWA cache: `v0.34.7-guest-demo3`.
 
 The Personalised Demo hero heading is now white on Royal Trust Blue with a restrained Insight Yellow emphasis, replacing the previous black-on-blue treatment.
+
+## v0.34.8 — Portfolio Gain/Loss Integrity & Investment Type Totals
+
+Portfolio performance now uses one cost-basis-aware source of truth across the Investor App, Portfolio screen and verified portfolio snapshots. A Mutual Fund SIP in loss reduces the overall portfolio Gain/Loss; a stock with current value but missing purchase cost remains in Current Portfolio but is not treated as profit; cash is value-only; and ULIP premium is de-duplicated at policy level.
+
+The Portfolio screen now includes **Investment Type Totals** for Mutual Funds, Equity Delivery, ULIP, PMS, Bonds, Fixed Deposits, Gold, ETFs, Real Estate, Cash and Other Investments. Each active category shows invested/known invested, current value and gain/loss. **Trading / Derivatives** stays separate and shows monthly turnover plus net realised P&L so trading activity never inflates long-term Total Invested or Bucket List corpus.
+
+Valuation-only manual/generic updates preserve an already-known purchase cost instead of clearing it. Installed Investor PWA cache: `v0.34.8-portfolio-integrity1`.
+
+See `docs/PORTFOLIO_GAIN_LOSS_DATA_INTEGRITY_v0.34.8.md`, `docs/PORTFOLIO_GAIN_LOSS_DATA_INTEGRITY_CODE_MANIFEST_v0.34.8.md` and `RELEASE_VALIDATION_v0.34.8.md`.
+
+
+## v0.34.8 Mobile Investor Sign Out Hotfix
+
+The phone Investor App now exposes a clear **Sign Out** action in the GrowVest centre menu and at the bottom of the mobile Profile screen. The Personalised Guest Investor Demo uses the same locations with **Exit Demo** instead. Real investors return to `/investor-login`; demo guests return to `/investor-demo` after the guest session is cleared. Installed PWA caches use `v0.34.8-mobile-signout1`.

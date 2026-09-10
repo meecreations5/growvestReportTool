@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { BellRing, CalendarDays, ChevronRight, Eye, EyeOff, FileText, Files, IdCard, KeyRound, Mail, MapPin, Phone, ShieldCheck, Target, UserRound, WalletCards } from "lucide-react";
+import { BellRing, CalendarDays, ChevronRight, Eye, EyeOff, FileText, Files, IdCard, KeyRound, LogOut, Mail, MapPin, Phone, ShieldCheck, Target, UserRound, WalletCards } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatCurrency, formatDate } from "@/lib/utils/format";
 import InvestorPageHeader from "@/components/investor/InvestorPageHeader";
@@ -34,7 +35,7 @@ function portfolioStatusLabel(value, issueCount = 0) {
   return status ? status.replaceAll("_", " ") : "Not updated yet";
 }
 
-function MobileProfileApp({ profile, investor, fullName, advisorName, advisorEmail, advisorPhone, isDemoInvestor = false }) {
+function MobileProfileApp({ profile, investor, fullName, advisorName, advisorEmail, advisorPhone, isDemoInvestor = false, onLogout }) {
   const { privacyMode, togglePrivacyMode } = useInvestorPrivacy();
   const risk = investor?.riskAssessment?.finalProfile || investor?.riskProfile || "Risk profile pending";
   const advisorPhoto = investor?.advisorPhotoURL || investor?.assignedAdvisorPhotoURL || investor?.advisorPhotoUrl || investor?.assignedAdvisorPhotoUrl || "";
@@ -121,12 +122,17 @@ function MobileProfileApp({ profile, investor, fullName, advisorName, advisorEma
         </div>
       </section>
 
+      <button type="button" onClick={onLogout} className="flex min-h-[50px] w-full items-center justify-center gap-2 rounded-[16px] border border-[#E53935]/25 bg-[#E53935]/[0.06] px-4 text-[12px] font-bold text-[#C62828] active:bg-[#E53935]/10" aria-label={isDemoInvestor ? "Exit GrowVest demo" : "Sign out of GrowVest Investor App"}>
+        <LogOut size={17} strokeWidth={1.5} /> {isDemoInvestor ? "Exit Demo" : "Sign Out"}
+      </button>
+
     </div>
   );
 }
 
 export default function InvestorProfilePage() {
-  const { profile, isDemoInvestor } = useAuth();
+  const router = useRouter();
+  const { profile, isDemoInvestor, logout } = useAuth();
   const [investor, setInvestor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -156,13 +162,19 @@ export default function InvestorProfilePage() {
   const advisorEmail = investor?.advisorEmail || investor?.assignedAdvisorEmail || "cwp@growvest.info";
   const advisorPhone = investor?.advisorPhone || investor?.assignedAdvisorPhone || "";
 
+  async function handleLogout() {
+    const exitHref = isDemoInvestor ? "/investor-demo" : "/investor-login";
+    await logout();
+    router.replace(exitHref);
+  }
+
   if (loading) return <div className="grid gap-4"><div className="gv-skeleton h-52 rounded-3xl" /><div className="gv-skeleton h-80 rounded-3xl" /></div>;
 
   return (
     <div className="grid gap-5 sm:gap-6">
       <InvestorPageHeader eyebrow="Investor profile" title="My profile" description="Your identity, Advisor relationship and secure portal settings in one place." />
       {error ? <div className="rounded-[18px] border border-red-200 bg-red-50 p-4 text-xs font-semibold text-red-700 md:hidden">{error}</div> : null}
-      <MobileProfileApp profile={profile} investor={investor} fullName={fullName} advisorName={advisorName} advisorEmail={advisorEmail} advisorPhone={advisorPhone} isDemoInvestor={isDemoInvestor} />
+      <MobileProfileApp profile={profile} investor={investor} fullName={fullName} advisorName={advisorName} advisorEmail={advisorEmail} advisorPhone={advisorPhone} isDemoInvestor={isDemoInvestor} onLogout={handleLogout} />
 
       <div className="hidden gap-5 md:grid md:gap-6">
       {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}

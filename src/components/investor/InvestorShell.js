@@ -114,8 +114,9 @@ export default function InvestorShell({ children }) {
 
   async function handleLogout() {
     setMoreOpen(false);
+    const exitHref = isDemoInvestor ? "/investor-demo" : "/investor-login";
     await logout();
-    router.replace("/investor-login");
+    router.replace(exitHref);
   }
 
   return (
@@ -335,6 +336,7 @@ export default function InvestorShell({ children }) {
             </div>
 
             {canInstall ? <button type="button" onClick={async () => { await installApp(); setMoreOpen(false); }} className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-[14px] bg-[#1F4ED8] px-4 text-[12px] font-bold text-white"><Download size={16} strokeWidth={1.5} /> Install GrowVest Investor App</button> : null}
+            <button type="button" onClick={handleLogout} className="mt-3 flex min-h-[46px] w-full items-center justify-center gap-2 rounded-[14px] border border-[#E53935]/25 bg-[#E53935]/[0.06] px-4 text-[12px] font-bold text-[#C62828] active:bg-[#E53935]/10" aria-label={isDemoInvestor ? "Exit GrowVest demo" : "Sign out of GrowVest Investor App"}><LogOut size={16} strokeWidth={1.5} /> {isDemoInvestor ? "Exit Demo" : "Sign Out"}</button>
             <p className="mt-4 text-center text-[10px] text-[#6B7280]">Your Conscious Wealth Partner</p>
           </section>
 

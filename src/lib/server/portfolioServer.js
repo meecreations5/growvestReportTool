@@ -13,6 +13,7 @@ import {
   normalisePortfolioGoalAllocations,
   portfolioAllocationStatus
 } from "@/lib/portfolioGoalAllocation";
+import { summarisePortfolioPerformance } from "@/lib/portfolioPerformance";
 
 export function indiaDateKey(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -219,14 +220,19 @@ export async function createPortfolioSnapshot(investorId, actor, { snapshotDate 
   });
 
   const generalWealthTotal = bucketTotals[GENERAL_WEALTH_BUCKET_ID] || { currentValue: 0, monthlyContribution: 0 };
+  const performance = summarisePortfolioPerformance(positions);
   const roundedSummary = {
     ...summary,
     generalWealthCorpus: Number(Number(generalWealthTotal.currentValue || 0).toFixed(2)),
     generalWealthMonthlyContribution: Number(Number(generalWealthTotal.monthlyContribution || 0).toFixed(2)),
-    currentValue: Number(summary.currentValue.toFixed(2)),
-    totalInvested: Number(summary.totalInvested.toFixed(2)),
-    gainLoss: Number(summary.gainLoss.toFixed(2)),
-    monthlySip: Number(summary.monthlySip.toFixed(2)),
+    currentValue: performance.currentValue,
+    totalInvested: performance.totalInvested,
+    gainLoss: performance.gainLoss,
+    gainLossPercentage: performance.gainLossPercentage,
+    gainLossPartial: performance.gainLossPartial,
+    pendingCostBasisCount: performance.pendingCostBasisCount,
+    pendingCurrentValue: performance.pendingCurrentValue,
+    monthlySip: performance.monthlySip,
     assetClasses: Object.fromEntries(Object.entries(summary.assetClasses).map(([key, value]) => [key, Number(value.toFixed(2))])),
     productTypes: Object.fromEntries(Object.entries(summary.productTypes).map(([key, value]) => [key, Number(value.toFixed(2))]))
   };
@@ -387,6 +393,9 @@ export async function createPortfolioSnapshot(investorId, actor, { snapshotDate 
     latestPortfolioValue: roundedSummary.currentValue,
     latestPortfolioInvested: roundedSummary.totalInvested,
     latestPortfolioGainLoss: roundedSummary.gainLoss,
+    latestPortfolioGainLossPartial: Boolean(roundedSummary.gainLossPartial),
+    latestPortfolioPendingCostBasisCount: Number(roundedSummary.pendingCostBasisCount || 0),
+    latestPortfolioPendingCurrentValue: Number(roundedSummary.pendingCurrentValue || 0),
     latestPortfolioMonthlySip: roundedSummary.monthlySip,
     latestPortfolioReconciliationStatus: intelligence.status,
     latestPortfolioIssueCount: Number(intelligence.issues?.filter((item) => item.severity !== "info").length || 0),
