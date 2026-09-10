@@ -933,3 +933,11 @@ See `docs/PORTFOLIO_GAIN_LOSS_DATA_INTEGRITY_v0.34.8.md`, `docs/PORTFOLIO_GAIN_L
 ## v0.34.8 Mobile Investor Sign Out Hotfix
 
 The phone Investor App now exposes a clear **Sign Out** action in the GrowVest centre menu and at the bottom of the mobile Profile screen. The Personalised Guest Investor Demo uses the same locations with **Exit Demo** instead. Real investors return to `/investor-login`; demo guests return to `/investor-demo` after the guest session is cleared. Installed PWA caches use `v0.34.8-mobile-signout1`.
+
+## v0.34.9 — Investor Device Security & App Lock
+
+Real Investors can now enable a phone-only **App Lock** from **Profile → Login & Security**. A 4 or 6-digit PIN is mandatory when App Lock is enabled, and supported mobile devices can optionally use the platform authenticator (Face ID / fingerprint / device verification) as the primary unlock method with PIN fallback. The lock can run every time the app returns, or after 5, 15 or 30 minutes. Guest Demo sessions are excluded.
+
+Desktop/web Investor security is separate and device-specific. **Require sign-in after browser closes** is enabled by default and uses Firebase session persistence; the Investor can opt to keep that browser signed in. Desktop inactivity sign-out can be set to 15 minutes, 30 minutes, 1 hour or Off. Installed PWA caches use `v0.34.9-investor-security1`.
+
+See `docs/INVESTOR_DEVICE_SECURITY_APP_LOCK_v0.34.9.md`, `docs/INVESTOR_DEVICE_SECURITY_APP_LOCK_CODE_MANIFEST_v0.34.9.md` and `RELEASE_VALIDATION_v0.34.9.md`.

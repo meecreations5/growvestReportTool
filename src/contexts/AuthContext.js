@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { browserLocalPersistence, onAuthStateChanged, setPersistence, signOut } from "firebase/auth";
+import { browserLocalPersistence, browserSessionPersistence, onAuthStateChanged, setPersistence, signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { resolveUserProfile } from "@/services/authService";
 import { getInvestorAccessProfiles } from "@/services/investorAccessService";
@@ -10,6 +10,7 @@ import { validateApplicationProfile } from "@/lib/auth/session";
 import { clearStoredActiveInvestorId, getStoredActiveInvestorId, setStoredActiveInvestorId } from "@/lib/auth/investorAccess";
 import { clearWorkspaceCaches } from "@/lib/utils/offlineAccess";
 import { clearWorkspaceSearchCache } from "@/services/workspaceSearchService";
+import { getInvestorSecurityPreferences, isInvestorMobileDevice } from "@/lib/auth/investorSecurityPreferences";
 import { disablePushNotifications, isPushEnabledLocally } from "@/services/pushNotificationService";
 import {
   buildDemoAuthProfile,
@@ -66,6 +67,18 @@ export function AuthProvider({ children }) {
     setBaseProfile(nextBaseProfile);
 
     if (nextBaseProfile?.role === USER_ROLES.INVESTOR) {
+      try {
+        const securityPreferences = getInvestorSecurityPreferences(user.uid);
+        const investorPersistence = isInvestorMobileDevice()
+          ? browserLocalPersistence
+          : securityPreferences.desktopRequireSignInOnClose
+            ? browserSessionPersistence
+            : browserLocalPersistence;
+        await setPersistence(auth, investorPersistence);
+      } catch (error) {
+        console.warn("Unable to apply Investor session persistence preference", error);
+      }
+
       let profiles = [];
       try {
         profiles = await getInvestorAccessProfiles(user);
