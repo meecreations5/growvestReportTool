@@ -82,7 +82,33 @@ export async function verifyAppRequest(request) {
   if (!profileSnapshot.exists) throw new AppRequestError("Application user profile was not found.", 403, "profile_missing");
   const profile = profileSnapshot.data();
   if (profile.status !== "active") throw new AppRequestError("Your GrowVest account is inactive.", 403, "account_inactive");
-  return { uid: decoded.uid, ...profile };
+
+  const actor = { uid: decoded.uid, ...profile };
+  if (actor.role === "investor" && actor.portalEnabled !== false) {
+    const primaryInvestorId = String(actor.investorId || "").trim();
+    const requestedInvestorId = String(request.headers.get("x-growvest-investor-id") || "").trim();
+    actor.primaryInvestorId = primaryInvestorId;
+
+    if (requestedInvestorId && requestedInvestorId !== primaryInvestorId) {
+      const membershipId = `${decoded.uid}__${requestedInvestorId}`;
+      const membershipSnapshot = await adminDb.collection("investorAccessMemberships").doc(membershipId).get();
+      const membership = membershipSnapshot.exists ? membershipSnapshot.data() : null;
+      const fallbackAllowed = Array.isArray(actor.accessibleInvestorIds) && actor.accessibleInvestorIds.includes(requestedInvestorId);
+      if ((!membership || membership.status !== "active" || membership.uid !== decoded.uid || membership.investorId !== requestedInvestorId) && !fallbackAllowed) {
+        throw new AppRequestError("You are not authorised to view this Investor profile.", 403, "investor_context_denied");
+      }
+      actor.investorId = requestedInvestorId;
+      actor.activeInvestorId = requestedInvestorId;
+      actor.investorRelationship = membership?.relationship || "family";
+      actor.investorPermission = membership?.permission || "full";
+    } else {
+      actor.activeInvestorId = primaryInvestorId;
+      actor.investorRelationship = "self";
+      actor.investorPermission = "full";
+    }
+  }
+
+  return actor;
 }
 
 export async function verifyStaffRequest(request) {

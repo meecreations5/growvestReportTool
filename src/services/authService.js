@@ -96,10 +96,11 @@ async function claimInvestorGoogleAccess(firebaseUser) {
 
     if (!aliasSnapshot.exists()) return null;
     const alias = aliasSnapshot.data();
-    if (alias.status !== "active" || alias.portalEnabled === false || !alias.investorId) return null;
+    const investorIds = Array.from(new Set([...(Array.isArray(alias.investorIds) ? alias.investorIds : []), alias.investorId].map((item) => String(item || "").trim()).filter(Boolean)));
+    if (alias.status !== "active" || alias.portalEnabled === false || !investorIds.length) return null;
 
     // When a canonical username/phone account already exists, Google must be
-    // linked to that UID. Never create a second Investor profile for the same person.
+    // linked to that UID. Never create a second Investor profile for the same household access account.
     if (alias.portalUid && alias.portalUid !== firebaseUser.uid) return null;
 
     const profile = {
@@ -109,7 +110,9 @@ async function claimInvestorGoogleAccess(firebaseUser) {
       mobile: alias.mobile || "",
       role: USER_ROLES.INVESTOR,
       status: "active",
-      investorId: alias.investorId,
+      investorId: investorIds[0],
+      accessibleInvestorIds: investorIds,
+      householdAccessEnabled: investorIds.length > 1,
       clientCode: alias.clientCode || "",
       authMethod: "google",
       authMethods: ["google"],

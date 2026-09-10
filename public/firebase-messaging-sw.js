@@ -1,6 +1,8 @@
 self.addEventListener("notificationclick", (event) => {
   event.stopImmediatePropagation();
-  const link = event.notification?.data?.link || "/investor/notifications";
+  const baseLink = event.notification?.data?.link || "/investor/notifications";
+  const investorId = event.notification?.data?.investorId || "";
+  const link = investorId ? `${baseLink}${baseLink.includes("?") ? "&" : "?"}investor=${encodeURIComponent(investorId)}` : baseLink;
   event.notification.close();
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
@@ -41,7 +43,8 @@ messaging.onBackgroundMessage((payload) => {
     requireInteraction: data.requireInteraction === "true",
     data: {
       link: data.link || "/investor/notifications",
-      notificationId: data.notificationId || ""
+      notificationId: data.notificationId || "",
+      investorId: data.investorId || ""
     }
   });
 });

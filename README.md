@@ -893,3 +893,28 @@ The approved Home screenshot remains the source of truth. The Home transition no
 
 ### v0.34.5 Home Transition Exact4
 The Home content sheet now rises 26px into the Royal Trust Blue hero with 26px rounded top shoulders, keeping the compact quick-action tray inside the sheet. The Deep Premium Black Monthly Review block remains visible even before a review is published, using an honest placeholder state that links to Reports. Installed Investor PWA cache: `v0.34.5-home-exact4`.
+
+## v0.34.6 — Family & Household Portal Access
+
+Shared family contact details no longer require duplicate Firebase users. GrowVest can explicitly link multiple Investor profiles to one authorised access account, show a profile selector after login, switch Investor context without another OTP, preserve server-side Investor isolation through membership validation, and keep one family profile disable action from revoking all remaining household access. Push notifications also carry Investor context for safe deep links. See `docs/FAMILY_HOUSEHOLD_PORTAL_ACCESS_v0.34.6.md`.
+
+## v0.34.7 — Personalised Guest Investor Demo: Lead starts on agreement
+
+The Investor Demo now hands a prospect into the existing GrowVest Lead workflow at the exact moment they select **Become part of GrowVest**.
+
+- Starting/browsing a Demo does not create a Lead.
+- `Become part of GrowVest` creates one normal `NEW` Lead immediately with source `Investor App Demo`.
+- The Lead enters the existing `SOP 1 - Lead to Conversion` flow; no parallel demo pipeline is introduced.
+- Repeated clicks from the same Demo session are idempotent and reuse the same Lead.
+- The follow-up screen only enriches that Lead with optional email, city, interest and contact preference.
+- Public enrichment cannot overwrite normal Lead fields already completed by GrowVest staff.
+- The Lead remains unassigned until GrowVest assigns the appropriate Advisor, after which the existing Lead workflow continues normally.
+
+See `docs/PERSONALISED_GUEST_INVESTOR_DEMO_v0.34.7.md` and `RELEASE_VALIDATION_v0.34.7.md`.
+
+
+### v0.34.7 Guest Demo Notification Session Hotfix
+
+The Personalised Guest Investor Demo now treats `demo_investor` as Investor notification mode inside the shared notification bell. Demo sessions use the synthetic notification context and never attempt the Firebase-authenticated `/api/notifications` staff polling path. Staff notification polling is additionally gated by an active Firebase user. Installed Investor PWA cache: `v0.34.7-guest-demo3`.
+
+The Personalised Demo hero heading is now white on Royal Trust Blue with a restrained Insight Yellow emphasis, replacing the previous black-on-blue treatment.

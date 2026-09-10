@@ -11,6 +11,7 @@ import {
   KeyRound,
   LockKeyhole,
   ShieldCheck,
+  Sparkles,
   Smartphone,
   UserRound
 } from "lucide-react";
@@ -23,6 +24,7 @@ import {
   verifyInvestorOtp
 } from "@/services/authService";
 import { sanitizeNextPath } from "@/lib/auth/session";
+import { getInvestorAccessProfiles, persistActiveInvestor } from "@/services/investorAccessService";
 import { inputClassName } from "@/components/ui/Field";
 import BrandLogo from "@/components/branding/BrandLogo";
 import InvestorBrandMark from "@/components/investor/mobile/InvestorBrandMark";
@@ -132,7 +134,7 @@ function Feedback({ error, message, onUseMobile, onUsePassword }) {
 export default function InvestorLoginPage() {
   const router = useRouter();
   const { branding } = useBranding();
-  const { isAuthenticated, isInvestor, isStaff, loading, authorizationError, clearAuthorizationError } = useAuth();
+  const { firebaseUser, accessProfiles, isAuthenticated, isInvestor, isStaff, loading, authorizationError, clearAuthorizationError } = useAuth();
   const [activeTab, setActiveTab] = useState(TABS.MOBILE);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -150,10 +152,14 @@ export default function InvestorLoginPage() {
     if (loading || !isAuthenticated) return;
     if (isStaff) return router.replace("/dashboard");
     if (isInvestor) {
-      const requested = new URLSearchParams(window.location.search).get("next");
-      router.replace(sanitizeNextPath(requested, "/investor/dashboard", "/investor"));
+      const requested = sanitizeNextPath(new URLSearchParams(window.location.search).get("next"), "/investor/dashboard", "/investor");
+      if (accessProfiles.length > 1) {
+        router.replace(`/investor/select-profile?next=${encodeURIComponent(requested)}`);
+      } else {
+        router.replace(requested);
+      }
     }
-  }, [isAuthenticated, isInvestor, isStaff, loading, router]);
+  }, [accessProfiles.length, isAuthenticated, isInvestor, isStaff, loading, router]);
 
   useEffect(() => () => {
     recaptchaRef.current?.clear();
@@ -180,9 +186,19 @@ export default function InvestorLoginPage() {
     resetFeedback();
   }
 
-  function redirectInvestor() {
-    const requested = new URLSearchParams(window.location.search).get("next");
-    router.replace(sanitizeNextPath(requested, "/investor/dashboard", "/investor"));
+  async function redirectInvestor(user = firebaseUser) {
+    const requested = sanitizeNextPath(new URLSearchParams(window.location.search).get("next"), "/investor/dashboard", "/investor");
+    try {
+      const profiles = await getInvestorAccessProfiles(user || undefined);
+      if (profiles.length > 1) {
+        router.replace(`/investor/select-profile?next=${encodeURIComponent(requested)}`);
+        return;
+      }
+      if (profiles.length === 1 && user) persistActiveInvestor(user, profiles[0].investorId);
+    } catch (accessError) {
+      console.warn("Unable to resolve Investor family access during login", accessError);
+    }
+    router.replace(requested);
   }
 
   async function handleUsernameLogin(event) {
@@ -190,8 +206,8 @@ export default function InvestorLoginPage() {
     resetFeedback();
     setSubmitting(true);
     try {
-      await signInInvestorWithUsername(username, password);
-      redirectInvestor();
+      const result = await signInInvestorWithUsername(username, password);
+      await redirectInvestor(result.user);
     } catch (loginError) {
       setError(loginError.message);
     } finally {
@@ -203,8 +219,8 @@ export default function InvestorLoginPage() {
     resetFeedback();
     setSubmitting(true);
     try {
-      await signInInvestorWithGooglePopup();
-      redirectInvestor();
+      const result = await signInInvestorWithGooglePopup();
+      await redirectInvestor(result.user);
     } catch (loginError) {
       setError(loginError.message);
     } finally {
@@ -245,8 +261,8 @@ export default function InvestorLoginPage() {
     if (!/^\d{6}$/.test(otp)) return setError("Enter the complete 6-digit OTP.");
     setSubmitting(true);
     try {
-      await verifyInvestorOtp(confirmationResult, otp);
-      redirectInvestor();
+      const result = await verifyInvestorOtp(confirmationResult, otp);
+      await redirectInvestor(result.user);
     } catch (verifyError) {
       setError(verifyError.message);
     } finally {
@@ -383,6 +399,17 @@ export default function InvestorLoginPage() {
           <div className="mt-5 flex items-center justify-center gap-2 text-center text-xs leading-5 text-slate-500">
             <ShieldCheck className="shrink-0 text-[var(--gv-success)]" size={17} />
             <p>Your account is protected through secure authentication.</p>
+          </div>
+
+          <div className="mt-6 rounded-[20px] border border-[#DCE6FF] bg-[#F7F9FF] p-4 text-left">
+            <div className="flex items-start gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#EAF0FF] text-[#1F4ED8]"><Sparkles size={16} strokeWidth={1.5} /></span>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-[#0B0B0F]">New to GrowVest?</p>
+                <p className="mt-1 text-xs leading-5 text-[#6B7280]">Explore a personalised sample Investor App with your name and a unique illustrative portfolio.</p>
+                <Link href="/investor-demo" className="mt-2 inline-flex min-h-9 items-center gap-1 text-xs font-bold text-[#1F4ED8]">Explore Demo <ChevronRight size={15} strokeWidth={1.5} /></Link>
+              </div>
+            </div>
           </div>
 
           <div className="mt-6 border-t border-slate-200 pt-5 text-center">

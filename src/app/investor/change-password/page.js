@@ -16,6 +16,7 @@ import { linkInvestorGoogleAccount } from "@/services/authService";
 import InvestorPageHeader from "@/components/investor/InvestorPageHeader";
 import { confirmInvestorPasswordChanged, getInvestorAppData } from "@/services/investorAppService";
 import { GrowVestOutline } from "@/components/investor/mobile/InvestorMobilePrimitives";
+import DemoInvestorCta from "@/components/investor/DemoInvestorCta";
 
 function GoogleMark() {
   return (
@@ -33,7 +34,7 @@ function MobileProvider({ icon, title, linked, helper }) {
 }
 
 export default function ChangePasswordPage() {
-  const { firebaseUser, profile, refreshProfile } = useAuth();
+  const { firebaseUser, profile, refreshProfile, isDemoInvestor } = useAuth();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -120,6 +121,10 @@ export default function ChangePasswordPage() {
     <label className="grid gap-2 text-xs font-black text-slate-700">Confirm new password<input className={inputClassName} type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" required /></label>
     <button type="submit" disabled={submitting} className="min-h-12 rounded-2xl bg-[var(--gv-blue)] px-4 py-3 text-sm font-black text-white shadow-[0_12px_28px_rgba(31,78,216,.18)] disabled:opacity-60">{submitting ? "Updating password…" : hasPasswordProvider ? "Update password" : "Enable password access"}</button>
   </form>;
+
+  if (isDemoInvestor) {
+    return <div className="mx-auto max-w-xl py-3 md:py-8"><DemoInvestorCta title="Login & security is not part of the Demo Experience" description="Your guest demo does not create a real GrowVest login. Become part of GrowVest and our team can set up secure access for your own Investor App." /></div>;
+  }
 
   return <>
     <div className="gv-mobile-app-stack md:hidden">

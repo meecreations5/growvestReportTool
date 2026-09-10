@@ -19,6 +19,7 @@ import {
   sendPushTest,
   syncPushSubscription
 } from "@/services/pushNotificationService";
+import { getDemoNotifications } from "@/lib/demo/investorDemo";
 
 const InvestorNotificationContext = createContext(null);
 const IN_APP_KEY = "growvest-investor-in-app-alerts";
@@ -32,7 +33,7 @@ function readStoredBoolean(key, fallback) {
 
 export function InvestorNotificationProvider({ children }) {
   const router = useRouter();
-  const { profile } = useAuth();
+  const { profile, isDemoInvestor } = useAuth();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -52,6 +53,14 @@ export function InvestorNotificationProvider({ children }) {
     let cancelled = false;
     setInAppAlertsState(readStoredBoolean(IN_APP_KEY, true));
 
+    if (isDemoInvestor) {
+      setPushSupported(false);
+      setPushConfigured(false);
+      setPushPermission("demo");
+      setPushEnabledState(false);
+      return () => { cancelled = true; };
+    }
+
     getPushCapability().then((capability) => {
       if (cancelled) return;
       setPushSupported(Boolean(capability.supported));
@@ -61,11 +70,18 @@ export function InvestorNotificationProvider({ children }) {
     });
 
     return () => { cancelled = true; };
-  }, []);
+  }, [isDemoInvestor]);
 
   useEffect(() => {
     if (!profile?.id) return undefined;
     let cancelled = false;
+
+    if (isDemoInvestor) {
+      setInAppAlertsState(readStoredBoolean(IN_APP_KEY, true));
+      setPushCategories(DEFAULT_NOTIFICATION_PREFERENCES.pushCategories);
+      setPushEnabledState(false);
+      return () => { cancelled = true; };
+    }
 
     if (isPushEnabledLocally()) {
       syncPushSubscription().then((result) => {
@@ -88,7 +104,7 @@ export function InvestorNotificationProvider({ children }) {
     }).catch((nextError) => console.warn("Notification preferences could not be loaded", nextError));
 
     return () => { cancelled = true; };
-  }, [profile?.id]);
+  }, [isDemoInvestor, profile?.id]);
 
   useEffect(() => {
     initialisedRef.current = false;
@@ -97,6 +113,16 @@ export function InvestorNotificationProvider({ children }) {
     if (!profile?.id) {
       setItems([]);
       setLoading(false);
+      return undefined;
+    }
+
+    if (isDemoInvestor) {
+      const demoItems = getDemoNotifications();
+      setItems(demoItems);
+      knownIdsRef.current = new Set(demoItems.map((item) => item.id));
+      initialisedRef.current = true;
+      setLoading(false);
+      setError("");
       return undefined;
     }
 
@@ -130,20 +156,20 @@ export function InvestorNotificationProvider({ children }) {
         setLoading(false);
       }
     );
-  }, [inAppAlerts, profile]);
+  }, [inAppAlerts, isDemoInvestor, profile]);
 
   const unreadItems = useMemo(() => items.filter((item) => item.status !== "read"), [items]);
 
   const markRead = useCallback(async (notificationId) => {
     setItems((current) => current.map((item) => item.id === notificationId ? { ...item, status: "read", readAt: new Date() } : item));
-    await markNotificationRead(notificationId);
-  }, []);
+    if (!isDemoInvestor) await markNotificationRead(notificationId);
+  }, [isDemoInvestor]);
 
   const markAllRead = useCallback(async () => {
     const currentItems = items;
     setItems((current) => current.map((item) => ({ ...item, status: "read", readAt: item.readAt || new Date() })));
-    await markAllNotificationsRead(currentItems);
-  }, [items]);
+    if (!isDemoInvestor) await markAllNotificationsRead(currentItems);
+  }, [isDemoInvestor, items]);
 
   const openNotification = useCallback(async (item) => {
     if (item.status !== "read") {
@@ -160,15 +186,22 @@ export function InvestorNotificationProvider({ children }) {
   const setInAppAlerts = useCallback(async (enabled) => {
     setInAppAlertsState(enabled);
     window.localStorage.setItem(IN_APP_KEY, String(enabled));
-    if (profile?.id) {
+    if (profile?.id && !isDemoInvestor) {
       try { await saveNotificationPreferences(profile.id, { inAppEnabled: enabled }); }
       catch (nextError) { console.warn("In-app preference could not be saved", nextError); }
     }
-  }, [profile?.id]);
+  }, [isDemoInvestor, profile?.id]);
 
   const setPushAlerts = useCallback(async (enabled) => {
     setPushBusy(true);
     setPushMessage("");
+    if (isDemoInvestor) {
+      setPushEnabledState(false);
+      setPushPermission("demo");
+      setPushMessage("Push alerts are available when you become part of GrowVest.");
+      setPushBusy(false);
+      return { enabled: false, permission: "demo" };
+    }
     try {
       const result = enabled ? await enablePushNotifications() : await disablePushNotifications();
       setPushPermission(result.permission || window.Notification?.permission || "default");
@@ -186,23 +219,28 @@ export function InvestorNotificationProvider({ children }) {
     } finally {
       setPushBusy(false);
     }
-  }, []);
+  }, [isDemoInvestor]);
 
   const updatePushCategory = useCallback(async (category, enabled) => {
     const next = { ...pushCategories, [category]: enabled };
     setPushCategories(next);
-    if (profile?.id) {
+    if (profile?.id && !isDemoInvestor) {
       try { await saveNotificationPreferences(profile.id, { pushCategories: next }); }
       catch (nextError) {
         console.error(nextError);
         setPushMessage("This notification preference could not be saved.");
       }
     }
-  }, [profile?.id, pushCategories]);
+  }, [isDemoInvestor, profile?.id, pushCategories]);
 
   const testPush = useCallback(async () => {
     setPushBusy(true);
     setPushMessage("");
+    if (isDemoInvestor) {
+      setPushMessage("Push alerts are available when you become part of GrowVest.");
+      setPushBusy(false);
+      return { successCount: 0, demo: true };
+    }
     try {
       const result = await sendPushTest();
       setPushMessage(result.successCount
@@ -215,7 +253,7 @@ export function InvestorNotificationProvider({ children }) {
     } finally {
       setPushBusy(false);
     }
-  }, []);
+  }, [isDemoInvestor]);
 
   const value = useMemo(() => ({
     items,

@@ -1,5 +1,7 @@
 import { auth } from "@/lib/firebase/client";
 import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
+import { getStoredActiveInvestorId } from "@/lib/auth/investorAccess";
+import { demoReadOnlyError, getDemoHoldingDetail, getDemoInvestorAppData, getGuestDemoSession } from "@/lib/demo/investorDemo";
 
 const responseCache = new Map();
 const inFlight = new Map();
@@ -7,7 +9,8 @@ const DEFAULT_TTL_MS = 30000;
 
 function cacheKey(url) {
   const uid = auth.currentUser?.uid || "anonymous";
-  return `${uid}:${url}`;
+  const investorId = auth.currentUser?.uid ? (getStoredActiveInvestorId(auth.currentUser.uid) || "primary") : "anonymous";
+  return `${uid}:${investorId}:${url}`;
 }
 
 function cachedValue(key, ttlMs) {
@@ -68,6 +71,8 @@ export function invalidateInvestorAppData(section = "") {
 }
 
 export async function getInvestorAppData(section = "dashboard", options = {}) {
+  const demoSession = getGuestDemoSession();
+  if (demoSession) return getDemoInvestorAppData(section, "", demoSession);
   const ttlBySection = {
     dashboard: 15000,
     goals: 30000,
@@ -85,6 +90,8 @@ export async function getInvestorAppData(section = "dashboard", options = {}) {
 }
 
 export async function getInvestorReportDetail(reportId, options = {}) {
+  const demoSession = getGuestDemoSession();
+  if (demoSession) return getDemoInvestorAppData("report", reportId, demoSession);
   if (!reportId) throw new Error("Monthly report is required.");
   return investorAppFetch(`/api/investor/app-data?section=report&reportId=${encodeURIComponent(reportId)}`, {
     ttlMs: 60000,
@@ -93,6 +100,7 @@ export async function getInvestorReportDetail(reportId, options = {}) {
 }
 
 export async function confirmInvestorPasswordChanged(details = {}) {
+  if (getGuestDemoSession()) throw demoReadOnlyError("Login & security changes");
   const payload = await investorAppFetch("/api/investor/app-data", {
     method: "POST",
     body: JSON.stringify({ action: "password_changed", ...details }),
@@ -103,6 +111,8 @@ export async function confirmInvestorPasswordChanged(details = {}) {
 }
 
 export async function getInvestorHoldingDetail(positionId, options = {}) {
+  const demoSession = getGuestDemoSession();
+  if (demoSession) return getDemoHoldingDetail(positionId, demoSession);
   if (!positionId) throw new Error("Investment holding is required.");
   return investorAppFetch(`/api/investor/holding-detail?positionId=${encodeURIComponent(positionId)}`, {
     ttlMs: 45000,

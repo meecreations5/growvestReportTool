@@ -47,6 +47,9 @@ async function ownNotification(actor, notificationId) {
   if (String(notification.recipientUid || "") !== String(actor.uid)) {
     throw new AppRequestError("You are not authorised to update this notification.", 403, "notification_access_denied");
   }
+  if (actor.role === "investor" && notification.investorId && String(notification.investorId) !== String(actor.investorId || "")) {
+    throw new AppRequestError("Switch to the related Investor profile before updating this notification.", 403, "notification_investor_context_denied");
+  }
   return notification;
 }
 
@@ -59,6 +62,7 @@ export async function GET(request) {
     ]);
     const items = notificationSnapshot.docs
       .map((item) => ({ id: item.id, ...item.data() }))
+      .filter((item) => !item.investorId || actor.role !== "investor" || String(item.investorId) === String(actor.investorId || ""))
       .sort((a, b) => timestampMillis(b.createdAt) - timestampMillis(a.createdAt))
       .slice(0, 50);
     const preferences = preferenceSnapshot.exists
@@ -102,7 +106,9 @@ export async function POST(request) {
       const snapshot = await adminDb.collection("notifications").where("recipientUid", "==", actor.uid).get();
       const writer = adminDb.bulkWriter();
       snapshot.docs.forEach((item) => {
-        if (String(item.data()?.status || "") === "read") return;
+        const data = item.data() || {};
+        if (actor.role === "investor" && data.investorId && String(data.investorId) !== String(actor.investorId || "")) return;
+        if (String(data.status || "") === "read") return;
         writer.set(item.ref, { status: "read", readAt: FieldValue.serverTimestamp() }, { merge: true });
       });
       await writer.close();

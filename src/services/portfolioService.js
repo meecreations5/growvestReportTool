@@ -11,6 +11,7 @@ import { auth, db } from "@/lib/firebase/client";
 import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
 import { normalisePortfolioGoalAllocations, portfolioAllocationStatus } from "@/lib/portfolioGoalAllocation";
 import { dedupeActionWithdrawalTransactions } from "@/lib/portfolioCashFlow";
+import { getDemoPortfolioView, getGuestDemoSession } from "@/lib/demo/investorDemo";
 
 function rows(snapshot) {
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
@@ -83,6 +84,8 @@ async function authenticatedFetch(url, options = {}) {
 }
 
 export async function getInvestorPortfolioView(investorId = "") {
+  const demoSession = getGuestDemoSession();
+  if (demoSession) return getDemoPortfolioView(demoSession);
   const queryString = investorId ? `?investorId=${encodeURIComponent(investorId)}` : "";
   return authenticatedFetch(`/api/portfolio/investor-view${queryString}`, {
     method: "GET",

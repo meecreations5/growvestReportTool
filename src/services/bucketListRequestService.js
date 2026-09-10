@@ -1,6 +1,7 @@
 import { auth } from "@/lib/firebase/client";
 import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
 import { invalidateInvestorAppData } from "@/services/investorAppService";
+import { demoReadOnlyError, getGuestDemoSession } from "@/lib/demo/investorDemo";
 
 async function bucketListFetch(url, options = {}) {
   const user = auth.currentUser;
@@ -14,12 +15,14 @@ async function bucketListFetch(url, options = {}) {
 }
 
 export async function getBucketListRequests(investorId = "") {
+  if (getGuestDemoSession()) return { items: [], demo: true };
   const query = investorId ? `?investorId=${encodeURIComponent(investorId)}` : "";
   const payload = await bucketListFetch(`/api/bucket-list-requests${query}`, { method: "GET" });
   return { ...payload, items: payload.items || [] };
 }
 
 export async function createBucketListRequest(values = {}) {
+  if (getGuestDemoSession()) throw demoReadOnlyError("Adding a Bucket List goal");
   const payload = await bucketListFetch("/api/bucket-list-requests", {
     method: "POST",
     body: JSON.stringify({ action: "create", ...values })
@@ -30,6 +33,7 @@ export async function createBucketListRequest(values = {}) {
 }
 
 export async function reviewBucketListRequest(requestId, status, updates = {}) {
+  if (getGuestDemoSession()) throw demoReadOnlyError("Bucket List changes");
   const payload = await bucketListFetch("/api/bucket-list-requests", {
     method: "POST",
     body: JSON.stringify({ action: "review", requestId, status, updates })

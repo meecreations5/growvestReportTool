@@ -14,18 +14,23 @@ import { formatDateTime } from "@/lib/utils/date";
 
 export default function NotificationBell({ className = "", inverted = false, compact = false }) {
   const router = useRouter();
-  const { profile } = useAuth();
+  const { profile, firebaseUser, isDemoInvestor } = useAuth();
   const investorContext = useInvestorNotifications();
   const [open, setOpen] = useState(false);
   const [staffItems, setStaffItems] = useState([]);
   const [staffError, setStaffError] = useState("");
   const panelRef = useRef(null);
-  const investorMode = profile?.role === "investor" && Boolean(investorContext);
+  const investorMode = Boolean(investorContext) && (profile?.role === "investor" || isDemoInvestor);
+  const staffNotificationMode = !investorMode && Boolean(profile?.id && firebaseUser?.uid);
   const items = investorMode ? investorContext.items : staffItems;
   const error = investorMode ? investorContext.error : staffError;
 
   useEffect(() => {
-    if (investorMode || !profile?.id) return undefined;
+    if (!staffNotificationMode) {
+      setStaffItems([]);
+      setStaffError("");
+      return undefined;
+    }
     return subscribeNotifications(
       profile,
       setStaffItems,
@@ -34,7 +39,7 @@ export default function NotificationBell({ className = "", inverted = false, com
         setStaffError("Notifications could not be loaded.");
       }
     );
-  }, [investorMode, profile]);
+  }, [profile, staffNotificationMode]);
 
   useEffect(() => {
     function handleClick(event) {

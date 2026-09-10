@@ -28,7 +28,7 @@ function walk(directory) {
 }
 
 const packageJson = JSON.parse(read("package.json"));
-assert(packageJson.version === "0.34.5", "package.json version is 0.34.5");
+assert(packageJson.version === "0.34.7", "package.json version is 0.34.7");
 
 const forbiddenTopLevel = [".env", ".env.local", ".git", ".next", "node_modules"];
 for (const item of forbiddenTopLevel) {
@@ -369,7 +369,7 @@ assert(investorShell.includes("lg:hidden") && investorShell.includes('aria-label
 assert(investorShell.includes("touch-manipulation") && investorShell.includes("gv-signature-nav-item") && investorShell.includes("min-h-[60px]") && investorShell.includes('text-[#1F4ED8]'), "Current Investor Mobile App navigation uses compact touch targets with a restrained brand-blue active state");
 const investorGlobalStylesV0334 = read("src/app/globals.css");
 assert(investorGlobalStylesV0334.includes("iOS Safari zooms form controls smaller than 16px") && investorGlobalStylesV0334.includes(".gv-investor-viewport select") && investorGlobalStylesV0334.includes("font-size: 16px"), "v0.33.4 Investor Mobile App prevents iOS form-control zoom and improves touch scrolling");
-assert(serviceWorker.includes("growvest-investor-v0.34.5") && serviceWorker.includes("growvest-pages-v0.34.5"), "Investor PWA caches remain versioned so installed apps receive hardened navigation/routes");
+assert(serviceWorker.includes("growvest-investor-v0.34.7") && serviceWorker.includes("growvest-pages-v0.34.7"), "Investor PWA caches remain versioned so installed apps receive hardened navigation/routes");
 assert(stabilityDoc.includes("v0.33.4") && stabilityDoc.includes("Data Integrity") && stabilityDoc.includes("Mobile App") && stabilityManifest.includes("migrate-period/route.js") && stabilityManifest.includes("InvestorShell.js"), "v0.33.4 stability workflow and changed-code manifest are packaged with the release");
 
 const investorPortfolioViewRoute = read("src/app/api/portfolio/investor-view/route.js");
@@ -422,8 +422,8 @@ assert(investorPageHeaderV0335.includes('className="hidden gap-2.5 md:flex') && 
 assert(actionRouteV0335.includes("export async function GET") && actionRouteV0335.includes("verifyAppRequest(request)") && actionDetailRouteV0335.includes("export async function GET") && actionDetailRouteV0335.includes("verifyAppRequest(request)") && actionServiceV0335.includes("getInvestorActions") && actionServiceV0335.includes("getActionDetail"), "v0.33.5 Investor Actions and action detail have authenticated server read APIs");
 assert(investorActionsPanelV0335.includes("getInvestorPortfolioView") && investorActionsPanelV0335.includes("getInvestorActions") && actionTimelineV0335.includes('profile.role === "investor"') && actionTimelineV0335.includes("getActionDetail") && withdrawalPanelV0335.includes('profile.role === "investor"') && withdrawalPanelV0335.includes("getInvestorPortfolioView") && withdrawalPanelV0335.includes("getInvestorActions"), "v0.33.5 Investor Advisor-Follow-up, timeline and withdrawal views avoid protected browser list reads");
 assert(investorGlobalStylesV0334.includes("v0.33.5 Investor Mobile App Experience & Design System") && investorGlobalStylesV0334.includes("@media (max-width: 767px)") && investorGlobalStylesV0334.includes("--gv-mobile-card-radius"), "v0.33.5 mobile design-system CSS is explicitly scoped to phone widths below 768px");
-assert(serviceWorker.includes("growvest-investor-v0.34.5") && serviceWorker.includes("growvest-pages-v0.34.5"), "Investor PWA caches are current for the phone app release");
-assert(packageJson.version === "0.34.5" && mobileExperienceDocV0335.includes("phone-only") && mobileExperienceDocV0335.includes("Dynamic Investor Dashboard") && mobileExperienceManifestV0335.includes("MobileInvestorDashboard.js") && reportPrintClientV0335.includes("getInvestorReportDetail"), "Investor mobile design/security documentation and secure print path remain packaged with the current release");
+assert(serviceWorker.includes("growvest-investor-v0.34.7") && serviceWorker.includes("growvest-pages-v0.34.7"), "Investor PWA caches are current for the phone app release");
+assert(packageJson.version === "0.34.7" && mobileExperienceDocV0335.includes("phone-only") && mobileExperienceDocV0335.includes("Dynamic Investor Dashboard") && mobileExperienceManifestV0335.includes("MobileInvestorDashboard.js") && reportPrintClientV0335.includes("getInvestorReportDetail"), "Investor mobile design/security documentation and secure print path remain packaged with the current release");
 
 // v0.33.5 phone-only GrowVest brand UI refinement regression checks.
 const investorDocumentsBrandRefinementV0335 = read("src/app/investor/documents/page.js");
@@ -434,7 +434,7 @@ assert(investorDocumentsBrandRefinementV0335.includes("Phone-only compact explai
 assert(investorPortfolioBrandRefinementV0335.includes("Phone-first intelligence hierarchy") && investorPortfolioBrandRefinementV0335.includes("gv-mobile-brand-panel") && investorPortfolioBrandRefinementV0335.includes("gv-mobile-yellow-soft") && investorPortfolioBrandRefinementV0335.includes("gv-mobile-wrap"), "v0.33.5 phone Portfolio Intelligence uses GrowVest brand accents, stronger hierarchy and long-name wrapping");
 assert(investorGlobalStylesV0334.includes(".gv-mobile-brand-panel") && investorGlobalStylesV0334.includes(".gv-mobile-cyan-soft") && investorGlobalStylesV0334.includes(".gv-mobile-yellow-soft") && investorGlobalStylesV0334.includes(".gv-investor-viewport main > *") && investorGlobalStylesV0334.includes("overflow-x: clip") && investorGlobalStylesV0334.includes("overflow-y: visible"), "v0.33.5 phone design system constrains horizontal overflow without turning the Investor App wrapper into a vertical scroll container");
 assert(documentPreviewModal.includes('window.matchMedia("(min-width: 768px)")') && documentPreviewModal.includes("shouldLockBody") && investorShell.includes("Mobile scroll recovery guard") && investorShell.includes('document.body.style.overflow === "hidden"'), "v0.33.5 mobile scroll recovery prevents document-preview body locks from leaving the Investor App unable to scroll");
-assert(serviceWorker.includes("growvest-investor-v0.34.5-home-exact4") && serviceWorker.includes("growvest-pages-v0.34.5-home-exact4") && mobileBrandRefinementDocV0335.includes("Royal Trust Blue") && mobileBrandRefinementDocV0335.includes("Growth Cyan") && mobileBrandRefinementManifestV0335.includes("InvestorPortfolioPanel.js"), "Mobile brand refinement documentation, manifest and installed-PWA cache refresh remain packaged");
+assert(serviceWorker.includes("growvest-investor-v0.34.7-guest-demo3") && serviceWorker.includes("growvest-pages-v0.34.7-guest-demo3") && mobileBrandRefinementDocV0335.includes("Royal Trust Blue") && mobileBrandRefinementDocV0335.includes("Growth Cyan") && mobileBrandRefinementManifestV0335.includes("InvestorPortfolioPanel.js"), "Mobile brand refinement documentation, manifest and installed-PWA cache refresh remain packaged");
 
 
 // v0.33.6 phone-only finance-app redesign regression checks.
@@ -455,7 +455,7 @@ assert(mobileInvestorDashboardV0335.includes("Total Wealth") && investorPortfoli
 assert(investorMeetingsV0336.includes("MobileMeetingsApp") && investorMeetingsV0336.includes("md:hidden") && investorSipV0336.includes("MobileSipApp") && investorSipV0336.includes("md:hidden") && investorActionsPanelV0335.includes("MobileActionsApp") && investorActionsPanelV0335.includes("md:hidden") && investorSecurityV0336.includes("MobileProvider") && investorSecurityV0336.includes("md:hidden"), "v0.33.6 extends the phone finance-app design to Meetings, SIP, Actions and Login & Security while preserving desktop views");
 assert(investorGlobalStylesV0334.includes("v0.33.6 Investor finance-app shell refinements") && investorGlobalStylesV0334.includes("left: max(.7rem") && investorGlobalStylesV0334.includes("border-radius: 1.45rem") && investorShell.includes("grid-cols-5"), "v0.33.6 uses a floating five-item phone navigation bar with safe-area spacing");
 assert(investorGlobalStylesV0334.includes("--gv-brand-primary: #1f4ed8") && investorGlobalStylesV0334.includes("--gv-brand-secondary: #1f4ed8") && investorGlobalStylesV0334.includes("--gv-brand-dark: #0b0b0f") && investorGlobalStylesV0334.includes("--gv-brand-warning: #f5b301") && investorGlobalStylesV0334.includes("--gv-brand-danger: #e53935") && investorGlobalStylesV0334.includes("--gv-brand-surface: #f4f6f9") && investorGlobalStylesV0334.includes("--gv-brand-muted: #6b7280"), "Current mobile design system uses the approved GrowVest Royal Trust Blue, Deep Premium Black, Insight Yellow, Strategic Red and neutral tokens");
-assert(serviceWorker.includes("growvest-investor-v0.34.5-home-exact4") && serviceWorker.includes("/brand/growvest-logo-white.svg") && packageJson.version === "0.34.5" && mobileRedesignDocV0336.includes("below 768px only") && mobileRedesignManifestV0336.includes("MobileFinanceCharts.js"), "Current release preserves phone-only scope, official SVG assets and finance-app chart foundation");
+assert(serviceWorker.includes("growvest-investor-v0.34.7-guest-demo3") && serviceWorker.includes("/brand/growvest-logo-white.svg") && packageJson.version === "0.34.7" && mobileRedesignDocV0336.includes("below 768px only") && mobileRedesignManifestV0336.includes("MobileFinanceCharts.js"), "Current release preserves phone-only scope, official SVG assets and finance-app chart foundation");
 
 const officialBrandPolishDocV0336 = read("docs/INVESTOR_MOBILE_OFFICIAL_SVG_BRAND_POLISH_v0.33.6.md");
 const officialBrandPolishManifestV0336 = read("docs/INVESTOR_MOBILE_OFFICIAL_SVG_BRAND_POLISH_CODE_MANIFEST_v0.33.6.md");
@@ -479,7 +479,7 @@ assert(investorProfileV0337.includes("ProfilePhotoUploader minimal") && investor
 assert(investorNotificationsV0337.includes("Choose your alerts") && investorNotificationsV0337.includes("settingsOpen") && investorNotificationsV0337.includes("updatePushCategory"), "v0.33.7 Notifications includes a phone-native alert-preferences bottom sheet");
 assert(investorActionsPanelV0335.includes("Your actions") && investorActionsPanelV0335.includes("Review decision options") && investorShell.includes('title: "Your Actions"'), "v0.33.7 Investor follow-up is presented as clear Your Actions / Next Steps on phones");
 assert(investorGlobalStylesV0334.includes("v0.33.7 Investor mobile professional polish") && investorGlobalStylesV0334.includes("gv-brand-outline-drift") && mobileProfessionalDocV0337.includes("below 768px") && mobileProfessionalManifestV0337.includes("InvestorMobilePrimitives.js"), "v0.33.7 professional mobile polish is phone-scoped, motion-aware and documented");
-assert(packageJson.version === "0.34.5" && serviceWorker.includes("growvest-investor-v0.34.5-home-exact4") && serviceWorker.includes("growvest-pages-v0.34.5-home-exact4"), "Current metadata and installed-PWA caches are current");
+assert(packageJson.version === "0.34.7" && serviceWorker.includes("growvest-investor-v0.34.7-guest-demo3") && serviceWorker.includes("growvest-pages-v0.34.7-guest-demo3"), "Current metadata and installed-PWA caches are current");
 
 // v0.33.8 GrowVest motion-language and website-to-app continuity checks.
 const motionMarkV0338 = read("src/components/investor/mobile/GrowVestMotionMark.js");
@@ -492,7 +492,7 @@ assert(entryMotionV0338.includes("sessionStorage") && entryMotionV0338.includes(
 assert(splashV0338.includes("GrowVestMotionMark") && splashV0338.includes('variant="logo"') && splashV0338.includes("Preparing your investor app"), "Branded Investor splash uses the official logo and GrowVest motion mark");
 assert(investorShell.includes("InvestorEntryMotion") && mobileInvestorDashboardV0335.includes("GrowVestActivityIndicator") && read("src/app/investor/reports/page.js").includes("GrowVestActivityIndicator"), "v0.33.8 reuses the GrowVest motion language for app entry, Portfolio Master refresh and Monthly Review preparation");
 assert(investorGlobalStylesV0334.includes("v0.33.8 GrowVest Motion Language") && investorGlobalStylesV0334.includes("gv-motion-outline-reveal") && investorGlobalStylesV0334.includes("prefers-reduced-motion"), "v0.33.8 motion CSS includes brand reveal, compact activity and accessibility safeguards");
-assert(packageJson.version === "0.34.5" && serviceWorker.includes("growvest-investor-v0.34.5-home-exact4") && serviceWorker.includes("growvest-pages-v0.34.5-home-exact4") && motionDocV0338.includes("once per browser session") && motionManifestV0338.includes("GrowVestMotionMark.js"), "GrowVest motion-language documentation remains packaged with current metadata and PWA cache");
+assert(packageJson.version === "0.34.7" && serviceWorker.includes("growvest-investor-v0.34.7-guest-demo3") && serviceWorker.includes("growvest-pages-v0.34.7-guest-demo3") && motionDocV0338.includes("once per browser session") && motionManifestV0338.includes("GrowVestMotionMark.js"), "GrowVest motion-language documentation remains packaged with current metadata and PWA cache");
 
 
 // v0.33.9 Investor Mobile App recomposition regression checks.
@@ -501,7 +501,7 @@ const mobileRecompositionManifestV0339 = read("docs/INVESTOR_MOBILE_APP_RECOMPOS
 const reportsV0339 = read("src/app/investor/reports/page.js");
 const insuranceV0339 = read("src/components/insurance/InsuranceProtectionPanel.js");
 const reportSectionNavV0339 = read("src/components/investor/InvestorReportSectionNav.js");
-assert(packageJson.version === "0.34.5" && serviceWorker.includes("growvest-investor-v0.34.5-home-exact4") && serviceWorker.includes("growvest-pages-v0.34.5-home-exact4"), "v0.33.9 release metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.7" && serviceWorker.includes("growvest-investor-v0.34.7-guest-demo3") && serviceWorker.includes("growvest-pages-v0.34.7-guest-demo3"), "v0.33.9 release metadata and installed Investor PWA caches are current");
 assert(splashV0338.includes("Preparing your investor app") && entryMotionV0338.includes('gv-investor-entry-motion-v3') && entryMotionV0338.includes('1080'), "v0.33.9 uses the simplified faster official-SVG phone entry experience");
 assert(mobileInvestorDashboardV0335.includes("Total Wealth") && mobileInvestorDashboardV0335.includes("What needs your attention") && mobileInvestorDashboardV0335.includes("attentionActionsFor") && mobileInvestorDashboardV0335.includes("Your GrowVest Partner"), "Home prioritizes one focal wealth hero, priority-driven attention and relationship access");
 assert(investorGoalsV0336.includes("topFilters") && investorGoalsV0336.includes("overflow-x-auto") && investorGoalsV0336.includes("Show goals by status") && investorGoalsV0336.includes("filtersOpen"), "Current Bucket List uses a scroll-safe compact filter strip with a full status filter sheet");
@@ -523,7 +523,7 @@ const investorDocumentsV0340 = read("src/app/investor/documents/page.js");
 const investorNotificationsV0340 = read("src/app/investor/notifications/page.js");
 const investorProfileV0340 = read("src/app/investor/profile/page.js");
 const investorLoadingV0340 = read("src/app/investor/loading.js");
-assert(packageJson.version === "0.34.5" && serviceWorker.includes("growvest-investor-v0.34.5-home-exact4") && serviceWorker.includes("growvest-pages-v0.34.5-home-exact4"), "v0.34.0 release metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.7" && serviceWorker.includes("growvest-investor-v0.34.7-guest-demo3") && serviceWorker.includes("growvest-pages-v0.34.7-guest-demo3"), "v0.34.0 release metadata and installed Investor PWA caches are current");
 assert(investorAppServiceV0340.includes("responseCache") && investorAppServiceV0340.includes("inFlight") && investorAppServiceV0340.includes("ttlBySection") && investorAppServiceV0340.includes("force = false"), "v0.34.0 Investor App client data layer provides short-lived section caching, forced refresh and in-flight request deduplication");
 assert(investorAppDataRouteV0340.includes('section === "documents"') && investorAppDataRouteV0340.includes('section === "meetings"') && investorAppDataRouteV0340.includes('section === "reports"') && investorAppDataRouteV0340.includes('section === "profile"') && investorAppDataRouteV0340.includes("const portfolio = await loadPortfolio(investor.id)"), "v0.34.0 utility sections bypass unnecessary Portfolio Master reads while wealth sections still hydrate live portfolio data");
 assert(investorHoldingRouteV0340.includes("verifyAppRequest(request)") && investorHoldingRouteV0340.includes("positionId") && investorHoldingRouteV0340.includes("holding_access_denied") && investorHoldingPageV0340.includes("Investment activity") && investorPortfolioPanelV0334.includes('href={`/investor/portfolio/${position.id}`}'), "v0.34.0 adds secure Investor Holding Detail drill-down from the Portfolio holdings list");
@@ -545,7 +545,7 @@ const actionDialogV0341 = read("src/components/actions/ActionRequestDialog.js");
 const investorLoginV0341 = read("src/app/investor-login/page.js");
 const uxDocV0341 = read("docs/INVESTOR_MOBILE_UX_PREMIUM_DESIGN_SYSTEM_v0.34.1.md");
 const uxManifestV0341 = read("docs/INVESTOR_MOBILE_UX_PREMIUM_DESIGN_SYSTEM_CODE_MANIFEST_v0.34.1.md");
-assert(packageJson.version === "0.34.5" && serviceWorker.includes("growvest-investor-v0.34.5-home-exact4") && serviceWorker.includes("growvest-pages-v0.34.5-home-exact4"), "v0.34.1 release metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.7" && serviceWorker.includes("growvest-investor-v0.34.7-guest-demo3") && serviceWorker.includes("growvest-pages-v0.34.7-guest-demo3"), "v0.34.1 release metadata and installed Investor PWA caches are current");
 assert(investorPrivacyV0341.includes("growvest-investor-financial-privacy") && investorPrivacyV0341.includes("localStorage") && investorShell.includes("Financial privacy") && mobileInvestorDashboardV0335.includes("useInvestorPrivacy"), "v0.34.1 financial privacy persists and is available across the Investor App");
 assert(investorExperienceV0341.includes("filterTrendByRange") && investorExperienceV0341.includes("cutoff.setMonth") && investorPortfolioPanelV0334.includes("filterTrendByRange"), "Portfolio trend controls use calendar-based ranges instead of fixed point slicing");
 assert(mobileInvestorDashboardV0335.includes("attentionActionsFor") && mobileInvestorDashboardV0335.includes("priority:") && mobileInvestorDashboardV0335.includes("What needs your attention"), "Home selects priority-driven actions requiring the investor's attention");
@@ -562,7 +562,7 @@ assert(investorGlobalStylesV0334.includes("v0.34.1 Investor Mobile UX & Premium 
 const signatureDocV0342 = read("docs/INVESTOR_MOBILE_SIGNATURE_UI_v0.34.2.md");
 const signatureManifestV0342 = read("docs/INVESTOR_MOBILE_SIGNATURE_UI_CODE_MANIFEST_v0.34.2.md");
 const splashV0342 = read("src/components/investor/mobile/InvestorAppSplash.js");
-assert(packageJson.version === "0.34.5" && serviceWorker.includes("growvest-investor-v0.34.5-home-exact4") && serviceWorker.includes("growvest-pages-v0.34.5-home-exact4"), "v0.34.2 release metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.7" && serviceWorker.includes("growvest-investor-v0.34.7-guest-demo3") && serviceWorker.includes("growvest-pages-v0.34.7-guest-demo3"), "v0.34.2 release metadata and installed Investor PWA caches are current");
 assert(investorGlobalStylesV0334.includes("--gv-brand-primary: #1f4ed8") && investorGlobalStylesV0334.includes("--gv-brand-dark: #0b0b0f") && investorGlobalStylesV0334.includes("--gv-brand-warning: #f5b301") && investorGlobalStylesV0334.includes("--gv-brand-danger: #e53935") && investorGlobalStylesV0334.includes("v0.34.2 GrowVest Signature Mobile UI"), "v0.34.2 uses the supplied GrowVest palette and a canonical Signature Mobile UI layer");
 assert(investorShell.includes("gv-signature-nav-item") && investorShell.includes("Open GrowVest actions") && investorShell.includes('variant="icon"') && investorShell.includes("strokeWidth={active ? 1.55 : 1.4}"), "v0.34.2 mobile navigation uses slim icons and the official GrowVest centre action");
 assert(mobileInvestorDashboardV0335.includes("Total Wealth") && mobileInvestorDashboardV0335.includes("What needs your attention") && mobileInvestorDashboardV0335.includes("QuickAction") && mobileInvestorDashboardV0335.includes("bg-[#0B0B0F]"), "v0.34.2 Home uses the approved wealth hero, overlapping quick actions and focused review treatment");
@@ -576,7 +576,7 @@ assert(signatureDocV0342.includes("Royal Trust Blue") && signatureDocV0342.inclu
 // v0.34.3 visual-correction checks after device screenshot review.
 const visualCorrectionDocV0343 = read("docs/INVESTOR_MOBILE_VISUAL_CORRECTION_v0.34.3.md");
 const visualCorrectionManifestV0343 = read("docs/INVESTOR_MOBILE_VISUAL_CORRECTION_CODE_MANIFEST_v0.34.3.md");
-assert(packageJson.version === "0.34.5" && serviceWorker.includes("growvest-investor-v0.34.5-home-exact4") && serviceWorker.includes("growvest-pages-v0.34.5-home-exact4"), "v0.34.3 release metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.7" && serviceWorker.includes("growvest-investor-v0.34.7-guest-demo3") && serviceWorker.includes("growvest-pages-v0.34.7-guest-demo3"), "v0.34.3 release metadata and installed Investor PWA caches are current");
 assert(investorShell.includes('backHref: "/investor/dashboard"') && investorShell.includes('backHref: "/investor/goals"') && investorShell.includes('backHref: "/investor/portfolio"') && investorShell.includes('brightness-0 invert'), "v0.34.3 secondary Investor screens have consistent back navigation and the home logo is readable on Royal Trust Blue");
 assert(mobileInvestorDashboardV0335.includes('pb-[38px]') && !mobileInvestorDashboardV0335.includes('pointer-events-none absolute -right-12 top-7 w-44') && mobileInvestorDashboardV0335.includes('progressLabel(goalPct)') && mobileInvestorDashboardV0335.includes('movementPercent).toFixed(1)') && mobileInvestorDashboardV0335.includes('movementPercent !== null'), "Current Home preserves compact hero proportions, no giant watermark, approved previous-update percentage and sub-1-percent goal progress");
 assert(investorPortfolioPanelV0334.includes('displayGain = summary.invested > 0 ? Number(summary.current || 0) - Number(summary.invested || 0)') && investorPortfolioPanelV0334.includes('Gain / Loss vs invested') && investorPortfolioPanelV0334.includes('Limited verified history') && investorPortfolioPanelV0334.includes('mobileTrendDateLabel'), "v0.34.3 Portfolio aligns displayed gain/loss with current value versus invested amount and labels sparse history honestly");
@@ -592,7 +592,7 @@ const goalVisualsV0344 = read("src/components/investor/goalVisuals.js");
 const mobileFinanceChartsV0344 = read("src/components/investor/mobile/MobileFinanceCharts.js");
 const holdingDetailV0344 = read("src/app/investor/portfolio/[positionId]/page.js");
 const investorNavigationV0344 = read("src/lib/constants/investorNavigation.js");
-assert(packageJson.version === "0.34.5" && serviceWorker.includes("growvest-investor-v0.34.5-home-exact4") && serviceWorker.includes("growvest-pages-v0.34.5-home-exact4"), "v0.34.4 release metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.7" && serviceWorker.includes("growvest-investor-v0.34.7-guest-demo3") && serviceWorker.includes("growvest-pages-v0.34.7-guest-demo3"), "v0.34.4 release metadata and installed Investor PWA caches are current");
 assert(mobileInvestorDashboardV0335.includes("gv-mobile-home-hero") && mobileInvestorDashboardV0335.includes("attentionActionsFor") && mobileInvestorDashboardV0335.includes("daysUntilDebit") && mobileInvestorDashboardV0335.includes("Portfolio update is under review"), "v0.34.4 Home uses the full-bleed wealth hero and data-driven attention priorities including SIP and portfolio review states");
 assert(investorNavigationV0344.includes("ChartNoAxesCombined") && mobileInvestorDashboardV0335.includes("icon={ChartNoAxesCombined}") && mobileInvestorDashboardV0335.includes("icon={Target}"), "v0.34.4 primary Investor navigation and Home quick actions use a locked slim icon mapping");
 assert(investorPortfolioPanelV0334.includes("aria-pressed={range === item}") && investorPortfolioPanelV0334.includes("filterTrendByRange(rawTrend, range)") && investorPortfolioPanelV0334.includes("rangeDescription") && investorPortfolioPanelV0334.includes("mobileAllocationColor") && !investorPortfolioPanelV0334.includes("slice(0, 24).reverse"), "v0.34.4 Portfolio range filters are wired to actual dated history and All can use the full available series");
@@ -612,7 +612,7 @@ const bucketRequestStaffV0345 = read("src/components/investors/BucketListRequest
 const sipFundingApiV0345 = read("src/app/api/sip-funding/route.js");
 const profileV0345 = read("src/app/investor/profile/page.js");
 const functionsV0345 = read("functions/index.js");
-assert(packageJson.version === "0.34.5" && serviceWorker.includes("growvest-investor-v0.34.5-home-exact4") && serviceWorker.includes("growvest-pages-v0.34.5-home-exact4"), "v0.34.5 release metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.7" && serviceWorker.includes("growvest-investor-v0.34.7-guest-demo3") && serviceWorker.includes("growvest-pages-v0.34.7-guest-demo3"), "v0.34.5 release metadata and installed Investor PWA caches are current");
 assert(investorNavigationV0344.includes('{ label: "Reports", href: "/investor/reports", icon: FileBarChart2, mobile: true }') && investorNavigationV0344.includes('{ label: "Profile", href: "/investor/profile", icon: UserRound }'), "v0.34.5 exact-reference phone navigation uses Reports as the fifth persistent tab while Profile remains available from avatar/More");
 assert(investorShell.includes('isMobileHome ? "px-0 py-0"') && investorGlobalStylesV0334.includes('.gv-mobile-home-stack > :not(.gv-mobile-home-hero)'), "v0.34.5 Home uses a structural edge-to-edge hero instead of a clipped negative-margin breakout");
 assert(bucketRequestApiV0345.includes('status: "submitted"') && bucketRequestApiV0345.includes('nextStatus === "confirmed"') && bucketRequestApiV0345.includes('bucketList: nextGoals') && bucketRequestInvestorV0345.includes("Submit to GrowVest") && bucketRequestStaffV0345.includes("Confirm goal"), "v0.34.5 lets investors propose Bucket List items while GrowVest confirms them before active-goal calculations");
@@ -620,6 +620,48 @@ assert(sipFundingApiV0345.includes("ensureInferredSchedules") && sipFundingApiV0
 assert(functionsV0345.includes("notifyInvestorPortfolioVerified") && functionsV0345.includes('eventType: "portfolio_verified_update"') && functionsV0345.includes('link: "/investor/portfolio"'), "v0.34.5 creates a deep-linked Investor notification only after a verified reconciled daily portfolio snapshot");
 assert(profileV0345.includes("Your Wealth Profile") && profileV0345.includes("panMasked") && profileV0345.includes("Monthly SIP plan") && investorNotificationsV0340.includes('key: "portfolio"') && investorNotificationsV0340.includes('key: "bucketList"'), "v0.34.5 completes key Investor Profile context and adds portfolio/SIP/Bucket List notification preferences");
 assert(reconciliationDocV0345.includes("Where am I today?") && reconciliationDocV0345.includes("Investor Add Bucket List") && reconciliationManifestV0345.includes("bucket-list-requests/route.js"), "v0.34.5 reconciliation specification and changed-code manifest are packaged");
+
+// v0.34.6 Family & Household Portal Access.
+const familyAccessDocV0346 = read("docs/FAMILY_HOUSEHOLD_PORTAL_ACCESS_v0.34.6.md");
+const familyAccessManifestV0346 = read("docs/FAMILY_HOUSEHOLD_PORTAL_ACCESS_CODE_MANIFEST_v0.34.6.md");
+const investorAccessApiV0346 = read("src/app/api/investor/access/profiles/route.js");
+const investorSelectorV0346 = read("src/app/investor/select-profile/page.js");
+const investorAccessClientV0346 = read("src/lib/auth/investorAccess.js");
+const apiAuthV0346 = read("src/lib/firebase/apiAuth.js");
+const firebaseAdminV0346 = read("src/lib/server/firebaseAdmin.js");
+const portalAccessV0346 = read("src/app/api/investors/[investorId]/portal-access/route.js");
+const portalAccessCardV0346 = read("src/components/investors/InvestorPortalAccessCard.js");
+const authContextV0346 = read("src/contexts/AuthContext.js");
+const loginV0346 = read("src/app/investor-login/page.js");
+const messagingWorkerV0346 = read("public/firebase-messaging-sw.js");
+const notificationApiV0346 = read("src/app/api/notifications/route.js");
+const investorAppServiceV0346 = read("src/services/investorAppService.js");
+assert(packageJson.version === "0.34.7" && serviceWorker.includes("growvest-investor-v0.34.7-guest-demo3") && serviceWorker.includes("growvest-pages-v0.34.7-guest-demo3"), "v0.34.6 Family Access metadata and installed-PWA caches are current");
+assert(apiAuthV0346.includes("X-GrowVest-Investor-Id") && investorAccessClientV0346.includes("gv.activeInvestor."), "v0.34.6 sends the selected Investor context with authenticated API requests");
+assert(firebaseAdminV0346.includes("investorAccessMemberships") && firebaseAdminV0346.includes("investor_context_denied") && firebaseAdminV0346.includes("primaryInvestorId"), "v0.34.6 validates household Investor switching server-side before changing actor context");
+assert(firestoreRules.includes("match /investorAccessMemberships/{membershipId}") && firestoreRules.includes("allow read, write: if false") && firestoreRules.includes("accessibleInvestorIds") && firestoreRules.includes("investorIds"), "v0.34.6 keeps household grants server-only and constrains Google first-login access to authorised alias Investor IDs");
+assert(indexes.indexes.some((item) => item.collectionGroup === "investorAccessMemberships" && item.fields?.some((field) => field.fieldPath === "uid") && item.fields?.some((field) => field.fieldPath === "status")), "v0.34.6 includes the uid/status household-membership index required by profile switching");
+assert(investorAccessApiV0346.includes("investorAccessMemberships") && investorAccessApiV0346.includes("relationship") && investorSelectorV0346.includes("Who would you like to view?") && investorSelectorV0346.includes("Only profiles explicitly authorised by GrowVest"), "v0.34.6 provides an authorised family profile selector after login");
+assert(authContextV0346.includes("accessProfiles") && authContextV0346.includes("switchInvestor") && authContextV0346.includes("clearStoredActiveInvestorId") && loginV0346.includes("/investor/select-profile"), "v0.34.6 manages active Investor context and clears it on logout");
+assert(portalAccessV0346.includes("allowSharedAccess") && portalAccessV0346.includes("getUserByPhoneNumber") && portalAccessV0346.includes("investorAccessMemberships") && portalAccessV0346.includes("sharedAccountStillActive"), "v0.34.6 reuses a canonical family login only after explicit staff confirmation and preserves other profiles when one is disabled");
+assert(portalAccessCardV0346.includes("Link to an existing family login") && portalAccessCardV0346.includes("Relationship to primary login holder") && portalAccessCardV0346.includes("Family Access"), "v0.34.6 staff Portal Access UI makes shared family authorisation explicit");
+assert(investorAppServiceV0346.includes("getStoredActiveInvestorId") && notificationApiV0346.includes("notification_investor_context_denied"), "v0.34.6 scopes Investor App caching and in-app notifications to the selected Investor");
+assert(functionsV0345.includes('investorId: safeText(notification.investorId') && messagingWorkerV0346.includes("investor=${encodeURIComponent(investorId)}") && investorShell.includes("Switch investor"), "v0.34.6 push deep links and the Investor shell preserve the correct household profile context");
+assert(familyAccessDocV0346.includes("matching email/mobile details alone grant access") && familyAccessManifestV0346.includes("investorAccessMemberships"), "v0.34.6 Family Access specification and code manifest are packaged");
+
+// v0.34.7 Personalised Guest Investor Demo and Lead handoff.
+const demoCtaV0347 = read("src/components/investor/DemoInvestorCta.js");
+const demoProspectApiV0347 = read("src/app/api/demo/prospect/route.js");
+const demoInterestV0347 = read("src/app/investor/demo-interest/page.js");
+const notificationBellV0347 = read("src/components/notifications/NotificationBell.js");
+const demoDocV0347 = read("docs/PERSONALISED_GUEST_INVESTOR_DEMO_v0.34.7.md");
+const demoManifestV0347 = read("docs/PERSONALISED_GUEST_INVESTOR_DEMO_CODE_MANIFEST_v0.34.7.md");
+assert(demoCtaV0347.includes('action: "express_interest"') && demoCtaV0347.includes("agreedToBecomePart: true") && demoCtaV0347.includes('router.push("/investor/demo-interest")'), "v0.34.7 creates the GrowVest Lead before opening guest-detail enrichment");
+assert(demoProspectApiV0347.includes("demoLeadDocumentId") && demoProspectApiV0347.includes('status: "NEW"') && demoProspectApiV0347.includes('leadSource: "Investor App Demo"') && demoProspectApiV0347.includes('originalLeadFlow: "SOP 1 - Lead to Conversion"'), "v0.34.7 hands a guest directly into the existing NEW Lead / SOP 1 workflow");
+assert(demoProspectApiV0347.includes("if (leadSnapshot.exists)") && demoProspectApiV0347.includes("demoLastInterestAt") && demoProspectApiV0347.includes("created: false"), "v0.34.7 makes repeated Become part of GrowVest clicks idempotent for the same Demo session");
+assert(demoProspectApiV0347.includes("demoGuestEmail") && demoProspectApiV0347.includes("!text(existing.email, 120)") && demoInterestV0347.includes('action: "enrich"') && demoInterestV0347.includes("they do not create another lead"), "v0.34.7 enrichment updates the same Lead without overwriting staff-entered normal Lead fields");
+assert(demoDocV0347.includes("lead is created at the moment") && demoManifestV0347.includes("Lead-on-agreement refinement") && serviceWorker.includes("growvest-investor-v0.34.7-guest-demo3"), "v0.34.7 guest-demo Lead trigger documentation and installed-PWA cache refresh are packaged");
+assert(notificationBellV0347.includes("isDemoInvestor") && notificationBellV0347.includes("staffNotificationMode") && notificationBellV0347.includes('profile?.role === "investor" || isDemoInvestor'), "v0.34.7 Demo Investor notification bell uses synthetic Investor notifications and never falls through to Firebase-authenticated staff polling");
 
 const secureCompare = read("src/lib/server/secureCompare.js");
 assert(secureCompare.includes("MIN_SERVER_SECRET_LENGTH = 32"), "cron/webhook authentication rejects short server secrets");
@@ -634,7 +676,7 @@ assert(mobileInvestorDashboardV0335.includes("togglePrivacyMode") && mobileInves
 assert(mobileInvestorDashboardV0335.includes("What needs your attention") && mobileInvestorDashboardV0335.includes("allAttentionActions.slice(0, 1)") && mobileInvestorDashboardV0335.includes("sipNeedsAction") && mobileInvestorDashboardV0335.includes("protectionDays"), "v0.34.5 Home previews one priority-driven attention item while preserving expandable SIP/protection intelligence");
 assert(mobileInvestorDashboardV0335.includes("Your Bucket List") && mobileInvestorDashboardV0335.includes("progressLabel(goalPct)") && mobileInvestorDashboardV0335.includes("Your GrowVest Partner"), "v0.34.5 Home keeps Bucket List and GrowVest Partner compact on the approved flat white content canvas");
 assert(mobileInvestorDashboardV0335.includes("bg-[#0B0B0F]") && mobileInvestorDashboardV0335.includes("Review is ready") && mobileInvestorDashboardV0335.includes("Your Monthly Review") && mobileInvestorDashboardV0335.includes("BarChart3"), "v0.34.5 Home uses the approved compact Deep Premium Black Monthly Review card with chart motif");
-assert(serviceWorker.includes("growvest-investor-v0.34.5-home-exact4") && serviceWorker.includes("growvest-pages-v0.34.5-home-exact4") && homeLockDocV0345.includes("approved Home screenshot"), "v0.34.5 exact Home reference documentation and installed-PWA cache refresh are packaged");
+assert(serviceWorker.includes("growvest-investor-v0.34.7-guest-demo3") && serviceWorker.includes("growvest-pages-v0.34.7-guest-demo3") && homeLockDocV0345.includes("approved Home screenshot"), "v0.34.5 exact Home reference documentation and installed-PWA cache refresh are packaged");
 
 const brevoWebhook = read("src/app/api/webhooks/brevo/route.js");
 assert(brevoWebhook.includes("1024 * 1024") && brevoWebhook.includes("safeProviderPayload"), "Brevo webhook payload size and stored provider fields are bounded");
@@ -645,9 +687,15 @@ assert(nextConfig.includes('X-Content-Type-Options') && nextConfig.includes('Cac
 const apiRouteRoot = path.join(root, "src", "app", "api");
 const routeFiles = walk(apiRouteRoot).filter((file) => file.endsWith(`${path.sep}route.js`));
 const directAuthPattern = /verifyAppRequest|verifyStaffRequest|CRON_SECRET|BREVO_WEBHOOK_TOKEN|secureSecretMatch/;
-const unauthenticatedRoutes = routeFiles.filter((file) => !directAuthPattern.test(fs.readFileSync(file, "utf8")));
-assert(unauthenticatedRoutes.length === 0, `all ${routeFiles.length} API routes contain an authentication, cron-secret, or webhook-secret gate`);
-if (unauthenticatedRoutes.length) unauthenticatedRoutes.forEach((file) => fail(`Missing API auth marker: ${path.relative(root, file)}`));
+const explicitPublicApiPattern = /PUBLIC_API_ROUTE: investor-demo-prospect/;
+const unauthenticatedRoutes = routeFiles.filter((file) => {
+  const content = fs.readFileSync(file, "utf8");
+  return !directAuthPattern.test(content) && !explicitPublicApiPattern.test(content);
+});
+const explicitPublicRoutes = routeFiles.filter((file) => explicitPublicApiPattern.test(fs.readFileSync(file, "utf8")));
+assert(unauthenticatedRoutes.length === 0, `all ${routeFiles.length} API routes contain an authentication/secret gate or an explicitly audited public-form marker`);
+if (unauthenticatedRoutes.length) unauthenticatedRoutes.forEach((file) => fail(`Missing API auth/public marker: ${path.relative(root, file)}`));
+assert(explicitPublicRoutes.length === 1 && path.relative(root, explicitPublicRoutes[0]).replaceAll("\\", "/") === "src/app/api/demo/prospect/route.js", "only the audited Investor Demo prospect form is intentionally public");
 
 const authenticatedApiRoutes = routeFiles.filter((file) => {
   const content = fs.readFileSync(file, "utf8");

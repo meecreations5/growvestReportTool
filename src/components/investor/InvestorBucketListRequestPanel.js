@@ -20,6 +20,8 @@ import {
   getBucketListRequests
 } from "@/services/bucketListRequestService";
 import { formatCurrency, formatDate } from "@/lib/utils/format";
+import { useAuth } from "@/contexts/AuthContext";
+import DemoInvestorCta from "@/components/investor/DemoInvestorCta";
 
 const CATEGORIES = [
   "Home",
@@ -89,6 +91,7 @@ function RequestRow({ item }) {
 }
 
 export default function InvestorBucketListRequestPanel({ onRequestCreated }) {
+  const { isDemoInvestor } = useAuth();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -113,6 +116,10 @@ export default function InvestorBucketListRequestPanel({ onRequestCreated }) {
   useEffect(() => { load(); }, [load]);
 
   const visibleRequests = useMemo(() => requests.filter((item) => !["confirmed", "declined"].includes(String(item.status || "").toLowerCase())), [requests]);
+
+  if (isDemoInvestor) {
+    return <DemoInvestorCta title="Build your own Bucket List with GrowVest" description="This demo shows illustrative goals. Become part of GrowVest to add a real Bucket List item and review it with your GrowVest Partner." />;
+  }
 
   async function submit(event) {
     event.preventDefault();

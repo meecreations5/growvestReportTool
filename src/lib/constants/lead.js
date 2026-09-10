@@ -32,6 +32,7 @@ export const LEAD_SOURCES = [
   "Event / Seminar",
   "Walk-in",
   "Website",
+  "Investor App Demo",
   "Cold Outreach",
   "Existing Client",
   "Partner",

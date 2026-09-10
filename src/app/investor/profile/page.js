@@ -11,6 +11,7 @@ import ProfilePhotoUploader from "@/components/profile/ProfilePhotoUploader";
 import OfflineAccessCard from "@/components/pwa/OfflineAccessCard";
 import { getInvestorAppData } from "@/services/investorAppService";
 import { useInvestorPrivacy } from "@/contexts/InvestorPrivacyContext";
+import DemoInvestorCta from "@/components/investor/DemoInvestorCta";
 
 function initials(name) {
   return String(name || "Investor").split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "I";
@@ -33,7 +34,7 @@ function portfolioStatusLabel(value, issueCount = 0) {
   return status ? status.replaceAll("_", " ") : "Not updated yet";
 }
 
-function MobileProfileApp({ profile, investor, fullName, advisorName, advisorEmail, advisorPhone }) {
+function MobileProfileApp({ profile, investor, fullName, advisorName, advisorEmail, advisorPhone, isDemoInvestor = false }) {
   const { privacyMode, togglePrivacyMode } = useInvestorPrivacy();
   const risk = investor?.riskAssessment?.finalProfile || investor?.riskProfile || "Risk profile pending";
   const advisorPhoto = investor?.advisorPhotoURL || investor?.assignedAdvisorPhotoURL || investor?.advisorPhotoUrl || investor?.assignedAdvisorPhotoUrl || "";
@@ -69,7 +70,7 @@ function MobileProfileApp({ profile, investor, fullName, advisorName, advisorEma
         </div>
         <h1 className="mt-3 font-heading text-[1.35rem] font-bold text-[#0B0B0F]">{fullName}</h1>
         <p className="mt-1 text-[11px] text-[#6B7280]">Investor{investorSince && investorSince !== "—" ? ` since ${investorSince}` : ""}</p>
-        <div className="mt-3 flex justify-center"><ProfilePhotoUploader minimal /></div>
+        {!isDemoInvestor ? <div className="mt-3 flex justify-center"><ProfilePhotoUploader minimal /></div> : <p className="mt-2 text-[9px] font-bold uppercase tracking-[0.12em] text-[#1F4ED8]">Demo Experience</p>}
       </section>
 
       <section className="overflow-hidden rounded-[18px] border border-slate-200 bg-white">
@@ -125,7 +126,7 @@ function MobileProfileApp({ profile, investor, fullName, advisorName, advisorEma
 }
 
 export default function InvestorProfilePage() {
-  const { profile } = useAuth();
+  const { profile, isDemoInvestor } = useAuth();
   const [investor, setInvestor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -161,7 +162,7 @@ export default function InvestorProfilePage() {
     <div className="grid gap-5 sm:gap-6">
       <InvestorPageHeader eyebrow="Investor profile" title="My profile" description="Your identity, Advisor relationship and secure portal settings in one place." />
       {error ? <div className="rounded-[18px] border border-red-200 bg-red-50 p-4 text-xs font-semibold text-red-700 md:hidden">{error}</div> : null}
-      <MobileProfileApp profile={profile} investor={investor} fullName={fullName} advisorName={advisorName} advisorEmail={advisorEmail} advisorPhone={advisorPhone} />
+      <MobileProfileApp profile={profile} investor={investor} fullName={fullName} advisorName={advisorName} advisorEmail={advisorEmail} advisorPhone={advisorPhone} isDemoInvestor={isDemoInvestor} />
 
       <div className="hidden gap-5 md:grid md:gap-6">
       {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}
@@ -184,9 +185,7 @@ export default function InvestorProfilePage() {
         </div>
       </section>
 
-      <section className="rounded-[var(--gv-radius-lg)] border border-[var(--gv-border)] bg-white p-5 shadow-[var(--gv-shadow-card)] sm:p-6">
-        <ProfilePhotoUploader />
-      </section>
+      {isDemoInvestor ? <DemoInvestorCta /> : <section className="rounded-[var(--gv-radius-lg)] border border-[var(--gv-border)] bg-white p-5 shadow-[var(--gv-shadow-card)] sm:p-6"><ProfilePhotoUploader /></section>}
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <article className="rounded-[var(--gv-radius-lg)] border border-[var(--gv-border)] bg-white p-5 shadow-[var(--gv-shadow-card)] sm:p-6">

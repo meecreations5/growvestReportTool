@@ -15,6 +15,7 @@ import { db, storage } from "@/lib/firebase/client";
 import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
 import { notifyInvestorDocumentUploaded } from "@/services/communicationService";
 import { refreshInvestorStatusSummary } from "@/services/investorStatusService";
+import { demoReadOnlyError, getGuestDemoSession } from "@/lib/demo/investorDemo";
 
 const ALLOWED_TYPES = ["application/pdf", "image/jpeg", "image/png"];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -129,6 +130,7 @@ export async function requestInvestorDocument(investor, currentUser, { title, do
 }
 
 export async function uploadInvestorDocument(documentRecord, file, currentUser) {
+  if (getGuestDemoSession()) throw demoReadOnlyError("Document uploads");
   if (!documentRecord?.id || !file || !currentUser?.id) throw new Error("Document request, file and user profile are required.");
   if (!ALLOWED_TYPES.includes(file.type)) throw new Error("Upload a PDF, JPG or PNG file.");
   if (file.size > MAX_FILE_SIZE) throw new Error("File size must be 10 MB or less.");
@@ -252,6 +254,7 @@ async function fetchInvestorDocumentBlob(documentRecord, { signal } = {}) {
 }
 
 export async function downloadInvestorDocument(documentRecord, options = {}) {
+  if (getGuestDemoSession()) throw demoReadOnlyError("Document downloads");
   const { blob } = await fetchInvestorDocumentBlob(documentRecord, options);
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -264,6 +267,7 @@ export async function downloadInvestorDocument(documentRecord, options = {}) {
 }
 
 export async function viewInvestorDocument(documentRecord, options = {}) {
+  if (getGuestDemoSession()) throw demoReadOnlyError("Opening secure documents");
   const { blob, mimeType } = await fetchInvestorDocumentBlob(documentRecord, options);
   const url = URL.createObjectURL(blob);
 

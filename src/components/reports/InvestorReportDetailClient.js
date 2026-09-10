@@ -25,10 +25,11 @@ import MonthlyWealthReport from "@/components/reports/MonthlyWealthReport";
 import InvestorReportSectionNav from "@/components/investor/InvestorReportSectionNav";
 import { reportTemplateNavItems } from "@/lib/constants/reportTemplates";
 import { formatCurrency } from "@/lib/utils/format";
+import DemoInvestorCta from "@/components/investor/DemoInvestorCta";
 
 
 export default function InvestorReportDetailClient({ reportId }) {
-  const { profile } = useAuth();
+  const { profile, isDemoInvestor } = useAuth();
   const [reportMeta, setReportMeta] = useState(null);
   const [publishedVersion, setPublishedVersion] = useState(null);
   const [history, setHistory] = useState([]);
@@ -81,6 +82,10 @@ export default function InvestorReportDetailClient({ reportId }) {
   }, [history, reportId]);
 
   async function handleDownload() {
+    if (isDemoInvestor) {
+      setNotice("This is an illustrative Monthly Review. Secure PDF downloads are available once you become part of GrowVest.");
+      return;
+    }
     setWorking(true);
     setError("");
     try {
@@ -95,6 +100,12 @@ export default function InvestorReportDetailClient({ reportId }) {
 
   async function handleAcknowledgement(requestDiscussion = false) {
     if (!report || !profile?.id) return;
+    if (isDemoInvestor) {
+      setNotice(requestDiscussion
+        ? "Your personal GrowVest Partner becomes available when you become part of GrowVest."
+        : "This sample review does not need acknowledgement. It is here for you to explore.");
+      return;
+    }
     setWorking(true);
     setError("");
     setNotice("");
@@ -142,6 +153,7 @@ export default function InvestorReportDetailClient({ reportId }) {
 
   return (
     <div className="grid gap-4 pb-4 lg:pb-0">
+      {isDemoInvestor ? <DemoInvestorCta compact /> : null}
       <header className="hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:block sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
@@ -186,12 +198,14 @@ export default function InvestorReportDetailClient({ reportId }) {
                 Next <ChevronRight size={16} />
               </Link>
             ) : null}
-            <Link
-              href={`/report-print/${reportId}`}
-              className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-600 hover:bg-slate-50"
-            >
-              <Printer size={16} /> Print Preview
-            </Link>
+            {!isDemoInvestor ? (
+              <Link
+                href={`/report-print/${reportId}`}
+                className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-600 hover:bg-slate-50"
+              >
+                <Printer size={16} /> Print Preview
+              </Link>
+            ) : null}
             <button
               type="button"
               onClick={handleDownload}
@@ -210,7 +224,7 @@ export default function InvestorReportDetailClient({ reportId }) {
           </div>
         </div>
 
-        {!acknowledgement?.acknowledged ? (
+        {!isDemoInvestor && !acknowledgement?.acknowledged ? (
           <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-slate-600">
               Please review the report and acknowledge that you have received it.
@@ -281,7 +295,7 @@ export default function InvestorReportDetailClient({ reportId }) {
           </button>
         </div>
 
-        {!acknowledgement?.acknowledged ? <button type="button" onClick={() => handleAcknowledgement(false)} disabled={working} className="mt-3 inline-flex min-h-11 w-full items-center justify-center text-[12px] font-semibold text-[#1F4ED8] disabled:opacity-60">Acknowledge report received</button> : null}
+        {!isDemoInvestor && !acknowledgement?.acknowledged ? <button type="button" onClick={() => handleAcknowledgement(false)} disabled={working} className="mt-3 inline-flex min-h-11 w-full items-center justify-center text-[12px] font-semibold text-[#1F4ED8] disabled:opacity-60">Acknowledge report received</button> : null}
         {(adjacent.older || adjacent.newer) ? <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
           {adjacent.older ? <Link href={`/investor/reports/${adjacent.older.id}`} className="inline-flex min-h-9 items-center gap-1 text-[11px] font-semibold text-[#6B7280]"><ChevronLeft size={14} strokeWidth={1.5} /> Previous</Link> : <span />}
           {adjacent.newer ? <Link href={`/investor/reports/${adjacent.newer.id}`} className="inline-flex min-h-9 items-center gap-1 text-[11px] font-semibold text-[#6B7280]">Next <ChevronRight size={14} strokeWidth={1.5} /></Link> : null}
@@ -320,21 +334,29 @@ export default function InvestorReportDetailClient({ reportId }) {
             <p className="mt-1 text-sm text-slate-600">
               Send a question or request a review. Your GrowVest Partner will receive it in their notification centre.
             </p>
-            <textarea
-              value={comment}
-              onChange={(event) => setComment(event.target.value)}
-              rows={3}
-              placeholder="Optional question or comment"
-              className="mt-4 w-full rounded-xl border border-blue-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500"
-            />
-            <button
-              type="button"
-              onClick={() => handleAcknowledgement(true)}
-              disabled={working}
-              className="mt-3 rounded-[12px] bg-[#1F4ED8] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
-            >
-              Request Discussion
-            </button>
+            {isDemoInvestor ? (
+              <div className="mt-4">
+                <DemoInvestorCta compact />
+              </div>
+            ) : (
+              <>
+                <textarea
+                  value={comment}
+                  onChange={(event) => setComment(event.target.value)}
+                  rows={3}
+                  placeholder="Optional question or comment"
+                  className="mt-4 w-full rounded-xl border border-blue-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleAcknowledgement(true)}
+                  disabled={working}
+                  className="mt-3 rounded-[12px] bg-[#1F4ED8] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+                >
+                  Request Discussion
+                </button>
+              </>
+            )}
           </div>
         </div>
       </section>

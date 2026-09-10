@@ -1,5 +1,6 @@
 import { auth } from "@/lib/firebase/client";
 import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
+import { demoReadOnlyError, getGuestDemoSession } from "@/lib/demo/investorDemo";
 
 async function postAuthenticated(url, body) {
   const user = auth.currentUser;
@@ -69,6 +70,7 @@ export function deleteMonthlyReport(reportId, { reason, confirmation = "DELETE" 
 
 
 export async function downloadReportPdf(reportId, versionId = "") {
+  if (getGuestDemoSession()) throw demoReadOnlyError("Monthly Review downloads");
   const user = auth.currentUser;
   if (!user) throw new Error("You must be signed in to download this report.");
   const headers = await authenticatedApiHeaders({}, user);
@@ -94,6 +96,7 @@ export async function downloadReportPdf(reportId, versionId = "") {
 }
 
 export async function downloadMomPdf(momId) {
+  if (getGuestDemoSession()) throw demoReadOnlyError("Meeting-summary downloads");
   const user = auth.currentUser;
   if (!user) throw new Error("You must be signed in to download this MOM.");
   const headers = await authenticatedApiHeaders({}, user);
@@ -118,11 +121,16 @@ export async function downloadMomPdf(momId) {
 }
 
 export function submitReportAcknowledgement(reportId, { requestDiscussion = false, comment = "" } = {}) {
+  if (getGuestDemoSession()) return Promise.reject(demoReadOnlyError("Report acknowledgements"));
   return postAuthenticated(`/api/reports/${reportId}/acknowledge`, { requestDiscussion, comment });
 }
 
 export function updateInvestorPortalAccess(investorId, payload) {
   return postAuthenticated(`/api/investors/${investorId}/portal-access`, payload);
+}
+
+export function getInvestorPortalAccess(investorId) {
+  return getAuthenticated(`/api/investors/${investorId}/portal-access`);
 }
 
 export function notifyInvestorDocumentUploaded(documentId) {

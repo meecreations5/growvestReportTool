@@ -9,6 +9,7 @@ import { getMonthLabel } from "@/lib/constants/report";
 import { getInvestorAppData } from "@/services/investorAppService";
 import { compactCurrency } from "@/lib/utils/reportPresentation";
 import InvestorPageHeader from "@/components/investor/InvestorPageHeader";
+import DemoInvestorCta from "@/components/investor/DemoInvestorCta";
 import { MobileEmptyState } from "@/components/investor/mobile/InvestorMobilePrimitives";
 import { GrowVestActivityIndicator } from "@/components/investor/mobile/GrowVestMotionMark";
 
@@ -73,7 +74,7 @@ function displayDate(value) {
 }
 
 export default function InvestorReportsPage() {
-  const { firebaseUser, profile } = useAuth();
+  const { profile, isDemoInvestor } = useAuth();
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState("");
@@ -83,7 +84,7 @@ export default function InvestorReportsPage() {
 
   useEffect(() => {
     async function loadReports() {
-      if (!firebaseUser?.uid || !profile?.investorId) return;
+      if (!profile?.id || !profile?.investorId) return;
       setLoading(true);
       setError("");
       try {
@@ -97,7 +98,7 @@ export default function InvestorReportsPage() {
       }
     }
     loadReports();
-  }, [firebaseUser?.uid, profile?.investorId]);
+  }, [profile?.id, profile?.investorId]);
 
   const years = useMemo(() => [...new Set(reports.map((item) => String(item.reportYear)).filter(Boolean))], [reports]);
   const filtered = useMemo(() => reports.filter((item) => {
@@ -111,6 +112,10 @@ export default function InvestorReportsPage() {
   const change = previousValue ? latestValue - previousValue : Number(latest?.summary?.investmentGain || 0);
 
   async function handleDownload(reportId) {
+    if (isDemoInvestor) {
+      setError("PDF downloads are available after you become part of GrowVest. You can explore the complete sample review here.");
+      return;
+    }
     setWorkingId(reportId);
     setError("");
     try {
@@ -125,6 +130,7 @@ export default function InvestorReportsPage() {
   return (
     <div className="grid gap-5 sm:gap-6">
       <InvestorPageHeader eyebrow="Portfolio communication" title="Monthly reports" description="Review your published wealth progress reports and download secure PDF copies." />
+      {isDemoInvestor ? <DemoInvestorCta compact /> : null}
       <MobileReportsApp reports={reports} filtered={filtered} latest={latest} previous={previous} latestValue={latestValue} change={change} loading={loading} error={error} search={search} setSearch={setSearch} year={year} setYear={setYear} years={years} workingId={workingId} handleDownload={handleDownload} />
 
       <div className="hidden gap-5 md:grid md:gap-6">

@@ -1,5 +1,6 @@
 import { auth } from "@/lib/firebase/client";
 import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
+import { demoReadOnlyError, getDemoSipFundingOverview, getGuestDemoSession } from "@/lib/demo/investorDemo";
 
 async function authenticatedFetch(url, options = {}) {
   const user = auth.currentUser;
@@ -15,11 +16,14 @@ async function authenticatedFetch(url, options = {}) {
 }
 
 export async function getSipFundingOverview(investorId = "") {
+  const demoSession = getGuestDemoSession();
+  if (demoSession) return getDemoSipFundingOverview(demoSession);
   const query = investorId ? `?investorId=${encodeURIComponent(investorId)}` : "";
   return authenticatedFetch(`/api/sip-funding${query}`);
 }
 
 export async function saveSipFundingSchedule(payload = {}) {
+  if (getGuestDemoSession()) throw demoReadOnlyError("SIP schedule changes");
   return authenticatedFetch("/api/sip-funding", {
     method: "POST",
     body: JSON.stringify({ action: "upsert_schedule", ...payload })
@@ -27,6 +31,7 @@ export async function saveSipFundingSchedule(payload = {}) {
 }
 
 export async function disableSipFundingSchedule(scheduleId) {
+  if (getGuestDemoSession()) throw demoReadOnlyError("SIP schedule changes");
   return authenticatedFetch("/api/sip-funding", {
     method: "POST",
     body: JSON.stringify({ action: "disable_schedule", scheduleId })
@@ -34,6 +39,7 @@ export async function disableSipFundingSchedule(scheduleId) {
 }
 
 export async function respondToSipFunding(scheduleId, response, note = "") {
+  if (getGuestDemoSession()) throw demoReadOnlyError("SIP funding responses");
   return authenticatedFetch("/api/sip-funding", {
     method: "POST",
     body: JSON.stringify({ action: "respond", scheduleId, response, note })

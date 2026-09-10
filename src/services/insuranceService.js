@@ -1,5 +1,6 @@
 import { authenticatedApiHeaders } from "@/lib/firebase/apiAuth";
 import { auth } from "@/lib/firebase/client";
+import { demoReadOnlyError, getDemoInsurancePolicies, getGuestDemoSession } from "@/lib/demo/investorDemo";
 
 async function insuranceFetch(url, options = {}) {
   const user = auth.currentUser;
@@ -12,6 +13,8 @@ async function insuranceFetch(url, options = {}) {
 }
 
 export async function getInsurancePolicies(investorId = "", asOfDate = "") {
+  const demoSession = getGuestDemoSession();
+  if (demoSession) return getDemoInsurancePolicies(demoSession);
   const params = new URLSearchParams();
   if (investorId) params.set("investorId", investorId);
   if (asOfDate) params.set("asOfDate", asOfDate);
@@ -24,12 +27,14 @@ export async function getInsuranceProtectionSnapshot(investorId = "", asOfDate =
 }
 
 export async function getInsurancePortfolioOverview(asOfDate = "") {
+  if (getGuestDemoSession()) throw demoReadOnlyError("Insurance portfolio administration");
   const params = new URLSearchParams({ scope: "portfolio" });
   if (asOfDate) params.set("asOfDate", asOfDate);
   return insuranceFetch(`/api/insurance?${params.toString()}`);
 }
 
 export async function saveInsurancePolicy(investorId, policy, policyId = "") {
+  if (getGuestDemoSession()) throw demoReadOnlyError("Insurance changes");
   return insuranceFetch("/api/insurance", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -38,6 +43,7 @@ export async function saveInsurancePolicy(investorId, policy, policyId = "") {
 }
 
 export async function renewInsurancePolicy(policyId, policy) {
+  if (getGuestDemoSession()) throw demoReadOnlyError("Insurance renewal");
   return insuranceFetch("/api/insurance", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -46,6 +52,7 @@ export async function renewInsurancePolicy(policyId, policy) {
 }
 
 export async function updateInsurancePolicyStatus(policyId, status, note = "") {
+  if (getGuestDemoSession()) throw demoReadOnlyError("Insurance status changes");
   return insuranceFetch("/api/insurance", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -62,9 +69,11 @@ async function workbookRequest({ investorId, file, action }) {
 }
 
 export async function previewInsuranceWorkbook(investorId, file) {
+  if (getGuestDemoSession()) throw demoReadOnlyError("Insurance imports");
   return workbookRequest({ investorId, file, action: "preview" });
 }
 
 export async function importInsuranceWorkbook(investorId, file) {
+  if (getGuestDemoSession()) throw demoReadOnlyError("Insurance imports");
   return workbookRequest({ investorId, file, action: "commit" });
 }

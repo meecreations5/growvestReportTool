@@ -20,7 +20,8 @@ export async function POST(request) {
       return NextResponse.json({ error: "This Google email has not been authorised by GrowVest." }, { status: 403 });
     }
     const alias = aliasSnapshot.data();
-    if (alias.status !== "active" || alias.portalEnabled === false || alias.investorId !== actor.investorId) {
+    const aliasInvestorIds = Array.from(new Set([...(Array.isArray(alias.investorIds) ? alias.investorIds : []), alias.investorId].map((item) => String(item || "").trim()).filter(Boolean)));
+    if (alias.status !== "active" || alias.portalEnabled === false || !aliasInvestorIds.includes(actor.investorId)) {
       return NextResponse.json({ error: "This Google email is not authorised for your Investor profile." }, { status: 403 });
     }
     if (alias.portalUid && alias.portalUid !== actor.uid) {

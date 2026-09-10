@@ -1,10 +1,11 @@
-const CACHE_NAME = "growvest-investor-v0.34.5-home-exact4";
-const PAGE_CACHE = "growvest-pages-v0.34.5-home-exact4";
+const CACHE_NAME = "growvest-investor-v0.34.7-guest-demo3";
+const PAGE_CACHE = "growvest-pages-v0.34.7-guest-demo3";
 const OFFLINE_PREF_CACHE = "growvest-offline-preference-v1";
 const OFFLINE_PREF_URL = "/__growvest_offline_access__";
 const APP_SHELL = [
   "/offline",
   "/investor-login",
+  "/investor-demo",
   "/staff-login",
   "/icons/growvest-pwa-192.png",
   "/icons/growvest-pwa-512.png",
@@ -27,6 +28,7 @@ const OFFLINE_SHELL_ROUTES = new Set([
   "/meetings",
   "/mom",
   "/investor/dashboard",
+  "/investor/demo-interest",
   "/investor/portfolio",
   "/investor/goals",
   "/investor/reports",

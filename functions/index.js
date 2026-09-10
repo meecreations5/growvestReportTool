@@ -231,6 +231,7 @@ exports.sendInvestorPushNotification = onDocumentCreated({
       title,
       body,
       link,
+      investorId: safeText(notification.investorId, "", 180),
       icon: "/icons/growvest-pwa-192.png",
       badge: "/icons/growvest-pwa-192.png",
       tag: `growvest-${snapshot.id}`,

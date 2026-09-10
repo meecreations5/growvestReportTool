@@ -13,6 +13,7 @@ import {
   EyeOff,
   LogOut,
   ShieldCheck,
+  UsersRound,
   X
 } from "lucide-react";
 import { INVESTOR_NAV_ITEMS } from "@/lib/constants/investorNavigation";
@@ -24,6 +25,7 @@ import InvestorNotificationToasts from "@/components/notifications/InvestorNotif
 import BrandLogo from "@/components/branding/BrandLogo";
 import InvestorBrandMark from "@/components/investor/mobile/InvestorBrandMark";
 import InvestorEntryMotion from "@/components/investor/mobile/InvestorEntryMotion";
+import DemoInvestorCta from "@/components/investor/DemoInvestorCta";
 import { PwaConnectionBanner, PwaInstallCard, PwaUpdateBanner } from "@/components/pwa/PwaStatus";
 import ThemeToggle from "@/components/layout/ThemeToggle";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -74,7 +76,7 @@ function ProfileAvatar({ profile, className = "h-8 w-8", rounded = "rounded-full
 export default function InvestorShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { profile, logout } = useAuth();
+  const { profile, accessProfiles, hasMultipleInvestorProfiles, switchInvestor, logout, isDemoInvestor } = useAuth();
   const { canInstall, installApp, isInstalled } = usePwa();
   const notifications = useInvestorNotifications();
   const { resolvedTheme } = useTheme();
@@ -86,6 +88,7 @@ export default function InvestorShell({ children }) {
   const firstName = profile?.fullName?.split(" ")[0] || "Investor";
   const pwaTagline = branding.pwaTagline || branding.brandPositioning || "Your Conscious Wealth Partner";
   const isMobileHome = pathname === "/investor/dashboard";
+  const isProfileSelector = pathname === "/investor/select-profile";
   const mobileMeta = mobilePageMeta(pathname);
 
 
@@ -96,6 +99,18 @@ export default function InvestorShell({ children }) {
     if (typeof window === "undefined" || !window.matchMedia("(max-width: 767px)").matches) return;
     if (document.body.style.overflow === "hidden") document.body.style.overflow = "";
   }, [pathname]);
+
+  // Push notifications can deep-link to a specific authorised family Investor.
+  // Switch context before the destination screen refreshes its secure data.
+  useEffect(() => {
+    if (typeof window === "undefined" || !hasMultipleInvestorProfiles) return;
+    const requestedInvestorId = new URLSearchParams(window.location.search).get("investor");
+    if (!requestedInvestorId || requestedInvestorId === profile?.investorId) return;
+    if (switchInvestor(requestedInvestorId)) {
+      router.replace(pathname);
+      router.refresh();
+    }
+  }, [hasMultipleInvestorProfiles, pathname, profile?.investorId, router, switchInvestor]);
 
   async function handleLogout() {
     setMoreOpen(false);
@@ -120,8 +135,9 @@ export default function InvestorShell({ children }) {
                   <InvestorBrandMark variant="logo" inverse className="h-auto w-[116px] shrink-0 brightness-0 invert" />
                 </Link>
                 <div className="flex shrink-0 items-center gap-1.5">
+                  {isDemoInvestor ? <span className="rounded-full border border-white/20 bg-white/10 px-2 py-1 text-[8px] font-bold uppercase tracking-[0.10em] text-white/90">Demo</span> : null}
                   <NotificationBell inverted compact />
-                  <Link href="/investor/profile" className="grid h-8 w-8 place-items-center overflow-hidden rounded-full border border-white/25 bg-white/10" aria-label="Open profile">
+                  <Link href={hasMultipleInvestorProfiles ? "/investor/select-profile?next=/investor/dashboard" : "/investor/profile"} className="grid h-8 w-8 place-items-center overflow-hidden rounded-full border border-white/25 bg-white/10" aria-label={hasMultipleInvestorProfiles ? "Switch investor profile" : "Open profile"}>
                     <ProfileAvatar profile={profile} className="h-8 w-8" rounded="rounded-full" />
                   </Link>
                 </div>
@@ -187,7 +203,7 @@ export default function InvestorShell({ children }) {
                   <Link href="/investor/profile" className="flex min-h-10 items-center rounded-xl px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">View profile</Link>
                   <Link href="/investor/change-password" className="flex min-h-10 items-center rounded-xl px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">Login &amp; security</Link>
                   {canInstall ? <button type="button" onClick={installApp} className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-semibold text-[var(--gv-blue)] hover:bg-blue-50"><Download size={16} /> Install app</button> : null}
-                  <button type="button" onClick={handleLogout} className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-semibold text-red-600 hover:bg-red-50"><LogOut size={16} /> Sign out</button>
+                  <button type="button" onClick={handleLogout} className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-semibold text-red-600 hover:bg-red-50"><LogOut size={16} /> {isDemoInvestor ? "Exit demo" : "Sign out"}</button>
                 </div>
               </details>
             </div>
@@ -201,6 +217,7 @@ export default function InvestorShell({ children }) {
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--gv-blue)]"><ShieldCheck size={16} /> Secure client access</div>
             <p className="mt-2 text-xs leading-5 text-slate-500">Only published and client-visible information is available here.</p>
           </div>
+          {isDemoInvestor ? <div className="mb-3"><DemoInvestorCta compact /></div> : null}
           <nav className="grid gap-1" aria-label="Investor portal navigation">
             {INVESTOR_NAV_ITEMS.map((item) => {
               const Icon = item.icon;
@@ -226,7 +243,7 @@ export default function InvestorShell({ children }) {
         </main>
       </div>
 
-      <nav aria-label="Investor mobile navigation" className="gv-mobile-bottom-nav gv-safe-bottom fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/98 px-2 pt-1 shadow-[0_-8px_28px_rgba(11,11,15,.08)] backdrop-blur-xl lg:hidden">
+      <nav aria-label="Investor mobile navigation" className={`gv-mobile-bottom-nav gv-safe-bottom fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/98 px-2 pt-1 shadow-[0_-8px_28px_rgba(11,11,15,.08)] backdrop-blur-xl lg:hidden ${isProfileSelector ? "hidden" : ""}`}>
         <div className="mx-auto grid max-w-lg grid-cols-5 items-end">
           {MOBILE_LEFT_ITEMS.map((item) => {
             const Icon = item.icon;
@@ -294,6 +311,16 @@ export default function InvestorShell({ children }) {
               })}
             </div>
 
+            {isDemoInvestor ? <DemoInvestorCta compact className="mt-5" /> : null}
+
+            {hasMultipleInvestorProfiles ? (
+              <Link href="/investor/select-profile?next=/investor/dashboard" onClick={() => setMoreOpen(false)} className="mt-5 flex min-h-[56px] items-center gap-3 rounded-2xl bg-[#F4F6F9] px-3.5 text-[#0B0B0F]">
+                <span className="grid h-9 w-9 place-items-center rounded-full bg-white text-[#1F4ED8]"><UsersRound size={18} strokeWidth={1.5} /></span>
+                <span className="min-w-0 flex-1"><span className="block text-[12px] font-semibold">Switch investor</span><span className="block truncate text-[10px] text-[#6B7280]">{profile?.fullName || "Current profile"} · {accessProfiles.length} profiles</span></span>
+                <ChevronRight size={16} strokeWidth={1.5} className="text-slate-300" />
+              </Link>
+            ) : null}
+
             <div className="mt-6 overflow-hidden border-y border-slate-200">
               <Link href="/investor/notifications" onClick={() => setMoreOpen(false)} className="flex min-h-[54px] items-center gap-3 py-3 text-[#0B0B0F]">
                 <Bell size={18} strokeWidth={1.5} className="text-[#1F4ED8]" />
@@ -344,7 +371,7 @@ export default function InvestorShell({ children }) {
             </Link>
 
             {canInstall ? <button type="button" onClick={async () => { await installApp(); setMoreOpen(false); }} className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[var(--gv-blue)] px-4 text-sm font-bold text-white"><Download size={17} /> Install GrowVest Investor App</button> : null}
-            <button type="button" onClick={handleLogout} className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 text-sm font-bold text-red-700"><LogOut size={17} /> Sign out securely</button>
+            <button type="button" onClick={handleLogout} className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 text-sm font-bold text-red-700"><LogOut size={17} /> {isDemoInvestor ? "Exit demo" : "Sign out securely"}</button>
           </section>
         </div>
       ) : null}

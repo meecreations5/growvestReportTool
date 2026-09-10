@@ -2,7 +2,8 @@ export const USER_ROLES = {
   SUPER_ADMIN: "super_admin",
   ADMIN: "admin",
   ADVISOR: "advisor",
-  INVESTOR: "investor"
+  INVESTOR: "investor",
+  DEMO_INVESTOR: "demo_investor"
 };
 
 export const STAFF_ROLES = [
@@ -17,7 +18,8 @@ export const ROLE_LABELS = {
   [USER_ROLES.SUPER_ADMIN]: "Super Admin",
   [USER_ROLES.ADMIN]: "Admin",
   [USER_ROLES.ADVISOR]: "Advisor",
-  [USER_ROLES.INVESTOR]: "Investor"
+  [USER_ROLES.INVESTOR]: "Investor",
+  [USER_ROLES.DEMO_INVESTOR]: "Demo Investor"
 };
 
 export const ACTIVE_USER_STATUSES = ["active"];
@@ -31,5 +33,5 @@ export function isAdminRole(role) {
 }
 
 export function getHomeRouteForRole(role) {
-  return role === USER_ROLES.INVESTOR ? "/investor/dashboard" : "/dashboard";
+  return [USER_ROLES.INVESTOR, USER_ROLES.DEMO_INVESTOR].includes(role) ? "/investor/dashboard" : "/dashboard";
 }

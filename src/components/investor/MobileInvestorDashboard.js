@@ -27,6 +27,7 @@ import { GrowVestActivityIndicator } from "@/components/investor/mobile/GrowVest
 import { useInvestorPrivacy } from "@/contexts/InvestorPrivacyContext";
 import { daysUntil, greetingForDate } from "@/lib/utils/investorExperience";
 import { goalVisual } from "@/components/investor/goalVisuals";
+import DemoInvestorCta from "@/components/investor/DemoInvestorCta";
 
 const ICON_STROKE = 1.5;
 
@@ -318,6 +319,8 @@ export default function MobileInvestorDashboard({
               <BarChart3 size={30} strokeWidth={1.35} className="absolute bottom-3 right-3 text-white/75" aria-hidden="true" />
             </section>
           )}
+
+          {profile?.demo ? <DemoInvestorCta compact /> : null}
 
           <section className="border-t border-slate-200 pt-3">
             <div className="flex items-center gap-2.5">

@@ -189,6 +189,8 @@ service cloud.firestore {
           && request.resource.data.status == 'active'
           && request.resource.data.portalEnabled == true
           && request.resource.data.investorId == investorAliasForCurrentEmail().data.investorId
+          && request.resource.data.get('accessibleInvestorIds', [request.resource.data.investorId])
+            == investorAliasForCurrentEmail().data.get('investorIds', [investorAliasForCurrentEmail().data.investorId])
           && request.resource.data.authMethod == 'google'
         );
 
@@ -236,6 +238,22 @@ service cloud.firestore {
         allow create: if isSuperAdmin();
         allow update, delete: if false;
       }
+    }
+
+    // Household access grants are server-managed. Investors receive only the
+    // authorised profile summary returned by the authenticated server API.
+    match /investorAccessMemberships/{membershipId} {
+      allow read, write: if false;
+    }
+
+    // Personalised guest-demo sessions live only in the visitor browser.
+    // Prospect rate-limit documents are created through Firebase Admin only.
+    match /guestDemoSessions/{documentId} {
+      allow read, write: if false;
+    }
+
+    match /demoProspectSubmissions/{documentId} {
+      allow read, write: if false;
     }
 
     match /staffInvitations/{email} {
