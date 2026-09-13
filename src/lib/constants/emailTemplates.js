@@ -205,7 +205,7 @@ export function defaultEmailTemplatePreviewFields() {
     investor_first_name: "Arjun",
     report_month: "July",
     report_year: "2026",
-    report_reference: "GV-RPT-2026-07-104",
+    report_reference: "GV-MWR-2026-07-104",
     statement_date: "31 July 2026",
     advisor_name: "Suraj Sawant",
     advisor_designation: "Conscious Wealth Partner",

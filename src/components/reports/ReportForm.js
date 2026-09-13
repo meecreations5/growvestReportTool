@@ -21,6 +21,8 @@ import { getInsuranceProtectionSnapshot } from "@/services/insuranceService";
 import { getInvestorProfileActionsForReportOnce, getOpenInvestorActionsOnce } from "@/services/actionService";
 import {
   getLatestInvestorReport,
+  getOpeningInvestorReport,
+  getPublishedInvestorReportsOnce,
   getMonthlyReport,
   saveMonthlyReport
 } from "@/services/reportService";
@@ -35,6 +37,7 @@ import {
   DEFAULT_REPORT_DISCLAIMER,
   GOAL_STATUS_OPTIONS,
   HIGHLIGHT_TYPE_OPTIONS,
+  REPORT_TYPE,
   calculatePercentage,
   createEmptyAction,
   createEmptyAllocation,
@@ -43,18 +46,24 @@ import {
   createEmptyHolding,
   createReportFromInvestor,
   createReportFromPortfolioSource,
+  getCanonicalReportId,
+  getCurrentReportPeriod,
   getMonthLabel,
+  getReportDisplayTitle,
   getReportMonthKey,
   getDefaultReportPeriod,
   getReportPeriodCutoffDate,
   getReportPeriodEndDate
 } from "@/lib/constants/report";
 import { monthlyReportSchema, validateCompletedReport } from "@/lib/validation/reportSchema";
+import { buildReportReconciliation } from "@/lib/reportReconciliation";
 import { getReportTemplate, subscribeReportTemplates } from "@/services/reportTemplateService";
 import {
   DEFAULT_REPORT_TEMPLATE_ID,
+  LOCKED_REPORT_VISUAL_VERSION,
   createReportTemplateSnapshot,
-  getSystemReportTemplate
+  getSystemReportTemplate,
+  hasPublishedReportSnapshot
 } from "@/lib/constants/reportTemplates";
 import { SIGNATURE_SOURCE_LABELS } from "@/lib/constants/emailTemplates";
 import { Field, inputClassName } from "@/components/ui/Field";
@@ -88,11 +97,17 @@ function numberValue(value) {
 }
 
 function withReportTemplateDefaults(report) {
-  if (report?.templateId && report?.templateSnapshot) return report;
-  const template = getSystemReportTemplate(report?.templateId || DEFAULT_REPORT_TEMPLATE_ID);
+  const published = hasPublishedReportSnapshot(report);
+  if (published && report?.templateId && report?.templateSnapshot) return report;
+
+  // Investor launch visual is locked. New and unpublished reports are always
+  // migrated to the GrowVest Signature renderer even if an older draft stored
+  // Premium Blue / Executive / custom template metadata.
+  const template = getSystemReportTemplate(DEFAULT_REPORT_TEMPLATE_ID);
   return {
     ...report,
-    templateId: template?.id || DEFAULT_REPORT_TEMPLATE_ID,
+    visualDesignVersion: LOCKED_REPORT_VISUAL_VERSION,
+    templateId: DEFAULT_REPORT_TEMPLATE_ID,
     templateVersion: Number(template?.version || 1),
     templateSnapshot: createReportTemplateSnapshot(template)
   };
@@ -182,7 +197,9 @@ export default function ReportForm({ reportId = null }) {
   const [previousReport, setPreviousReport] = useState(null);
   const [workflowActions, setWorkflowActions] = useState([]);
   const [duplicateReport, setDuplicateReport] = useState(null);
+  const [openingPeriodConflict, setOpeningPeriodConflict] = useState(null);
   const [periodLookupLoading, setPeriodLookupLoading] = useState(false);
+  const [periodContextResolvedFor, setPeriodContextResolvedFor] = useState("");
   const [saveState, setSaveState] = useState(reportId ? "saved" : "idle");
   const [lastSavedAt, setLastSavedAt] = useState(null);
   const [workingReportId, setWorkingReportId] = useState(reportId);
@@ -193,6 +210,7 @@ export default function ReportForm({ reportId = null }) {
   const appliedImportRef = useRef("");
   const appliedPortfolioSnapshotRef = useRef("");
   const carriedActionsFromReportRef = useRef("");
+  const openingTypeResolvedRef = useRef("");
   const [activeImportId, setActiveImportId] = useState(() => searchParams.get("importId") || "");
   const [portfolioSource, setPortfolioSource] = useState(null);
   const [portfolioSourceLoading, setPortfolioSourceLoading] = useState(false);
@@ -255,7 +273,7 @@ export default function ReportForm({ reportId = null }) {
       setLoading(true);
       try {
         const report = await getMonthlyReport(reportId);
-        if (!report) throw new Error("Monthly report was not found.");
+        if (!report) throw new Error("Wealth Review was not found. It may have been deleted or moved. Return to Monthly Reports and reopen the investor's review.");
         if (active) {
           formReadyRef.current = false;
           // Existing reports normally preserve their frozen financial facts. A newly
@@ -263,19 +281,27 @@ export default function ReportForm({ reportId = null }) {
           // finishes. Keep that empty draft eligible for automatic source hydration
           // after the /reports/{id}/edit route remounts.
           corpusTouchedRef.current = hasMeaningfulPortfolioFacts(report);
+          setWorkingReportId(report.id);
           setForm(withReportTemplateDefaults(report));
           setSaveState("saved");
+          // A draft can be migrated to a canonical report ID. If this edit route still
+          // contains the previous ID, correct the URL immediately so refresh/back/save
+          // never target a document that no longer exists.
+          if (report.id !== reportId) {
+            const step = searchParams.get("step");
+            router.replace(`/reports/${report.id}/edit${step ? `?step=${encodeURIComponent(step)}` : ""}`);
+          }
         }
       } catch (nextError) {
         console.error(nextError);
-        if (active) setError(nextError.message || "Unable to load the monthly report.");
+        if (active) setError(nextError.message || "Unable to load the Wealth Review.");
       } finally {
         if (active) setLoading(false);
       }
     }
     loadExisting();
     return () => { active = false; };
-  }, [reportId]);
+  }, [reportId, router, searchParams]);
 
   useEffect(() => {
     if (reportId || !investors.length) return;
@@ -316,7 +342,10 @@ export default function ReportForm({ reportId = null }) {
                 portfolioCutoffDate: getReportPeriodCutoffDate(period.year, period.month)
               },
               monthlyChanges: [],
-              title: `Monthly Portfolio Report — ${getMonthLabel(period.month)} ${period.year}`,
+              reportType: REPORT_TYPE.MONTHLY,
+              reportTypeLabel: "Monthly Wealth Review",
+              openingBaseline: null,
+              title: getReportDisplayTitle(REPORT_TYPE.MONTHLY, period.month, period.year),
               status: "draft",
               investorVisible: false,
               publicationStatus: "internal",
@@ -392,7 +421,7 @@ export default function ReportForm({ reportId = null }) {
         if (!active) return;
         setPortfolioSource(source);
         const sourceForGeneration = source || { asOfDate, snapshot: null, positions: [], openingPositions: [], transactions: [] };
-        const generated = createReportFromPortfolioSource(selectedInvestor, sourceForGeneration, form.reportMonth, form.reportYear);
+        const generated = createReportFromPortfolioSource(selectedInvestor, sourceForGeneration, form.reportMonth, form.reportYear, { reportType: form.reportType || REPORT_TYPE.MONTHLY });
 
         if (!source?.snapshot?.id) {
           setForm((current) => ({
@@ -417,9 +446,12 @@ export default function ReportForm({ reportId = null }) {
             portfolioVerification: generated.portfolioVerification,
             reportGenerationSource: "portfolio_master",
             reportingPeriod: generated.reportingPeriod || null,
-            monthlyChanges: generated.monthlyChanges || []
+            monthlyChanges: generated.monthlyChanges || [],
+            reportType: generated.reportType || current.reportType || REPORT_TYPE.MONTHLY,
+            reportTypeLabel: generated.reportTypeLabel || current.reportTypeLabel,
+            openingBaseline: generated.openingBaseline || current.openingBaseline || null
           }));
-          setError("No verified Portfolio Master snapshot is available on or before this report date. Update the investor portfolio before generating the monthly report.");
+          setError("No verified Portfolio Master snapshot is available on or before this report date. Update the investor portfolio before generating the wealth review.");
           return;
         }
 
@@ -444,8 +476,8 @@ export default function ReportForm({ reportId = null }) {
             templateId: current.templateId || generated.templateId,
             templateVersion: current.templateVersion || generated.templateVersion,
             templateSnapshot: current.templateSnapshot || generated.templateSnapshot,
-            title: current.title || generated.title,
-            statementDate: current.statementDate || generated.statementDate || asOfDate,
+            title: generated.reportType === REPORT_TYPE.OPENING ? generated.title : (current.title || generated.title),
+            statementDate: generated.reportType === REPORT_TYPE.OPENING ? generated.statementDate : (current.statementDate || generated.statementDate || asOfDate),
             advisorNote: current.advisorNote || generated.advisorNote,
             advisorInsights: current.advisorInsights || generated.advisorInsights,
             commentarySources: current.commentarySources || generated.commentarySources,
@@ -462,7 +494,7 @@ export default function ReportForm({ reportId = null }) {
           ? `Portfolio snapshot as of ${source.snapshot.snapshotDate} populated the report. Review and confirm the verification warnings before continuing.`
           : verificationStatus === "blocked"
             ? `Portfolio snapshot as of ${source.snapshot.snapshotDate} was found, but verification is blocked. Resolve the flagged source issues before completion.`
-            : `Verified portfolio snapshot as of ${source.snapshot.snapshotDate} populated this report automatically. Review the figures and add advisor recommendations before completion.`);
+            : `Verified portfolio snapshot as of ${source.snapshot.snapshotDate} populated this report automatically. Review the figures and add GrowVest Partner recommendations before completion.`);
       } catch (nextError) {
         console.error("Unable to load portfolio report source", nextError);
         if (active) {
@@ -539,7 +571,10 @@ export default function ReportForm({ reportId = null }) {
             reportYear: year,
             reportMonthKey: getReportMonthKey(year, month),
             statementDate: base.statementDate || statementDate,
-            title: `Monthly Portfolio Report — ${getMonthLabel(month)} ${year}`,
+            reportType: REPORT_TYPE.MONTHLY,
+            reportTypeLabel: "Monthly Wealth Review",
+            openingBaseline: null,
+            title: getReportDisplayTitle(REPORT_TYPE.MONTHLY, month, year),
             summary: {
               ...base.summary,
               totalCorpus,
@@ -599,7 +634,16 @@ export default function ReportForm({ reportId = null }) {
   const isLocked = form.status === "locked";
 
   const investorComplete = Boolean(form.investorId);
-  const periodComplete = Boolean(form.investorId && form.statementDate && form.title && !duplicateReport && !periodLookupLoading);
+  const periodContextKey = form.investorId ? `${form.investorId}:${form.reportType || REPORT_TYPE.MONTHLY}` : "";
+  const periodComplete = Boolean(
+    form.investorId
+    && form.statementDate
+    && form.title
+    && !duplicateReport
+    && !openingPeriodConflict
+    && !periodLookupLoading
+    && periodContextResolvedFor === periodContextKey
+  );
   const portfolioVerification = form.portfolioVerification || null;
   const portfolioVerificationReady = !portfolioVerification?.required || Boolean(
     form.sourcePortfolioSnapshotId
@@ -616,6 +660,7 @@ export default function ReportForm({ reportId = null }) {
   const validGoals = (form.goals || []).filter((goal) => goal.name?.trim() && Number(goal.targetAmount || 0) > 0);
   const goalsComplete = form.goals?.length ? validGoals.length > 0 : true;
   const templateComplete = Boolean(form.templateId && form.templateSnapshot?.name);
+  const reportReconciliation = useMemo(() => buildReportReconciliation(form), [form]);
   const completionIssues = useMemo(() => validateCompletedReport(form), [form]);
   const approvalComplete = completionIssues.length === 0 && Boolean(String(form.disclaimer || "").trim()) && templateComplete;
 
@@ -624,8 +669,8 @@ export default function ReportForm({ reportId = null }) {
     { id: "period", label: "Reporting Period", helper: "Month and statement date", complete: periodComplete, locked: !investorComplete, lockReason: "Select an investor first." },
     { id: "portfolio-data", label: "Portfolio Data", helper: "Summary and holdings", complete: portfolioDataComplete, locked: !periodComplete, lockReason: "Complete the reporting period first." },
     { id: "calculations", label: "Review Calculations", helper: "Reconcile report values", complete: portfolioDataComplete, locked: !portfolioDataComplete, lockReason: "Add portfolio data first." },
-    { id: "commentary", label: "Commentary", helper: "Advisor insights", complete: commentaryComplete, locked: !portfolioDataComplete, lockReason: "Review portfolio data first." },
-    { id: "goals", label: "Goals & Allocation", helper: "Goals or General Wealth", complete: goalsComplete, locked: !commentaryComplete, lockReason: "Add Advisor commentary first." },
+    { id: "commentary", label: "Commentary", helper: "Partner insights", complete: commentaryComplete, locked: !portfolioDataComplete, lockReason: "Review portfolio data first." },
+    { id: "goals", label: "Goals & Allocation", helper: "Goals or General Wealth", complete: goalsComplete, locked: !commentaryComplete, lockReason: "Add Partner commentary first." },
     { id: "template", label: "Template", helper: "Report presentation", complete: templateComplete, locked: !goalsComplete, lockReason: "Review goals or General Wealth first." },
     { id: "approval", label: "Preview & Approval", helper: "Actions and compliance", complete: approvalComplete, locked: !goalsComplete, lockReason: "Complete report content first." },
     { id: "pdf", label: "Generate PDF", helper: "Secure investor document", complete: Boolean(form.pdfStoragePath), locked: form.status !== "completed", lockReason: "Complete the report before generating a PDF." },
@@ -656,20 +701,64 @@ export default function ReportForm({ reportId = null }) {
         setPreviousReport(null);
         setWorkflowActions([]);
         setDuplicateReport(null);
+        setOpeningPeriodConflict(null);
+        setPeriodContextResolvedFor("");
         return;
       }
+      setPeriodContextResolvedFor("");
       setPeriodLookupLoading(true);
       const monthKey = getReportMonthKey(form.reportYear, form.reportMonth);
       try {
         const periodStart = `${monthKey}-01`;
         const periodEnd = getReportPeriodEndDate(form.reportYear, form.reportMonth);
-        const [previous, duplicate, openActions, profileActions] = await Promise.all([
+        const duplicateId = getCanonicalReportId(form.investorId, form.reportType || REPORT_TYPE.MONTHLY, monthKey, form.statementDate);
+        const [previous, openingReport, publishedReports, duplicate, openActions, profileActions] = await Promise.all([
           getLatestInvestorReport(form.investorId, monthKey),
-          getMonthlyReport(`${form.investorId}_${monthKey}`),
+          getOpeningInvestorReport(form.investorId),
+          getPublishedInvestorReportsOnce(form.investorId, 1),
+          getMonthlyReport(duplicateId),
           profile?.id ? getOpenInvestorActionsOnce(form.investorId, profile) : Promise.resolve([]),
           profile?.id ? getInvestorProfileActionsForReportOnce(form.investorId, profile, { startDate: periodStart, endDate: periodEnd }) : Promise.resolve([])
         ]);
         if (!active) return;
+
+        const hasPublishedInvestorReview = Array.isArray(publishedReports) && publishedReports.length > 0;
+        const shouldCreateOpeningReview = !reportId
+          && !openingReport
+          && !hasPublishedInvestorReview
+          && openingTypeResolvedRef.current !== form.investorId;
+        if (shouldCreateOpeningReview && !selectedInvestor) {
+          // The investor list can resolve a moment after a query-selected investor ID.
+          // Do not mark first-report detection as complete until the full investor
+          // profile is available, otherwise Save can race ahead as a Monthly Review.
+          return;
+        }
+        if (shouldCreateOpeningReview && selectedInvestor) {
+          const currentPeriod = getCurrentReportPeriod();
+          openingTypeResolvedRef.current = form.investorId;
+          appliedPortfolioSnapshotRef.current = "";
+          carriedActionsFromReportRef.current = "";
+          corpusTouchedRef.current = false;
+          setPortfolioSource(null);
+          setForm((current) => withReportTemplateDefaults({
+            ...createReportFromInvestor(selectedInvestor, currentPeriod.month, currentPeriod.year, {
+              reportType: REPORT_TYPE.OPENING,
+              statementDate: currentPeriod.statementDate
+            }),
+            templateId: current.templateId,
+            templateVersion: current.templateVersion,
+            templateSnapshot: current.templateSnapshot,
+            profileActions: profileActions || []
+          }));
+          setPreviousReport(null);
+          setWorkflowActions(openActions || []);
+          setDuplicateReport(null);
+          setOpeningPeriodConflict(null);
+          setSuccess("No earlier investor-facing GrowVest review exists for this investor. An Opening Wealth Review has been selected automatically using the latest verified portfolio baseline.");
+          return;
+        }
+
+        openingTypeResolvedRef.current = form.investorId;
         setPreviousReport(previous);
         setWorkflowActions(openActions || []);
         if (!duplicate || duplicate.id === workingReportId) {
@@ -683,12 +772,22 @@ export default function ReportForm({ reportId = null }) {
           });
         }
         setDuplicateReport(duplicate && duplicate.id !== workingReportId ? duplicate : null);
+        setOpeningPeriodConflict(
+          form.reportType === REPORT_TYPE.MONTHLY
+            && openingReport?.reportMonthKey
+            && monthKey <= openingReport.reportMonthKey
+            ? openingReport
+            : null
+        );
+        setPeriodContextResolvedFor(`${form.investorId}:${form.reportType || REPORT_TYPE.MONTHLY}`);
       } catch (lookupError) {
         console.error(lookupError);
         if (active) {
           setPreviousReport(null);
           setWorkflowActions([]);
           setDuplicateReport(null);
+          setOpeningPeriodConflict(null);
+          setPeriodContextResolvedFor("");
         }
       } finally {
         if (active) setPeriodLookupLoading(false);
@@ -696,7 +795,7 @@ export default function ReportForm({ reportId = null }) {
     }
     loadPeriodContext();
     return () => { active = false; };
-  }, [form.investorId, form.reportMonth, form.reportYear, profile?.id, profile?.role, reportId, workingReportId]);
+  }, [form.investorId, form.reportMonth, form.reportYear, form.reportType, form.statementDate, profile?.id, profile?.role, reportId, searchParams, selectedInvestor, workingReportId]);
 
   useEffect(() => {
     if (reportId || !form.investorId) return;
@@ -809,7 +908,9 @@ export default function ReportForm({ reportId = null }) {
         reportYear = field === "reportYear" ? Number(value) : reportYear;
       }
 
-      const suggestedStatementDate = getReportPeriodCutoffDate(reportYear, reportMonth);
+      const suggestedStatementDate = current.reportType === REPORT_TYPE.OPENING
+        ? (current.statementDate || getCurrentReportPeriod().statementDate)
+        : getReportPeriodCutoffDate(reportYear, reportMonth);
       return {
         ...current,
         reportMonth,
@@ -818,18 +919,20 @@ export default function ReportForm({ reportId = null }) {
         statementDate: suggestedStatementDate,
         reportingPeriod: {
           monthKey: getReportMonthKey(reportYear, reportMonth),
-          startDate: `${reportYear}-${String(reportMonth).padStart(2, "0")}-01`,
-          endDate: getReportPeriodEndDate(reportYear, reportMonth),
+          startDate: current.reportType === REPORT_TYPE.OPENING ? suggestedStatementDate : `${reportYear}-${String(reportMonth).padStart(2, "0")}-01`,
+          endDate: current.reportType === REPORT_TYPE.OPENING ? suggestedStatementDate : getReportPeriodEndDate(reportYear, reportMonth),
           portfolioCutoffDate: suggestedStatementDate
         },
         monthlyChanges: [],
-        title: `Monthly Portfolio Report — ${getMonthLabel(reportMonth)} ${reportYear}`
+        title: getReportDisplayTitle(current.reportType || REPORT_TYPE.MONTHLY, reportMonth, reportYear)
       };
     });
   }
 
   function handleInvestorChange(investorId) {
     const investor = investorsForSelection.find((item) => item.id === investorId);
+    openingTypeResolvedRef.current = "";
+    setPeriodContextResolvedFor("");
     corpusTouchedRef.current = false;
     appliedPortfolioSnapshotRef.current = "";
     carriedActionsFromReportRef.current = "";
@@ -1051,7 +1154,7 @@ export default function ReportForm({ reportId = null }) {
     try {
       const currentMonthKey = getReportMonthKey(form.reportYear, form.reportMonth);
       const source = await getLatestInvestorReport(form.investorId, currentMonthKey);
-      if (!source) throw new Error("No previous monthly report was found for this investor.");
+      if (!source) throw new Error("No previous wealth review was found for this investor.");
       corpusTouchedRef.current = true;
       setForm((current) => ({
         ...source,
@@ -1067,11 +1170,14 @@ export default function ReportForm({ reportId = null }) {
         advisorUid: current.advisorUid,
         assignedAdvisorUid: current.assignedAdvisorUid,
         advisorName: current.advisorName,
+        reportType: REPORT_TYPE.MONTHLY,
+        reportTypeLabel: "Monthly Wealth Review",
+        openingBaseline: null,
         reportMonth: current.reportMonth,
         reportYear: current.reportYear,
         reportMonthKey: currentMonthKey,
         statementDate: current.statementDate,
-        title: `Monthly Portfolio Report — ${getMonthLabel(current.reportMonth)} ${current.reportYear}`,
+        title: getReportDisplayTitle(REPORT_TYPE.MONTHLY, current.reportMonth, current.reportYear),
         status: "draft",
         investorVisible: false,
         publicationStatus: "internal",
@@ -1093,7 +1199,7 @@ export default function ReportForm({ reportId = null }) {
         createdAt: undefined,
         completedAt: null
       }));
-      setSuccess(`Copied data from ${getMonthLabel(source.reportMonth)} ${source.reportYear}. Update the current monthly values before saving.`);
+      setSuccess(`Copied data from ${getMonthLabel(source.reportMonth)} ${source.reportYear}. Portfolio Master will refresh the current-period financial values before saving.`);
     } catch (nextError) {
       setError(nextError.message || "Unable to copy the previous report.");
     } finally {
@@ -1104,6 +1210,13 @@ export default function ReportForm({ reportId = null }) {
   async function handleSave(complete = false, options = {}) {
     const { silent = false, autosave = false, redirectToPreview = false } = options;
     if (isLocked || saving) return;
+
+    if (!form.investorId || periodLookupLoading || periodContextResolvedFor !== `${form.investorId}:${form.reportType || REPORT_TYPE.MONTHLY}`) {
+      if (!silent) {
+        setError("GrowVest is checking this investor's report history and preparing the correct Opening or Monthly Wealth Review. Please wait a moment and try again.");
+      }
+      return;
+    }
 
     setSaving(true);
     setSaveState("saving");
@@ -1149,11 +1262,11 @@ export default function ReportForm({ reportId = null }) {
           await linkDataImportToReport(activeImportId, saved.id, profile);
           setActiveImportId("");
         } catch (linkError) {
-          console.error("Monthly report saved, but the import history could not be linked.", linkError);
+          console.error("Wealth Review saved, but the import history could not be linked.", linkError);
         }
       }
       if (!silent) {
-        setSuccess(complete ? "Monthly report completed successfully." : "Monthly report draft saved.");
+        setSuccess(complete ? `${form.reportType === REPORT_TYPE.OPENING ? "Opening Wealth Review" : "Monthly Wealth Review"} completed successfully.` : "Wealth review draft saved.");
       }
       setSaveState("saved");
       setLastSavedAt(new Date());
@@ -1170,7 +1283,7 @@ export default function ReportForm({ reportId = null }) {
       return saved;
     } catch (nextError) {
       console.error(nextError);
-      if (!silent) setError(nextError.message || "Unable to save the monthly report.");
+      if (!silent) setError(nextError.message || "Unable to save the wealth review.");
       setSaveState("error");
     } finally {
       setSaving(false);
@@ -1255,7 +1368,7 @@ export default function ReportForm({ reportId = null }) {
     return () => window.clearTimeout(timer);
   }, [form, loading, isLocked, saving, canSaveDraft, saveState, activeStep]);
 
-  if (loading) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">Loading monthly report…</div>;
+  if (loading) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">Loading wealth review…</div>;
 
   const holdingsTotal = (form.holdings || []).reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
   const fundsTotal = (form.funds || []).reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
@@ -1299,7 +1412,7 @@ export default function ReportForm({ reportId = null }) {
 
           <main className="min-w-0">
             {activeStep === "investor" ? (
-              <ReportStepShell number="1" title="Select Investor" description="Choose the investor for whom this monthly report is being prepared. Profile, Advisor, goals and existing holdings are inherited automatically.">
+              <ReportStepShell number="1" title="Select Investor" description="Choose the investor for whom this Wealth Review is being prepared. Profile, assigned team member, goals and existing holdings are inherited automatically.">
                 <div className="grid gap-5">
                   <ReportOutputGuide stepId="investor" />
                   <ValueSourceLegend />
@@ -1309,7 +1422,7 @@ export default function ReportForm({ reportId = null }) {
             ) : null}
 
             {activeStep === "period" ? (
-              <ReportStepShell number="2" title="Reporting Period" description="Define the reporting month, statement date and report identity. The system checks for duplicate monthly reports before you continue.">
+              <ReportStepShell number="2" title="Reporting Period" description="Confirm the Opening baseline or Monthly reporting period. The system checks for duplicate Wealth Reviews and launch-period conflicts before you continue.">
                 <div className="grid gap-5">
                   <ReportOutputGuide stepId="period" />
                   <ValueSourceLegend />
@@ -1319,12 +1432,13 @@ export default function ReportForm({ reportId = null }) {
                   fieldErrors={fieldErrors}
                   previousReport={previousReport}
                   duplicateReport={duplicateReport}
+                  openingPeriodConflict={openingPeriodConflict}
                   lookupLoading={periodLookupLoading}
                   copying={copying}
                   onUpdatePeriod={updatePeriod}
                   onTopLevelChange={setTopLevel}
                   onCopyPrevious={copyLatestReport}
-                  periodLocked={isLocked}
+                  periodLocked={isLocked || form.reportType === REPORT_TYPE.OPENING}
                 />
                 </div>
               </ReportStepShell>
@@ -1332,14 +1446,14 @@ export default function ReportForm({ reportId = null }) {
 
             {activeStep === "portfolio-data" ? (
               <div className="grid gap-5">
-                <StepPageIntro number="3" stepId="portfolio-data" showValueLegend icon={WalletCards} title="Portfolio Data" description="GrowVest generates the financial section from the latest verified Portfolio Master snapshot on or before the report date. Review source freshness, holding changes and cash-flow separation before continuing." />
+                <StepPageIntro number="3" stepId="portfolio-data" showValueLegend icon={WalletCards} title="Portfolio Data" description={form.reportType === REPORT_TYPE.OPENING ? "GrowVest generates the opening financial position from the latest verified Portfolio Master snapshot. Review source freshness and reconciliation items; the holdings shown here establish the opening baseline rather than monthly new/exited movement." : "GrowVest generates the financial section from the latest verified Portfolio Master snapshot on or before the report date. Review source freshness, holding changes and cash-flow separation before continuing."} />
                 {form.portfolioVerification?.required ? (
                   <section className={`rounded-xl border p-4 sm:p-5 ${form.portfolioVerification.status === "blocked" ? "border-red-200 bg-red-50" : form.portfolioVerification.status === "review_required" ? "border-amber-200 bg-amber-50" : form.portfolioVerification.status === "ready" ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-white"}`}>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <div className="flex items-center gap-2">
                           {form.portfolioVerification.status === "ready" ? <CheckCircle2 size={19} className="text-emerald-700" /> : <AlertTriangle size={19} className={form.portfolioVerification.status === "blocked" ? "text-red-700" : "text-amber-700"} />}
-                          <p className="text-sm font-black text-slate-950">Monthly Portfolio Verification</p>
+                          <p className="text-sm font-black text-slate-950">{form.reportType === REPORT_TYPE.OPENING ? "Opening Portfolio Verification" : "Monthly Portfolio Verification"}</p>
                         </div>
                         <p className="mt-1 text-xs leading-5 text-slate-600">Portfolio verification as of {form.portfolioVerification.asOfDate || reportPortfolioAsOfDate(form.reportYear, form.reportMonth, form.statementDate)} · Snapshot {form.portfolioVerification.snapshotDate || "not available"}{form.portfolioVerification.snapshotCapturedDate && form.portfolioVerification.snapshotCapturedDate !== form.portfolioVerification.snapshotDate ? ` (captured ${form.portfolioVerification.snapshotCapturedDate})` : ""}. A value source older than 7 days is flagged for review; data older than 31 days blocks completion.</p>
                       </div>
@@ -1355,9 +1469,22 @@ export default function ReportForm({ reportId = null }) {
                       {(form.portfolioVerification.checks || []).map((check) => (
                         <div key={check.id} className="flex items-start gap-3 rounded-lg bg-white/80 px-3 py-2.5 ring-1 ring-slate-200/80">
                           {check.status === "pass" ? <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-emerald-600" /> : <AlertTriangle size={17} className={`mt-0.5 shrink-0 ${check.status === "block" ? "text-red-600" : "text-amber-600"}`} />}
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <p className="text-xs font-bold text-slate-900">{check.label}</p>
                             <p className="mt-0.5 text-xs leading-5 text-slate-600">{check.detail}</p>
+                            {check.issues?.length ? (
+                              <div className="mt-2 grid gap-1.5">
+                                {check.issues.map((issue, issueIndex) => (
+                                  <div key={`${check.id}-${issue.id || issue.code || issueIndex}`} className={`rounded-md border px-2.5 py-2 ${issue.severity === "block" ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}`}>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${issue.severity === "block" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>{issue.severity === "block" ? "Must fix" : "Review"}</span>
+                                      <p className="text-xs font-bold text-slate-900">{issue.title}</p>
+                                    </div>
+                                    <p className="mt-1 text-xs leading-5 text-slate-600">{issue.description}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                       ))}
@@ -1379,14 +1506,14 @@ export default function ReportForm({ reportId = null }) {
                       {[
                         ["Holdings", form.portfolioVerification.counts?.holdings || 0],
                         ["Transactions", form.portfolioVerification.counts?.transactions || 0],
-                        ["New holdings", form.portfolioVerification.counts?.newHoldings || 0],
-                        ["Exited holdings", form.portfolioVerification.counts?.exitedHoldings || 0]
+                        ["New holdings", form.reportType === REPORT_TYPE.OPENING ? "N/A" : (form.portfolioVerification.counts?.newHoldings || 0)],
+                        ["Exited holdings", form.reportType === REPORT_TYPE.OPENING ? "N/A" : (form.portfolioVerification.counts?.exitedHoldings || 0)]
                       ].map(([label, value]) => <div key={label} className="rounded-lg bg-white px-3 py-2 ring-1 ring-slate-200"><p className="text-[11px] font-semibold text-slate-500">{label}</p><p className="mt-1 text-lg font-black text-slate-950">{value}</p></div>)}
                     </div>
 
                     {form.portfolioVerification.status === "review_required" && !form.portfolioVerification.acknowledged ? (
                       <div className="mt-4 flex flex-col gap-3 rounded-lg border border-amber-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-xs leading-5 text-amber-900">Review the warnings above. Confirming does not change Portfolio Master data; it records that the Advisor/Admin reviewed these source conditions for this monthly report.</p>
+                        <p className="text-xs leading-5 text-amber-900">Review the warnings above. Confirming does not change Portfolio Master data; it records that the responsible GrowVest team member reviewed these source conditions for this Wealth Review.</p>
                         <Button type="button" onClick={acknowledgePortfolioVerification}>Confirm review</Button>
                       </div>
                     ) : form.portfolioVerification.acknowledged && form.portfolioVerification.status === "review_required" ? (
@@ -1400,7 +1527,7 @@ export default function ReportForm({ reportId = null }) {
                   <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="text-sm font-bold text-emerald-950">Verified portfolio snapshot applied</p>
-                      <p className="mt-1 text-xs leading-5 text-emerald-800">Portfolio as of {form.portfolioAsOfDate || form.statementDate}. {form.funds?.length || 0} active holdings populate this report. Verify values, then add advisor observations, recommendations and actions.</p>
+                      <p className="mt-1 text-xs leading-5 text-emerald-800">Portfolio as of {form.portfolioAsOfDate || form.statementDate}. {form.funds?.length || 0} active holdings populate this report. Verify values, then add GrowVest Partner observations, recommendations and actions.</p>
                     </div>
                     <span className="inline-flex w-fit rounded-full bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200">Verified portfolio</span>
                   </div>
@@ -1415,7 +1542,7 @@ export default function ReportForm({ reportId = null }) {
                   </div>
                 ) : null}
             <Card id="report-summary" className="scroll-mt-28">
-                    <SectionHeader number="2" title="Portfolio summary" description="All financial values are calculated automatically for the selected reporting month. Advisor entry is not required." />
+                    <SectionHeader number="2" title="Portfolio summary" description="All financial values are calculated automatically for the selected reporting month. Partner entry is not required." />
                     <div className="grid gap-5 p-5 sm:grid-cols-2 xl:grid-cols-3">
                       {[
                         ["totalCorpus", "Current Portfolio Value"],
@@ -1462,9 +1589,9 @@ export default function ReportForm({ reportId = null }) {
                     </div>
                   </Card>
             <Card id="report-funds" className="scroll-mt-28">
-                    <SectionHeader number="7" title="Investment-wise details" description={portfolioFactsLocked ? "Every investment is fetched from Portfolio Master and must map to a Bucket List goal or the default General Wealth bucket. Advisor notes remain editable." : "Review every mutual fund, delivery stock, ULIP or other instrument, its Bucket List/General Wealth allocation and current value."} action={portfolioFactsLocked ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">Source values locked</span> : <Button type="button" variant="secondary" onClick={() => setForm((current) => ({ ...current, funds: [...(current.funds || []), createEmptyFund(current.funds?.length || 0)] }))}><Plus size={16} /> Add fund</Button>} />
+                    <SectionHeader number="7" title="Investment-wise details" description={portfolioFactsLocked ? "Every investment is fetched from Portfolio Master and must map to a Bucket List goal or the default General Wealth bucket. Partner notes remain editable." : "Review every mutual fund, delivery stock, ULIP or other instrument, its Bucket List/General Wealth allocation and current value."} action={portfolioFactsLocked ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">Source values locked</span> : <Button type="button" variant="secondary" onClick={() => setForm((current) => ({ ...current, funds: [...(current.funds || []), createEmptyFund(current.funds?.length || 0)] }))}><Plus size={16} /> Add fund</Button>} />
                     <div className="grid gap-4 p-5">
-                      {(form.funds || []).map((fund, index) => <div key={fund.id || index} className="rounded-2xl border border-slate-200 p-4"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Field label="Fund / instrument"><input readOnly={portfolioFactsLocked} className={`${inputClassName} ${portfolioFactsLocked ? "bg-slate-50 text-slate-700" : ""}`} value={fund.instrumentName || ""} onChange={(event) => { if (!portfolioFactsLocked) updateArray("funds", index, "instrumentName", event.target.value); }} /></Field><Field label="Asset class"><select disabled={portfolioFactsLocked} className={`${inputClassName} ${portfolioFactsLocked ? "bg-slate-50 text-slate-700" : ""}`} value={fund.assetClass || "Other"} onChange={(event) => updateArray("funds", index, "assetClass", event.target.value)}>{ASSET_CLASS_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Bucket List / default bucket"><div className="grid gap-1.5"><select disabled={portfolioFactsLocked && (!canModifyCurrentPortfolioBuckets || portfolioAllocationBusyId === fund.positionId)} className={`${inputClassName} ${portfolioFactsLocked && !canModifyCurrentPortfolioBuckets ? "bg-slate-50 text-slate-700" : ""}`} value={fund.goalId || ""} onChange={(event) => portfolioFactsLocked ? updatePortfolioBucketFromReport(fund, event.target.value) : updateArray("funds", index, "goalId", event.target.value)}><option value="">General Wealth (Default)</option>{(form.goals || []).map((goal) => <option key={goal.goalId} value={goal.goalId}>{goal.name || "Unnamed goal"}</option>)}</select>{portfolioFactsLocked ? <span className="text-[11px] font-semibold text-slate-500">{canModifyCurrentPortfolioBuckets ? (portfolioAllocationBusyId === fund.positionId ? "Updating Portfolio Master…" : "Changing this updates the live Portfolio Master, then refreshes the report.") : "Historical snapshot: allocation is frozen in this report."}</span> : null}</div></Field><Field label="Investment type"><select disabled={portfolioFactsLocked} className={`${inputClassName} ${portfolioFactsLocked ? "bg-slate-50 text-slate-700" : ""}`} value={fund.type || "Fixed"} onChange={(event) => updateArray("funds", index, "type", event.target.value)}><option>Fixed</option><option>Flexible</option><option>SIP</option><option>Lump Sum</option><option>Both</option><option>Delivery</option><option>ULIP</option></select></Field><Field label="Monthly SIP"><input readOnly={portfolioFactsLocked} type="number" className={`${inputClassName} ${portfolioFactsLocked ? "border-emerald-200 bg-emerald-50/60 text-emerald-900" : ""}`} value={fund.monthlySip ?? 0} onChange={(event) => { if (!portfolioFactsLocked) updateArray("funds", index, "monthlySip", event.target.value); }} /></Field><Field label="Current value"><input readOnly={portfolioFactsLocked} type="number" className={`${inputClassName} ${portfolioFactsLocked ? "border-emerald-200 bg-emerald-50/60 text-emerald-900" : ""}`} value={fund.currentValue ?? 0} onChange={(event) => { if (!portfolioFactsLocked) updateArray("funds", index, "currentValue", event.target.value); }} /></Field><Field label="Advisor report note"><input className={inputClassName} value={fund.notes || ""} onChange={(event) => updateArray("funds", index, "notes", event.target.value)} placeholder="Optional observation for this report" /></Field>{!portfolioFactsLocked ? <div className="flex items-end justify-end"><RemoveButton onClick={() => removeArrayRow("funds", index)} label="Remove fund" /></div> : <div className="flex items-end"><span className="rounded-full bg-slate-100 px-3 py-1.5 text-[11px] font-bold text-slate-600">{fund.bucketLabel || fund.goalName || "General Wealth (Default)"}</span></div>}</div></div>)}
+                      {(form.funds || []).map((fund, index) => <div key={fund.id || index} className="rounded-2xl border border-slate-200 p-4"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Field label="Fund / instrument"><input readOnly={portfolioFactsLocked} className={`${inputClassName} ${portfolioFactsLocked ? "bg-slate-50 text-slate-700" : ""}`} value={fund.instrumentName || ""} onChange={(event) => { if (!portfolioFactsLocked) updateArray("funds", index, "instrumentName", event.target.value); }} /></Field><Field label="Asset class"><select disabled={portfolioFactsLocked} className={`${inputClassName} ${portfolioFactsLocked ? "bg-slate-50 text-slate-700" : ""}`} value={fund.assetClass || "Other"} onChange={(event) => updateArray("funds", index, "assetClass", event.target.value)}>{ASSET_CLASS_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Bucket List / default bucket"><div className="grid gap-1.5"><select disabled={portfolioFactsLocked && (!canModifyCurrentPortfolioBuckets || portfolioAllocationBusyId === fund.positionId)} className={`${inputClassName} ${portfolioFactsLocked && !canModifyCurrentPortfolioBuckets ? "bg-slate-50 text-slate-700" : ""}`} value={fund.goalId || ""} onChange={(event) => portfolioFactsLocked ? updatePortfolioBucketFromReport(fund, event.target.value) : updateArray("funds", index, "goalId", event.target.value)}><option value="">General Wealth (Default)</option>{(form.goals || []).map((goal) => <option key={goal.goalId} value={goal.goalId}>{goal.name || "Unnamed goal"}</option>)}</select>{portfolioFactsLocked ? <span className="text-[11px] font-semibold text-slate-500">{canModifyCurrentPortfolioBuckets ? (portfolioAllocationBusyId === fund.positionId ? "Updating Portfolio Master…" : "Changing this updates the live Portfolio Master, then refreshes the report.") : "Historical snapshot: allocation is frozen in this report."}</span> : null}</div></Field><Field label="Investment type"><select disabled={portfolioFactsLocked} className={`${inputClassName} ${portfolioFactsLocked ? "bg-slate-50 text-slate-700" : ""}`} value={fund.type || "Fixed"} onChange={(event) => updateArray("funds", index, "type", event.target.value)}><option>Fixed</option><option>Flexible</option><option>SIP</option><option>Lump Sum</option><option>Both</option><option>Delivery</option><option>ULIP</option></select></Field><Field label="Monthly SIP"><input readOnly={portfolioFactsLocked} type="number" className={`${inputClassName} ${portfolioFactsLocked ? "border-emerald-200 bg-emerald-50/60 text-emerald-900" : ""}`} value={fund.monthlySip ?? 0} onChange={(event) => { if (!portfolioFactsLocked) updateArray("funds", index, "monthlySip", event.target.value); }} /></Field><Field label="Current value"><input readOnly={portfolioFactsLocked} type="number" className={`${inputClassName} ${portfolioFactsLocked ? "border-emerald-200 bg-emerald-50/60 text-emerald-900" : ""}`} value={fund.currentValue ?? 0} onChange={(event) => { if (!portfolioFactsLocked) updateArray("funds", index, "currentValue", event.target.value); }} /></Field><Field label="Partner report note"><input className={inputClassName} value={fund.notes || ""} onChange={(event) => updateArray("funds", index, "notes", event.target.value)} placeholder="Optional observation for this report" /></Field>{!portfolioFactsLocked ? <div className="flex items-end justify-end"><RemoveButton onClick={() => removeArrayRow("funds", index)} label="Remove fund" /></div> : <div className="flex items-end"><span className="rounded-full bg-slate-100 px-3 py-1.5 text-[11px] font-bold text-slate-600">{fund.bucketLabel || fund.goalName || "General Wealth (Default)"}</span></div>}</div></div>)}
                     </div>
                   </Card>
               </div>
@@ -1497,9 +1624,9 @@ export default function ReportForm({ reportId = null }) {
               <div className="grid gap-5">
                 <StepPageIntro number="5" stepId="commentary" showValueLegend showInternal icon={FileCheck2} title="Commentary" description="Explain monthly performance, highlight progress and clearly separate priority attention from portfolio opportunities." />
             <Card id="report-insights" className="scroll-mt-28">
-                    <SectionHeader number="4" title="Advisor note" description="Write the personal monthly commentary that will appear as the Advisor's note." action={<CommentaryLibraryPicker reportMonth={form.reportMonth} reportYear={form.reportYear} onApply={applyMarketCommentary} />} />
+                    <SectionHeader number="4" title="Partner commentary" description="Write the personal commentary that will appear as the Conscious Wealth Partner's note." action={<CommentaryLibraryPicker reportMonth={form.reportMonth} reportYear={form.reportYear} onApply={applyMarketCommentary} />} />
                     <div className="grid gap-5 p-5 xl:grid-cols-[1fr_320px]">
-                      <Field label="Advisor narrative"><textarea rows="8" className={inputClassName} value={form.advisorInsights?.narrative || form.advisorNote?.content || ""} onChange={(event) => setForm((current) => ({ ...current, advisorNote: { ...current.advisorNote, content: event.target.value }, advisorInsights: { ...current.advisorInsights, narrative: event.target.value } }))} placeholder="Summarise progress, concerns and what needs attention next month." /></Field>
+                      <Field label="Partner narrative"><textarea rows="8" className={inputClassName} value={form.advisorInsights?.narrative || form.advisorNote?.content || ""} onChange={(event) => setForm((current) => ({ ...current, advisorNote: { ...current.advisorNote, content: event.target.value }, advisorInsights: { ...current.advisorInsights, narrative: event.target.value } }))} placeholder="Summarise progress, concerns and what needs attention next month." /></Field>
                       <Field label="Highlighted observation" hint="Optional key amount or short phrase"><textarea rows="8" className={inputClassName} value={form.advisorNote?.highlight || ""} onChange={(event) => setForm((current) => ({ ...current, advisorNote: { ...current.advisorNote, highlight: event.target.value } }))} placeholder="Example: Emergency fund is short by ₹2.1 lakh." /></Field>
                     </div>
                     <div className="grid gap-4 border-t border-slate-200 p-5 lg:grid-cols-3">
@@ -1541,7 +1668,7 @@ export default function ReportForm({ reportId = null }) {
               <div className="grid gap-5">
                 <StepPageIntro number="6" stepId="goals" showValueLegend icon={WalletCards} title="Goals & Allocation" description="Review specific financial goals when they exist, or retain the portfolio under General Wealth Corpus. Bucket Lists are optional." />
             <Card id="report-goals" className="scroll-mt-28">
-                    <SectionHeader number="5" title="Goal & corpus progress" description="Track specific financial goals when defined. Investors without goals continue under General Wealth Corpus." action={<Button type="button" variant="secondary" onClick={() => setForm((current) => ({ ...current, goals: [...(current.goals || []), { goalId: `goal-${Date.now()}`, name: "", category: "", type: "Flexible", targetAmount: 0, currentAmount: 0, monthlySip: 0, targetYear: null, status: "Planning", progress: 0, isPrimary: false }] }))}><Plus size={16} /> Add goal</Button>} />
+                    <SectionHeader number="5" title="Goal & corpus progress" description={portfolioFactsLocked ? "Goal targets come from the investor profile. Current corpus, active SIP, progress and status are reconciled from Portfolio Master." : "Track specific financial goals when defined. Investors without goals continue under General Wealth Corpus."} action={portfolioFactsLocked ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">Portfolio-derived progress</span> : <Button type="button" variant="secondary" onClick={() => setForm((current) => ({ ...current, goals: [...(current.goals || []), { goalId: `goal-${Date.now()}`, name: "", category: "", type: "Flexible", targetAmount: 0, currentAmount: 0, monthlySip: 0, targetYear: null, status: "Planning", progress: 0, isPrimary: false }] }))}><Plus size={16} /> Add goal</Button>} />
                     <div className="grid gap-4 p-5">
                       {!form.goals?.length ? (
                         <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
@@ -1549,13 +1676,13 @@ export default function ReportForm({ reportId = null }) {
                           <p className="mt-1 text-sm leading-6 text-blue-800">No specific financial goal is required for this investor. {formatCurrency(form.summary?.generalWealthCorpus || form.summary?.totalCorpus)} remains tracked as general wealth and may be allocated to goals later.</p>
                         </div>
                       ) : null}
-                      {(form.goals || []).map((goal, index) => <div key={goal.goalId || index} className="rounded-2xl border border-slate-200 p-4"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Field label="Goal name"><input className={inputClassName} value={goal.name || ""} onChange={(event) => updateArray("goals", index, "name", event.target.value)} /></Field><Field label="Goal category"><input className={inputClassName} value={goal.category || ""} onChange={(event) => updateArray("goals", index, "category", event.target.value)} placeholder="Education / Retirement / Travel" /></Field><Field label="Type"><select className={inputClassName} value={goal.type || "Flexible"} onChange={(event) => updateArray("goals", index, "type", event.target.value)}><option>Fixed</option><option>Flexible</option></select></Field><Field label="Target amount"><input type="number" className={inputClassName} value={goal.targetAmount ?? 0} onChange={(event) => updateArray("goals", index, "targetAmount", event.target.value)} /></Field><Field label="Current amount"><input type="number" className={inputClassName} value={goal.currentAmount ?? 0} onChange={(event) => updateArray("goals", index, "currentAmount", event.target.value)} /></Field><Field label="Monthly SIP"><input type="number" className={inputClassName} value={goal.monthlySip ?? 0} onChange={(event) => updateArray("goals", index, "monthlySip", event.target.value)} /></Field><Field label="Target year"><input type="number" className={inputClassName} value={goal.targetYear || ""} onChange={(event) => updateArray("goals", index, "targetYear", event.target.value ? Number(event.target.value) : null)} /></Field><Field label="Status"><select className={inputClassName} value={goal.status || "Planning"} onChange={(event) => updateArray("goals", index, "status", event.target.value)}>{GOAL_STATUS_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Progress %"><div className="grid gap-1.5"><input readOnly type="number" step="0.1" className={`${inputClassName} border-emerald-200 bg-emerald-50/60 text-emerald-900`} value={goal.progress ?? 0} /><span className="text-[11px] font-semibold text-emerald-700">Calculated automatically</span></div></Field></div><div className="mt-3 flex items-center justify-between gap-3"><label className="flex items-center gap-2 text-sm font-semibold text-slate-700"><input type="checkbox" checked={Boolean(goal.isPrimary)} onChange={(event) => updateArray("goals", index, "isPrimary", event.target.checked)} /> Primary goal</label><RemoveButton onClick={() => removeArrayRow("goals", index)} label="Remove goal" /></div></div>)}
+                      {(form.goals || []).map((goal, index) => <div key={goal.goalId || index} className="rounded-2xl border border-slate-200 p-4"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Field label="Goal name"><input className={inputClassName} value={goal.name || ""} onChange={(event) => updateArray("goals", index, "name", event.target.value)} /></Field><Field label="Goal category"><input className={inputClassName} value={goal.category || ""} onChange={(event) => updateArray("goals", index, "category", event.target.value)} placeholder="Education / Retirement / Travel" /></Field><Field label="Type"><select className={inputClassName} value={goal.type || "Flexible"} onChange={(event) => updateArray("goals", index, "type", event.target.value)}><option>Fixed</option><option>Flexible</option></select></Field><Field label="Target amount"><input type="number" className={inputClassName} value={goal.targetAmount ?? 0} onChange={(event) => updateArray("goals", index, "targetAmount", event.target.value)} /></Field><Field label="Current corpus"><div className="grid gap-1.5"><input readOnly={portfolioFactsLocked} type="number" className={`${inputClassName} ${portfolioFactsLocked ? "border-emerald-200 bg-emerald-50/60 text-emerald-900" : ""}`} value={goal.currentAmount ?? 0} onChange={(event) => { if (!portfolioFactsLocked) updateArray("goals", index, "currentAmount", event.target.value); }} />{portfolioFactsLocked ? <span className="text-[11px] font-semibold text-emerald-700">From investments allocated to this goal</span> : null}</div></Field><Field label="Active monthly SIP"><div className="grid gap-1.5"><input readOnly={portfolioFactsLocked} type="number" className={`${inputClassName} ${portfolioFactsLocked ? "border-emerald-200 bg-emerald-50/60 text-emerald-900" : ""}`} value={goal.monthlySip ?? 0} onChange={(event) => { if (!portfolioFactsLocked) updateArray("goals", index, "monthlySip", event.target.value); }} />{portfolioFactsLocked ? <span className="text-[11px] font-semibold text-emerald-700">From active Portfolio Master SIPs</span> : null}</div></Field><Field label="Target year"><input type="number" className={inputClassName} value={goal.targetYear || ""} onChange={(event) => updateArray("goals", index, "targetYear", event.target.value ? Number(event.target.value) : null)} /></Field><Field label="Status"><select disabled={portfolioFactsLocked} className={`${inputClassName} ${portfolioFactsLocked ? "bg-slate-50 text-slate-700" : ""}`} value={goal.status || "Planning"} onChange={(event) => updateArray("goals", index, "status", event.target.value)}>{GOAL_STATUS_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Progress %"><div className="grid gap-1.5"><input readOnly type="number" step="0.1" className={`${inputClassName} border-emerald-200 bg-emerald-50/60 text-emerald-900`} value={goal.progress ?? 0} /><span className="text-[11px] font-semibold text-emerald-700">Calculated automatically</span></div></Field></div><div className="mt-3 flex items-center justify-between gap-3"><label className="flex items-center gap-2 text-sm font-semibold text-slate-700"><input type="checkbox" checked={Boolean(goal.isPrimary)} onChange={(event) => updateArray("goals", index, "isPrimary", event.target.checked)} /> Primary goal</label>{!portfolioFactsLocked ? <RemoveButton onClick={() => removeArrayRow("goals", index)} label="Remove goal" /> : <span className="text-[11px] font-semibold text-slate-500">Goal definition retained from Investor Profile</span>}</div></div>)}
                     </div>
                   </Card>
             <Card id="report-allocation" className="scroll-mt-28">
-                    <SectionHeader number="6" title="Portfolio allocation" description="Compare current and target asset allocation. Variance is calculated automatically." action={<Button type="button" variant="secondary" onClick={() => setForm((current) => ({ ...current, allocation: [...(current.allocation || []), createEmptyAllocation(current.allocation?.length || 0)] }))}><Plus size={16} /> Add allocation</Button>} />
+                    <SectionHeader number="6" title="Portfolio allocation" description={portfolioFactsLocked ? "Current allocation and SIP are sourced from Portfolio Master. Target allocation remains a Partner planning input." : "Compare current and target asset allocation. Variance is calculated automatically."} action={portfolioFactsLocked ? <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">Current values locked</span> : <Button type="button" variant="secondary" onClick={() => setForm((current) => ({ ...current, allocation: [...(current.allocation || []), createEmptyAllocation(current.allocation?.length || 0)] }))}><Plus size={16} /> Add allocation</Button>} />
                     <div className="grid gap-3 p-5">
-                      {(form.allocation || []).map((item, index) => <div key={item.id || index} className="grid gap-3 rounded-2xl border border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-[1.2fr_1fr_1fr_1fr_1fr_110px_44px] xl:items-end"><Field label="Asset class"><select className={inputClassName} value={item.assetClass} onChange={(event) => updateArray("allocation", index, "assetClass", event.target.value)}>{ASSET_CLASS_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Current value"><input type="number" className={inputClassName} value={item.currentValue ?? 0} onChange={(event) => updateArray("allocation", index, "currentValue", event.target.value)} /></Field><Field label="Monthly SIP"><input type="number" className={inputClassName} value={item.monthlySip ?? 0} onChange={(event) => updateArray("allocation", index, "monthlySip", event.target.value)} /></Field><Field label="Current %"><div className="grid gap-1.5"><input readOnly type="number" step="0.1" className={`${inputClassName} border-emerald-200 bg-emerald-50/60 text-emerald-900`} value={item.currentPercentage ?? 0} /><span className="text-[11px] font-semibold text-emerald-700">Calculated automatically</span></div></Field><Field label="Target %"><input type="number" step="0.1" className={inputClassName} value={item.targetPercentage ?? 0} onChange={(event) => updateArray("allocation", index, "targetPercentage", event.target.value)} /></Field><Field label="Variance"><div className="grid gap-1.5"><input readOnly className={`${inputClassName} border-emerald-200 bg-emerald-50/60 text-emerald-900`} value={`${Number(item.variance || 0).toFixed(1)}%`} /><span className="text-[11px] font-semibold text-emerald-700">Calculated automatically</span></div></Field><RemoveButton onClick={() => removeArrayRow("allocation", index)} /></div>)}
+                      {(form.allocation || []).map((item, index) => <div key={item.id || index} className="grid gap-3 rounded-2xl border border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-[1.2fr_1fr_1fr_1fr_1fr_110px_44px] xl:items-end"><Field label="Asset class"><select disabled={portfolioFactsLocked} className={`${inputClassName} ${portfolioFactsLocked ? "bg-slate-50 text-slate-700" : ""}`} value={item.assetClass} onChange={(event) => updateArray("allocation", index, "assetClass", event.target.value)}>{ASSET_CLASS_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Current value"><input readOnly={portfolioFactsLocked} type="number" className={`${inputClassName} ${portfolioFactsLocked ? "border-emerald-200 bg-emerald-50/60 text-emerald-900" : ""}`} value={item.currentValue ?? 0} onChange={(event) => { if (!portfolioFactsLocked) updateArray("allocation", index, "currentValue", event.target.value); }} /></Field><Field label="Active SIP"><input readOnly={portfolioFactsLocked} type="number" className={`${inputClassName} ${portfolioFactsLocked ? "border-emerald-200 bg-emerald-50/60 text-emerald-900" : ""}`} value={item.monthlySip ?? 0} onChange={(event) => { if (!portfolioFactsLocked) updateArray("allocation", index, "monthlySip", event.target.value); }} /></Field><Field label="Current %"><div className="grid gap-1.5"><input readOnly type="number" step="0.1" className={`${inputClassName} border-emerald-200 bg-emerald-50/60 text-emerald-900`} value={item.currentPercentage ?? 0} /><span className="text-[11px] font-semibold text-emerald-700">Calculated automatically</span></div></Field><Field label="Target %"><input type="number" step="0.1" className={inputClassName} value={item.targetPercentage ?? 0} onChange={(event) => updateArray("allocation", index, "targetPercentage", event.target.value)} /></Field><Field label="Variance"><div className="grid gap-1.5"><input readOnly className={`${inputClassName} border-emerald-200 bg-emerald-50/60 text-emerald-900`} value={`${Number(item.variance || 0).toFixed(1)}%`} /><span className="text-[11px] font-semibold text-emerald-700">Calculated automatically</span></div></Field>{!portfolioFactsLocked ? <RemoveButton onClick={() => removeArrayRow("allocation", index)} /> : <span />}</div>)}
                       {!form.allocation?.length ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">No allocation comparison added.</p> : null}
                     </div>
                   </Card>
@@ -1566,8 +1693,9 @@ export default function ReportForm({ reportId = null }) {
               <div className="grid gap-5">
                 <StepPageIntro number="7" stepId="template" icon={LayoutTemplate} title="Select Template" description="Choose the active template used for this report. A versioned snapshot is stored so future template edits cannot change this report." />
                 <ReportTemplateSelectionStep
-                  templates={reportTemplates}
+                  templates={hasPublishedReportSnapshot(form) ? reportTemplates : reportTemplates.filter((item) => item.id === DEFAULT_REPORT_TEMPLATE_ID)}
                   selectedTemplateId={form.templateId}
+                  lockedVisual={!hasPublishedReportSnapshot(form)}
                   selectedTemplateVersion={form.templateVersion || form.templateSnapshot?.version}
                   onSelect={selectReportTemplate}
                   disabled={isLocked}
@@ -1579,7 +1707,7 @@ export default function ReportForm({ reportId = null }) {
                         <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">Selected output</p>
                         <h3 className="mt-1 font-heading text-lg font-bold text-blue-950">{form.templateSnapshot.name}</h3>
                         <p className="mt-1 text-sm text-blue-800">Version {form.templateVersion || form.templateSnapshot.version || 1} · {form.templateSnapshot.estimatedPages || "6–9 pages"} · {form.templateSnapshot.sectionOrder.filter((key) => form.templateSnapshot.sectionVisibility?.[key] !== false).length} visible sections</p>
-                        <p className="mt-1 text-xs font-semibold text-blue-700">Email: {form.templateSnapshot.delivery?.emailTemplateName || "Monthly Report Ready — Premium"} · {SIGNATURE_SOURCE_LABELS[form.templateSnapshot.delivery?.signatureSource] || "Assigned Advisor's published signature"}</p>
+                        <p className="mt-1 text-xs font-semibold text-blue-700">Email: {form.templateSnapshot.delivery?.emailTemplateName || "Wealth Review Ready — Premium"} · {SIGNATURE_SOURCE_LABELS[form.templateSnapshot.delivery?.signatureSource] || "Assigned Partner's published signature"}</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <a href={`/report-templates/${form.templateId}`} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-700"><Eye size={16} /> Preview template</a>
@@ -1603,12 +1731,24 @@ export default function ReportForm({ reportId = null }) {
                     </div>
                   </div>
                 </section>
+                <section className={`rounded-xl border p-4 ${reportReconciliation.status === "blocked" ? "border-red-200 bg-red-50" : reportReconciliation.status === "warning" ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-slate-950">Pre-publish reconciliation</p>
+                      <p className="mt-1 text-xs text-slate-600">Portfolio totals, active SIP, goal corpus and asset allocation must agree before the report can be published.</p>
+                    </div>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-bold capitalize text-slate-700">{reportReconciliation.status}</span>
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {reportReconciliation.checks.map((check) => <div key={check.id} className="rounded-lg bg-white/80 p-3 ring-1 ring-slate-200"><p className="text-xs font-bold text-slate-800">{check.status === "pass" ? "✓" : check.status === "warn" ? "!" : "×"} {check.label}</p><p className="mt-1 text-[11px] leading-5 text-slate-500">{check.detail}</p></div>)}
+                  </div>
+                </section>
             <Card id="report-actions" className="scroll-mt-28">
                     <SectionHeader number="8A" title="Investor Profile actions" description="Auto-fetched and read-only. Planned withdrawals, SIP changes, new investments and other Investor Profile actions are shown here without re-entering them in the report." />
                     <div className="grid gap-3 p-5">
                       {(form.profileActions || []).length ? (form.profileActions || []).map((item) => <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-heading text-base font-bold text-slate-950">{item.title || item.requestType || "Investor action"}</p><p className="mt-1 text-xs font-semibold text-blue-700">{item.requestType || item.recommendationType || "Portfolio action"} · {item.status || "Requested"}</p>{item.description ? <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p> : null}</div>{item.requestedEffectiveDate ? <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">Planned {item.requestedEffectiveDate}</span> : null}</div>{isStructuredWithdrawalAction(item) ? <WithdrawalActionSummary action={item} /> : <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-600">{Number(item.requestedAmount || 0) ? <span className="rounded-full bg-white px-2.5 py-1">Amount {formatCurrency(item.requestedAmount)}</span> : null}{Number(item.requestedMonthlyAmount || 0) ? <span className="rounded-full bg-white px-2.5 py-1">Monthly {formatCurrency(item.requestedMonthlyAmount)}</span> : null}{item.relatedGoalName ? <span className="rounded-full bg-violet-50 px-2.5 py-1 text-violet-700">{item.relatedGoalName}</span> : null}</div>}</div>) : <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">No Investor Profile actions are relevant to this reporting period.</div>}
                     </div>
-                    <SectionHeader number="8B" title="Advisor recommendations & next steps" description="Advisor commentary and recommendations only. Withdrawal figures are not entered here; they come from Investor Profile actions and confirmed Portfolio Master transactions." action={<Button type="button" variant="secondary" onClick={() => setForm((current) => ({ ...current, nextSteps: [...(current.nextSteps || []), createEmptyAction(current.nextSteps?.length || 0)] }))}><Plus size={16} /> Add next step</Button>} />
+                    <SectionHeader number="8B" title="Partner recommendations & next steps" description="Partner commentary and recommendations only. Withdrawal figures are not entered here; they come from Investor Profile actions and confirmed Portfolio Master transactions." action={<Button type="button" variant="secondary" onClick={() => setForm((current) => ({ ...current, nextSteps: [...(current.nextSteps || []), createEmptyAction(current.nextSteps?.length || 0)] }))}><Plus size={16} /> Add next step</Button>} />
                     <div className="grid gap-4 p-5">
                       {(form.nextSteps || []).map((item, index) => <div key={item.id || index} className="rounded-2xl border border-slate-200 p-4"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Field label="Recommendation / action"><input className={inputClassName} value={item.title || ""} onChange={(event) => updateArray("nextSteps", index, "title", event.target.value)} placeholder="Increase SIP by ₹5,000" /></Field><Field label="Recommendation type"><select className={inputClassName} value={item.recommendationType || "Portfolio Review"} onChange={(event) => updateArray("nextSteps", index, "recommendationType", event.target.value)}>{RECOMMENDATION_TYPE_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Priority"><select className={inputClassName} value={item.priority || "Planned"} onChange={(event) => updateArray("nextSteps", index, "priority", event.target.value)}>{ACTION_PRIORITY_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Owner"><select className={inputClassName} value={item.owner || "Advisor"} onChange={(event) => updateArray("nextSteps", index, "owner", event.target.value)}>{ACTION_OWNER_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Status"><select className={inputClassName} value={item.status || "Recommended"} onChange={(event) => updateArray("nextSteps", index, "status", event.target.value)}>{ACTION_STATUS_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Investor decision"><select className={inputClassName} value={item.investorDecision || "Pending Discussion"} onChange={(event) => updateArray("nextSteps", index, "investorDecision", event.target.value)}>{INVESTOR_DECISION_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Linked goal"><select className={inputClassName} value={item.relatedGoalId || ""} onChange={(event) => updateArray("nextSteps", index, "relatedGoalId", event.target.value)}><option value="">General Wealth (Default)</option>{(form.goals || []).map((goal) => <option key={goal.goalId} value={goal.goalId}>{goal.name || "Unnamed goal"}</option>)}</select></Field><Field label="Linked investment"><select className={inputClassName} value={item.relatedInvestmentId || ""} onChange={(event) => updateArray("nextSteps", index, "relatedInvestmentId", event.target.value)}><option value="">No specific investment</option>{(form.funds || []).map((fund) => <option key={fund.id} value={fund.positionId || fund.id}>{fund.instrumentName || "Investment"}</option>)}</select></Field><Field label="Action description"><input className={inputClassName} value={item.description || ""} onChange={(event) => updateArray("nextSteps", index, "description", event.target.value)} /></Field><Field label="Due date"><input type="date" className={inputClassName} value={item.dueDate || ""} onChange={(event) => updateArray("nextSteps", index, "dueDate", event.target.value)} /></Field><Field label="Completion date"><input type="date" className={inputClassName} value={item.completionDate || ""} onChange={(event) => updateArray("nextSteps", index, "completionDate", event.target.value)} /></Field><div className="flex items-end justify-end"><RemoveButton onClick={() => removeArrayRow("nextSteps", index)} label="Remove next step" /></div></div>{Number(item.requestedAmount || 0) || Number(item.requestedMonthlyAmount || 0) || item.requestedEffectiveDate || item.requestedTargetGoalName || item.requestedAccountReference || (item.financialImpactType && item.financialImpactType !== "none") ? <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-600">{Number(item.requestedAmount || 0) ? <span className="rounded-full bg-slate-100 px-2.5 py-1">Requested {formatCurrency(item.requestedAmount)}</span> : null}{Number(item.requestedMonthlyAmount || 0) ? <span className="rounded-full bg-slate-100 px-2.5 py-1">Monthly {formatCurrency(item.requestedMonthlyAmount)}</span> : null}{item.requestedEffectiveDate ? <span className="rounded-full bg-slate-100 px-2.5 py-1">Preferred {item.requestedEffectiveDate}</span> : null}{item.requestedTargetGoalName ? <span className="rounded-full bg-violet-50 px-2.5 py-1 text-violet-700">Target {item.requestedTargetGoalName}</span> : null}{item.requestedAccountReference ? <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">Account {item.requestedAccountReference}</span> : null}{item.financialImpactType && item.financialImpactType !== "none" ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800">{item.financialImpactStatus === "awaiting_portfolio_confirmation" ? "Awaiting portfolio confirmation" : "Planned only · excluded from report cash flows"}</span> : null}</div> : null}{item.sourceReportMonthKey ? <p className="mt-3 text-xs font-semibold text-amber-700">Carried forward from {item.sourceReportMonthKey}</p> : null}</div>)}
                       <div className="grid gap-5 rounded-2xl bg-slate-50 p-5 md:grid-cols-3"><Field label="Next review date"><input type="date" className={inputClassName} value={form.nextReview?.date || ""} onChange={(event) => setForm((current) => ({ ...current, nextReview: { ...current.nextReview, date: event.target.value } }))} /></Field><Field label="Meeting mode"><input className={inputClassName} value={form.nextReview?.mode || ""} onChange={(event) => setForm((current) => ({ ...current, nextReview: { ...current.nextReview, mode: event.target.value } }))} placeholder="In person / Teams / Google Meet" /></Field><Field label="Review note"><input className={inputClassName} value={form.nextReview?.note || ""} onChange={(event) => setForm((current) => ({ ...current, nextReview: { ...current.nextReview, note: event.target.value } }))} /></Field></div>

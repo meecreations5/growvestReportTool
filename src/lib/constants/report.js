@@ -1,17 +1,34 @@
 import {
   DEFAULT_REPORT_TEMPLATE_ID,
+  LOCKED_REPORT_VISUAL_VERSION,
   createReportTemplateSnapshot,
   getSystemReportTemplate
 } from "@/lib/constants/reportTemplates";
 import { businessDateKey, businessDateParts } from "@/lib/utils/date";
 import {
+  resolveHoldingChangeVerification,
+  resolveReconciliationVerification
+} from "@/lib/reportVerification";
+import {
   GENERAL_WEALTH_BUCKET_ID,
   GENERAL_WEALTH_BUCKET_NAME,
   defaultWealthPercentage,
+  derivePortfolioGoalProgress,
+  findPortfolioGoalMatch,
   normalisePortfolioGoalAllocations,
   portfolioBucketLabel,
   specificGoalAllocations
 } from "@/lib/portfolioGoalAllocation";
+
+export const REPORT_TYPE = {
+  OPENING: "opening",
+  MONTHLY: "monthly"
+};
+
+export const REPORT_TYPE_OPTIONS = [
+  { value: REPORT_TYPE.OPENING, label: "Opening Wealth Review" },
+  { value: REPORT_TYPE.MONTHLY, label: "Monthly Wealth Review" }
+];
 
 export const REPORT_STATUS = {
   DRAFT: "draft",
@@ -87,10 +104,53 @@ export function getReportMonthKey(year, month) {
   return `${Number(year)}-${String(Number(month)).padStart(2, "0")}`;
 }
 
+export function getCanonicalReportId(investorId, reportType, reportMonthKey, statementDate = "") {
+  const safeInvestorId = String(investorId || "").trim();
+  // One canonical opening document per investor. The dated baseline remains in
+  // statementDate/reportCode/storage metadata rather than the Firestore key.
+  if (reportType === REPORT_TYPE.OPENING) return `${safeInvestorId}_opening`;
+  return `${safeInvestorId}_${reportMonthKey}`;
+}
+
 export function getDefaultReportPeriod(referenceDate = new Date()) {
   const reference = businessDateParts(referenceDate);
   const previous = new Date(Date.UTC(reference.year, reference.month - 2, 1));
   return { month: previous.getUTCMonth() + 1, year: previous.getUTCFullYear() };
+}
+
+export function getCurrentReportPeriod(referenceDate = new Date()) {
+  const reference = businessDateParts(referenceDate);
+  return { month: reference.month, year: reference.year, statementDate: businessDateKey(referenceDate) };
+}
+
+export function getReportTypeLabel(reportType = REPORT_TYPE.MONTHLY) {
+  return reportType === REPORT_TYPE.OPENING ? "Opening Wealth Review" : "Monthly Wealth Review";
+}
+
+export function getReportDisplayTitle(reportType, month, year) {
+  if (reportType === REPORT_TYPE.OPENING) return "GrowVest Opening Wealth Review";
+  return `GrowVest Monthly Wealth Review - ${getMonthLabel(month)} ${year}`;
+}
+
+export function getReportCode({ reportType = REPORT_TYPE.MONTHLY, statementDate = "", reportYear = 0, reportMonth = 0, clientCode = "", fallbackToken = "INVESTOR" } = {}) {
+  const token = String(clientCode || fallbackToken || "INVESTOR")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "INVESTOR";
+  if (reportType === REPORT_TYPE.OPENING) {
+    const dateToken = String(statementDate || "").replace(/[^0-9]/g, "").slice(0, 8);
+    return `GV-OWR-${dateToken || "OPENING"}-${token}`;
+  }
+  return `GV-MWR-${Number(reportYear || 0)}-${String(Number(reportMonth || 0)).padStart(2, "0")}-${token}`;
+}
+
+export function getReportVersionId(reportId, version = 1) {
+  return `${String(reportId || "report")}_v${String(Math.max(1, Number(version || 1))).padStart(3, "0")}`;
+}
+
+export function getReportVersionLabel(version = 1) {
+  return `Version ${Math.max(1, Number(version || 1))}`;
 }
 
 export function getReportPeriodEndDate(year, month) {
@@ -123,11 +183,11 @@ function dateAgeDays(referenceDate, value) {
   return Math.max(0, Math.floor((reference - source) / 86400000));
 }
 
-function verificationCheck(id, label, status, detail) {
-  return { id, label, status, detail };
+function verificationCheck(id, label, status, detail, extra = {}) {
+  return { id, label, status, detail, ...extra };
 }
 
-export function buildPortfolioReportVerification(portfolioSource, asOfDate) {
+export function buildPortfolioReportVerification(portfolioSource, asOfDate, { reportType = REPORT_TYPE.MONTHLY } = {}) {
   const snapshot = portfolioSource?.snapshot || null;
   const positions = Array.isArray(portfolioSource?.positions) ? portfolioSource.positions : [];
   const openingSnapshot = portfolioSource?.openingSnapshot || null;
@@ -147,6 +207,7 @@ export function buildPortfolioReportVerification(portfolioSource, asOfDate) {
       checks: [verificationCheck("verified_snapshot", "Verified portfolio snapshot", "block", "No verified Portfolio Master snapshot exists on or before the report date.")],
       sourceFreshness: [],
       counts: { holdings: 0, transactions: 0, newHoldings: 0, exitedHoldings: 0, assignedHoldings: 0, generalWealthHoldings: 0 },
+      holdingChangeComparisonApplicable: false,
       acknowledged: false,
       acknowledgedAt: null,
       acknowledgedByUid: "",
@@ -197,45 +258,46 @@ export function buildPortfolioReportVerification(portfolioSource, asOfDate) {
   ));
 
   const reconciliation = snapshot.intelligence || null;
-  if (reconciliation) {
-    const reconciliationStatus = String(reconciliation.status || snapshot.reconciliationStatus || "verified");
-    const reconciliationCheckStatus = ["mismatch", "ownership_conflict"].includes(reconciliationStatus)
-      ? "block"
-      : ["needs_review", "stale", "missing_source"].includes(reconciliationStatus)
-        ? "warn"
-        : "pass";
-    const actionableIssues = (reconciliation.issues || []).filter((item) => item.severity !== "info");
-    checks.push(verificationCheck(
-      "portfolio_reconciliation",
-      "Portfolio reconciliation",
-      reconciliationCheckStatus,
-      reconciliationCheckStatus === "pass"
-        ? "Latest verified snapshot reconciles without operational exceptions."
-        : `${actionableIssues.length} reconciliation issue${actionableIssues.length === 1 ? "" : "s"} detected. Review Portfolio Intelligence before completing the monthly report.`
-    ));
-  }
+  const reconciliationVerification = resolveReconciliationVerification(reconciliation, snapshot.reconciliationStatus || "verified");
+  const reviewName = reportType === REPORT_TYPE.OPENING ? "Opening Wealth Review" : "Monthly Wealth Review";
+  checks.push(verificationCheck(
+    "portfolio_reconciliation",
+    "Portfolio reconciliation",
+    reconciliationVerification.status,
+    reconciliationVerification.status === "pass"
+      ? "Latest verified snapshot reconciles without operational exceptions."
+      : `${reconciliationVerification.issues.length} reconciliation issue${reconciliationVerification.issues.length === 1 ? "" : "s"} detected. ${reconciliationVerification.blockingIssueCount ? `${reconciliationVerification.blockingIssueCount} must be corrected` : "Review the items below"} before completing the ${reviewName}.`,
+    {
+      issues: reconciliationVerification.issues,
+      blockingIssueCount: reconciliationVerification.blockingIssueCount,
+      warningIssueCount: reconciliationVerification.warningIssueCount
+    }
+  ));
 
   checks.push(verificationCheck(
     "opening_snapshot",
-    "Opening portfolio snapshot",
-    openingSnapshot ? "pass" : "warn",
-    openingSnapshot
-      ? `Opening reference ${openingSnapshot.snapshotDate} is available for monthly movement calculations.`
-      : "No earlier verified snapshot is available. Fresh money can still be shown, but investment gain is not inferred from an unknown opening corpus."
+    reportType === REPORT_TYPE.OPENING ? "Opening baseline" : "Opening portfolio snapshot",
+    reportType === REPORT_TYPE.OPENING || openingSnapshot ? "pass" : "warn",
+    reportType === REPORT_TYPE.OPENING
+      ? `This verified snapshot establishes the investor's opening GrowVest baseline as of ${snapshot.snapshotDate || referenceDate}. No prior-period performance is inferred.`
+      : openingSnapshot
+        ? `Opening reference ${openingSnapshot.snapshotDate} is available for monthly movement calculations.`
+        : "No earlier verified snapshot is available. Fresh money can still be shown, but investment gain is not inferred from an unknown opening corpus."
   ));
 
-  const positionIdentity = (item) => String(item.positionId || item.id || "");
-  const closingIds = new Set(positions.map(positionIdentity).filter(Boolean));
-  const openingIds = new Set(openingPositions.map(positionIdentity).filter(Boolean));
-  const newHoldings = openingSnapshot ? positions.filter((item) => !openingIds.has(positionIdentity(item))) : [];
-  const exitedHoldings = openingSnapshot ? openingPositions.filter((item) => !closingIds.has(positionIdentity(item))) : [];
+  const holdingChangeVerification = resolveHoldingChangeVerification({
+    isOpening: reportType === REPORT_TYPE.OPENING,
+    positions,
+    openingSnapshot,
+    openingPositions
+  });
+  const { newHoldings, exitedHoldings } = holdingChangeVerification;
+  const holdingChangeComparisonApplicable = holdingChangeVerification.comparisonApplicable;
   checks.push(verificationCheck(
     "holding_changes",
-    "New / exited holdings review",
-    newHoldings.length || exitedHoldings.length ? "warn" : "pass",
-    openingSnapshot
-      ? `${newHoldings.length} new and ${exitedHoldings.length} exited holding${newHoldings.length + exitedHoldings.length === 1 ? "" : "s"} detected for the period.`
-      : "Holding-change comparison will become available after an opening snapshot exists."
+    holdingChangeVerification.label,
+    holdingChangeVerification.status,
+    holdingChangeVerification.detail
   ));
 
   let assignedHoldings = 0;
@@ -259,9 +321,11 @@ export function buildPortfolioReportVerification(portfolioSource, asOfDate) {
 
   checks.push(verificationCheck(
     "cash_flows",
-    "Monthly investment transactions",
+    reportType === REPORT_TYPE.OPENING ? "Opening-period investment transactions" : "Monthly investment transactions",
     "pass",
-    `${transactions.length} transaction${transactions.length === 1 ? "" : "s"} found between the month start and report date. Fresh investment and withdrawals are kept separate from investment movement.`
+    reportType === REPORT_TYPE.OPENING
+      ? `${transactions.length} transaction${transactions.length === 1 ? "" : "s"} found in the opening report period. They are retained as portfolio activity and are not used to infer a prior-period return.`
+      : `${transactions.length} transaction${transactions.length === 1 ? "" : "s"} found between the month start and report date. Fresh investment and withdrawals are kept separate from investment movement.`
   ));
 
   const hasBlock = checks.some((item) => item.status === "block");
@@ -288,6 +352,7 @@ export function buildPortfolioReportVerification(portfolioSource, asOfDate) {
       assignedHoldings,
       generalWealthHoldings
     },
+    holdingChangeComparisonApplicable,
     acknowledged: status === "ready",
     acknowledgedAt: status === "ready" ? new Date().toISOString() : null,
     acknowledgedByUid: "",
@@ -362,10 +427,12 @@ export function createEmptyHighlight(index = 0) {
   };
 }
 
-export function createReportFromInvestor(investor, month = null, year = null) {
+export function createReportFromInvestor(investor, month = null, year = null, { reportType = REPORT_TYPE.MONTHLY, statementDate = "" } = {}) {
   const today = businessDateParts();
   month = Number(month || today.month);
   year = Number(year || today.year);
+  reportType = reportType === REPORT_TYPE.OPENING ? REPORT_TYPE.OPENING : REPORT_TYPE.MONTHLY;
+  const effectiveStatementDate = statementDate || (reportType === REPORT_TYPE.OPENING ? businessDateKey() : getReportPeriodCutoffDate(year, month));
   const goals = (investor?.bucketList?.length ? investor.bucketList : investor?.goals || []).map((goal, index) => ({
     goalId: goal.id || `goal-${index + 1}`,
     name: goal.name || "",
@@ -431,18 +498,22 @@ export function createReportFromInvestor(investor, month = null, year = null) {
     reportMonth: Number(month),
     reportYear: Number(year),
     reportMonthKey: getReportMonthKey(year, month),
-    statementDate: getReportPeriodCutoffDate(year, month),
+    reportType,
+    reportTypeLabel: getReportTypeLabel(reportType),
+    statementDate: effectiveStatementDate,
+    openingBaseline: reportType === REPORT_TYPE.OPENING ? { asOfDate: effectiveStatementDate, sourceSnapshotId: "" } : null,
     reportingPeriod: {
       monthKey: getReportMonthKey(year, month),
-      startDate: `${year}-${String(month).padStart(2, "0")}-01`,
-      endDate: getReportPeriodEndDate(year, month),
-      portfolioCutoffDate: getReportPeriodCutoffDate(year, month)
+      startDate: reportType === REPORT_TYPE.OPENING ? effectiveStatementDate : `${year}-${String(month).padStart(2, "0")}-01`,
+      endDate: reportType === REPORT_TYPE.OPENING ? effectiveStatementDate : getReportPeriodEndDate(year, month),
+      portfolioCutoffDate: effectiveStatementDate
     },
     monthlyChanges: [],
     profileActions: [],
-    title: `Monthly Portfolio Report — ${getMonthLabel(month)} ${year}`,
+    title: getReportDisplayTitle(reportType, month, year),
     status: REPORT_STATUS.DRAFT,
     investorVisible: false,
+    visualDesignVersion: LOCKED_REPORT_VISUAL_VERSION,
     portfolioVerification: {
       required: true,
       status: "pending",
@@ -454,6 +525,7 @@ export function createReportFromInvestor(investor, month = null, year = null) {
       checks: [],
       sourceFreshness: [],
       counts: { holdings: 0, transactions: 0, newHoldings: 0, exitedHoldings: 0, assignedHoldings: 0, generalWealthHoldings: 0 },
+      holdingChangeComparisonApplicable: false,
       acknowledged: false,
       acknowledgedAt: null,
       acknowledgedByUid: "",
@@ -656,18 +728,28 @@ function buildMonthlyPortfolioChanges({ positions = [], openingPositions = [], t
   return changes.slice(0, 24);
 }
 
-export function createReportFromPortfolioSource(investor, portfolioSource, month = null, year = null) {
+export function createReportFromPortfolioSource(investor, portfolioSource, month = null, year = null, { reportType = REPORT_TYPE.MONTHLY } = {}) {
   const today = businessDateParts();
   month = Number(month || today.month);
   year = Number(year || today.year);
-  const base = createReportFromInvestor(investor, month, year);
+  reportType = reportType === REPORT_TYPE.OPENING ? REPORT_TYPE.OPENING : REPORT_TYPE.MONTHLY;
   const snapshot = portfolioSource?.snapshot || null;
   const positions = Array.isArray(portfolioSource?.positions) ? portfolioSource.positions : [];
+  const openingStatementDate = reportType === REPORT_TYPE.OPENING ? (snapshot?.snapshotDate || portfolioSource?.asOfDate || businessDateKey()) : "";
+
+  // The opening review belongs to the month of the verified opening snapshot,
+  // not blindly to the calendar month in which a staff member opened the form.
+  if (reportType === REPORT_TYPE.OPENING && /^\d{4}-\d{2}-\d{2}$/.test(openingStatementDate)) {
+    year = Number(openingStatementDate.slice(0, 4));
+    month = Number(openingStatementDate.slice(5, 7));
+  }
+
+  const base = createReportFromInvestor(investor, month, year, { reportType, statementDate: openingStatementDate });
   const reportAsOfDate = portfolioSource?.asOfDate || `${year}-${String(month).padStart(2, "0")}-${String(new Date(Number(year), Number(month), 0).getDate()).padStart(2, "0")}`;
   if (!snapshot) {
     return {
       ...base,
-      portfolioVerification: buildPortfolioReportVerification(portfolioSource || { asOfDate: reportAsOfDate }, reportAsOfDate),
+      portfolioVerification: buildPortfolioReportVerification(portfolioSource || { asOfDate: reportAsOfDate }, reportAsOfDate, { reportType }),
       reportGenerationSource: "portfolio_master"
     };
   }
@@ -680,7 +762,7 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
   const monthlySip = Number(snapshot.summary?.monthlySip || positions.reduce((sum, item) => sum + Number(item.monthlySip || 0), 0));
   const portfolioTransactions = Array.isArray(portfolioSource?.transactions) ? portfolioSource.transactions : [];
   const openingPositions = Array.isArray(portfolioSource?.openingPositions) ? portfolioSource.openingPositions : [];
-  const portfolioVerification = buildPortfolioReportVerification(portfolioSource, reportAsOfDate);
+  const portfolioVerification = buildPortfolioReportVerification(portfolioSource, reportAsOfDate, { reportType });
   const hasOpeningSnapshot = Boolean(portfolioSource?.openingSnapshot);
   const openingSnapshotValue = Number(portfolioSource?.openingSnapshot?.summary?.currentValue || 0);
   // Only confirmed portfolio transactions affect Money Added / Withdrawn and
@@ -696,19 +778,11 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
   const investmentGain = hasOpeningSnapshot
     ? totalCorpus - openingValue - flowSummary.newMoney + flowSummary.withdrawals
     : 0;
-  const goalTotals = new Map((snapshot.goalTotals || []).map((item) => [String(item.goalId || ""), item]));
-
-  const goals = (base.goals || []).map((goal) => {
-    const live = goalTotals.get(String(goal.goalId || ""));
-    const currentAmount = Number(live?.currentValue ?? goal.currentAmount ?? 0);
-    const monthlyContribution = Number(live?.monthlyContribution ?? goal.monthlySip ?? 0);
-    return {
-      ...goal,
-      currentAmount,
-      monthlySip: monthlyContribution,
-      progress: calculatePercentage(currentAmount, goal.targetAmount)
-    };
-  });
+  // Portfolio Master is the source of truth for current goal corpus and active
+  // SIP. Goal definitions (name, target, timeline, priority) remain on the
+  // investor profile. This also safely reconciles legacy goal-name links.
+  const goalProgress = derivePortfolioGoalProgress(base.goals || [], positions);
+  const goals = goalProgress.goals;
 
   const grouped = positions.reduce((map, position) => {
     const assetClass = position.assetClass || "Other";
@@ -741,7 +815,21 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
   });
 
   const funds = positions.map((position, index) => {
-    const goalAllocations = normalisePortfolioGoalAllocations(position.goalAllocations);
+    const goalAllocations = normalisePortfolioGoalAllocations(position.goalAllocations).map((allocation) => {
+      const matchedGoal = findPortfolioGoalMatch(base.goals || [], allocation);
+      if (!matchedGoal) return allocation;
+      const goalId = String(matchedGoal.goalId || matchedGoal.id || "").trim();
+      const goalName = matchedGoal.name || matchedGoal.goalName || allocation.goalName || GENERAL_WEALTH_BUCKET_NAME;
+      return {
+        ...allocation,
+        goalId,
+        bucketId: goalId || allocation.bucketId || GENERAL_WEALTH_BUCKET_ID,
+        goalName,
+        bucketName: goalName,
+        allocationType: goalId ? "goal" : allocation.allocationType,
+        isDefault: goalId ? false : allocation.isDefault
+      };
+    });
     const goal = goalAllocations.find((item) => item?.goalId) || goalAllocations.find((item) => !item?.goalId);
     const productType = position.productType || "other";
     const investmentTypeLabel = position.investmentTypeLabel || (productType === "mutual_fund"
@@ -772,6 +860,7 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
       goalName: goal?.goalName || GENERAL_WEALTH_BUCKET_NAME,
       bucketLabel: portfolioBucketLabel(goalAllocations),
       goalAllocations,
+      goalAllocationEffectiveFrom: position.goalAllocationEffectiveFrom || "",
       monthlySip: Number(position.monthlySip || 0),
       currentValue: Number(position.currentValue || 0),
       type: investmentType,
@@ -819,11 +908,22 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
         return sum + Number(position.currentValue || 0) * Math.min(100, allocated) / 100;
       }, 0);
   const generalWealthCorpus = Number(snapshot.summary?.generalWealthCorpus ?? Math.max(0, totalCorpus - allocatedCorpus));
-  const monthlyChanges = buildMonthlyPortfolioChanges({ positions, openingPositions, transactions: portfolioTransactions, flowSummary });
+  const monthlyChanges = reportType === REPORT_TYPE.OPENING
+    ? []
+    : buildMonthlyPortfolioChanges({ positions, openingPositions, transactions: portfolioTransactions, flowSummary });
 
   return {
     ...base,
+    reportType,
+    reportTypeLabel: getReportTypeLabel(reportType),
+    title: getReportDisplayTitle(reportType, month, year),
     statementDate: snapshot.snapshotDate || base.statementDate,
+    openingBaseline: reportType === REPORT_TYPE.OPENING ? {
+      asOfDate: snapshot.snapshotDate || reportAsOfDate,
+      sourceSnapshotId: snapshot.id || "",
+      sourceSnapshotDate: snapshot.snapshotDate || "",
+      established: true
+    } : null,
     portfolioAsOfDate: snapshot.snapshotDate || "",
     sourcePortfolioSnapshotId: snapshot.id || "",
     portfolioVerificationStatus: snapshot.verificationStatus || "verified",
@@ -832,9 +932,9 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
     reportGenerationSource: "portfolio_master",
     reportingPeriod: {
       monthKey: getReportMonthKey(year, month),
-      startDate: `${year}-${String(month).padStart(2, "0")}-01`,
-      endDate: getReportPeriodEndDate(year, month),
-      portfolioCutoffDate: reportAsOfDate
+      startDate: reportType === REPORT_TYPE.OPENING ? (snapshot.snapshotDate || reportAsOfDate) : `${year}-${String(month).padStart(2, "0")}-01`,
+      endDate: reportType === REPORT_TYPE.OPENING ? (snapshot.snapshotDate || reportAsOfDate) : getReportPeriodEndDate(year, month),
+      portfolioCutoffDate: reportType === REPORT_TYPE.OPENING ? (snapshot.snapshotDate || reportAsOfDate) : reportAsOfDate
     },
     monthlyChanges,
     defaultPortfolioBucket: { id: GENERAL_WEALTH_BUCKET_ID, name: GENERAL_WEALTH_BUCKET_NAME },
@@ -860,12 +960,12 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
       lifetimeTarget,
       overallProgress: lifetimeTarget > 0 ? calculatePercentage(goalCurrentCorpus, lifetimeTarget) : 0,
       monthlySip: Number(monthlySip.toFixed(2)),
-      openingValue: Number(openingValue.toFixed(2)),
-      newMoneyAdded: Number(flowSummary.newMoney.toFixed(2)),
-      totalWithdrawals: Number(flowSummary.withdrawals.toFixed(2)),
-      investmentGain: Number(investmentGain.toFixed(2))
+      openingValue: reportType === REPORT_TYPE.OPENING ? 0 : Number(openingValue.toFixed(2)),
+      newMoneyAdded: reportType === REPORT_TYPE.OPENING ? 0 : Number(flowSummary.newMoney.toFixed(2)),
+      totalWithdrawals: reportType === REPORT_TYPE.OPENING ? 0 : Number(flowSummary.withdrawals.toFixed(2)),
+      investmentGain: reportType === REPORT_TYPE.OPENING ? 0 : Number(investmentGain.toFixed(2))
     },
-    transactions: portfolioTransactions.map((item, index) => ({
+    transactions: (reportType === REPORT_TYPE.OPENING ? [] : portfolioTransactions).map((item, index) => ({
       id: item.id || `portfolio-transaction-${index + 1}`,
       date: item.transactionDate || "",
       transactionDate: item.transactionDate || "",

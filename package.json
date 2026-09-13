@@ -1,6 +1,6 @@
 {
   "name": "growvest-investor-report-tool",
-  "version": "0.34.9",
+  "version": "0.34.24",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -12,7 +12,10 @@
     "qa": "node scripts/qa/release-audit.mjs",
     "qa:env": "node scripts/qa/environment-preflight.mjs",
     "qa:env:strict": "node scripts/qa/environment-preflight.mjs --strict",
-    "release:check": "npm run qa && npm run qa:env:strict && npm run lint && npm run build"
+    "release:check": "npm run qa && npm run qa:env:strict && npm run lint && npm run build",
+    "qa:opening-review": "node scripts/qa/report-opening-review-fixture.mjs",
+    "qa:pdf-encoding": "node scripts/qa/report-pdf-encoding-fixture.mjs",
+    "qa:opening-verification": "node scripts/qa/report-opening-verification-fixture.mjs"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.3.0",

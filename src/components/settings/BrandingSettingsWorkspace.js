@@ -422,7 +422,7 @@ export default function BrandingSettingsWorkspace() {
               <SectionIntro eyebrow="Report identity" title="HTML report and A4 PDF configuration" description="Control the shared identity used by responsive report previews, printable reports and server-generated PDFs." icon={FileText} />
               <div className="grid gap-4 sm:grid-cols-2">
                 <TextField label="Confidential label" value={draft.confidentialLabel} onChange={(value) => update("confidentialLabel", value)} />
-                <TextField label="PDF filename format" value={draft.pdfFilenamePattern} onChange={(value) => update("pdfFilenamePattern", value)} hint="Supported tokens: {InvestorName}, {Month}, {Year}, {ClientCode}, {ReportCode}." />
+                <TextField label="PDF filename format" value={draft.pdfFilenamePattern} onChange={(value) => update("pdfFilenamePattern", value)} hint="Supported tokens: {CompanyName}, {ReportType}, {ReportPeriod}, {AsOfDate}, {InvestorName}, {Month}, {Year}, {ClientCode}, {ReportCode}, {Version}." />
                 <div className="sm:col-span-2"><TextField label="Document footer tagline" value={draft.documentFooterTagline} onChange={(value) => update("documentFooterTagline", value)} /></div>
                 <label className="grid gap-2 text-sm font-semibold text-slate-700 sm:col-span-2">
                   <span>Watermark opacity: {Number(draft.watermarkOpacity || 0)}%</span>

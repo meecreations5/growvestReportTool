@@ -40,7 +40,7 @@ async function reportPermissionLevel(actor) {
 async function assertDeletePermission(actor, report) {
   if (["super_admin", "admin"].includes(actor.role)) return;
   if (actor.role !== "advisor" || !canStaffAccessRecord(actor, report)) {
-    const error = new Error("You are not authorised to delete this Monthly Report.");
+    const error = new Error("You are not authorised to delete this Wealth Review.");
     error.statusCode = 403;
     throw error;
   }
@@ -51,8 +51,8 @@ async function assertDeletePermission(actor, report) {
   if (!allowed) {
     const error = new Error(
       isPublishedReport(report)
-        ? "Published report deletion requires Full Monthly Reports permission."
-        : "Report deletion requires Manage or Full Monthly Reports permission."
+        ? "Published Wealth Review deletion requires Full Wealth Reviews permission."
+        : "Wealth Review deletion requires Manage or Full Wealth Reviews permission."
     );
     error.statusCode = 403;
     throw error;
@@ -129,7 +129,7 @@ async function retryPendingStorageCleanup(actor, reportId, jobSnapshot) {
     return NextResponse.json({ success: true, reportId, alreadyDeleted: true, storageCleanup: "completed" });
   }
   if (job.status !== "storage_cleanup_pending") {
-    return NextResponse.json({ error: "Monthly report was not found." }, { status: 404 });
+    return NextResponse.json({ error: "Wealth Review was not found." }, { status: 404 });
   }
   try {
     await cleanupStorage(job.storageManifest || {});
@@ -173,7 +173,7 @@ export async function POST(request, { params }) {
 
     if (!reportSnapshot.exists) {
       if (deletionJobSnapshot.exists) return retryPendingStorageCleanup(actor, reportId, deletionJobSnapshot);
-      return NextResponse.json({ error: "Monthly report was not found." }, { status: 404 });
+      return NextResponse.json({ error: "Wealth Review was not found." }, { status: 404 });
     }
 
     const report = { id: reportSnapshot.id, ...reportSnapshot.data() };
@@ -274,8 +274,8 @@ export async function POST(request, { params }) {
         investorName: report.investorName || "",
         advisorUid: report.advisorUid || report.assignedAdvisorUid || actor.uid,
         action: "monthly_report_deleted",
-        title: "Monthly report deleted",
-        description: `${report.title || report.reportMonthKey || "Monthly report"} was deleted by ${actorName(actor)}. Portfolio Master, Bucket Lists and Investor Actions were preserved.`,
+        title: "Wealth Review deleted",
+        description: `${report.title || report.reportMonthKey || "Wealth Review"} was deleted by ${actorName(actor)}. Portfolio Master, Bucket Lists and Investor Actions were preserved.`,
         metadata: {
           reason,
           wasPublished: isPublishedReport(report),
@@ -291,7 +291,7 @@ export async function POST(request, { params }) {
         createdAt: FieldValue.serverTimestamp()
       });
     } catch (auditError) {
-      console.error("Monthly report deletion audit log failed", auditError);
+      console.error("Wealth Review deletion audit log failed", auditError);
     }
 
     let storageCleanup = "completed";
@@ -321,7 +321,7 @@ export async function POST(request, { params }) {
       storageCleanup,
       message: storageCleanup === "pending"
         ? "The report is deleted from GrowVest. Secure file cleanup is pending and can be retried safely."
-        : "Monthly Report deleted successfully.",
+        : "Wealth Review deleted successfully.",
       deleted: {
         report: 1,
         versions: versions.size,
@@ -337,9 +337,9 @@ export async function POST(request, { params }) {
       }
     });
   } catch (error) {
-    console.error("Monthly report deletion failed", error);
+    console.error("Wealth Review deletion failed", error);
     return NextResponse.json(
-      { error: error?.message || "Unable to delete Monthly Report." },
+      { error: error?.message || "Unable to delete Wealth Review." },
       { status: appRequestErrorStatus(error, 500) }
     );
   }

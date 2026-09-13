@@ -7,7 +7,7 @@ export function resolveReportTheme(report = {}, branding = {}, template = {}) {
   const appearance = template?.appearance || {};
   return {
     primaryColor: appearance.primaryColor || branding.primaryColor || "#1F4ED8",
-    secondaryColor: appearance.secondaryColor || branding.secondaryColor || "#20B8CD",
+    secondaryColor: appearance.secondaryColor || branding.secondaryColor || "#0CC0DF",
     darkColor: appearance.darkColor || branding.darkColor || "#0B0B0F",
     dangerColor: branding.dangerColor || "#E53935",
     warningColor: branding.warningColor || "#F5B301",

@@ -10,7 +10,7 @@ import {
   loadInsurancePoliciesForInvestor
 } from "@/lib/server/insuranceServer";
 import { businessDateKey } from "@/lib/utils/date";
-import { normalisePortfolioGoalAllocations } from "@/lib/portfolioGoalAllocation";
+import { isGeneralWealthName, normaliseGoalName, normalisePortfolioGoalAllocations } from "@/lib/portfolioGoalAllocation";
 import { positionPerformanceAvailable, summarisePortfolioPerformance } from "@/lib/portfolioPerformance";
 
 export const runtime = "nodejs";
@@ -242,26 +242,81 @@ function goalInvestmentsFromPositions(items = []) {
   return result.sort((a, b) => b.currentValue - a.currentValue);
 }
 
-function mergeGoals(investor = {}, liveGoalTotals = []) {
-  const sourceGoals = Array.isArray(investor.bucketList) && investor.bucketList.length
+function goalMasterRows(investor = {}) {
+  return Array.isArray(investor.bucketList) && investor.bucketList.length
     ? investor.bucketList
     : (Array.isArray(investor.goals) ? investor.goals : []);
-  const totals = new Map((liveGoalTotals || []).map((item) => [String(item.goalId || ""), item]));
+}
+
+function matchingGoalForLiveTotal(sourceGoals = [], live = {}) {
+  const liveId = String(live.goalId || "").trim();
+  const liveName = normaliseGoalName(live.goalName || "");
+  return sourceGoals.find((goal) => String(goal.id || goal.goalId || "").trim() === liveId)
+    || sourceGoals.find((goal) => liveName && normaliseGoalName(goal.name || goal.goalName || "") === liveName)
+    || (isGeneralWealthName(live.goalName || live.goalId)
+      ? sourceGoals.find((goal) => isGeneralWealthName(goal.name || goal.goalName || goal.id || goal.goalId))
+      : null)
+    || null;
+}
+
+function mergeGoals(investor = {}, liveGoalTotals = [], { portfolioAuthoritative = false } = {}) {
+  const sourceGoals = goalMasterRows(investor);
+  const liveRows = Array.isArray(liveGoalTotals) ? liveGoalTotals : [];
 
   return sourceGoals.map((goal) => {
-    const goalId = String(goal.id || goal.goalId || "");
-    const live = totals.get(goalId);
-    if (!live) return goal;
+    const goalId = String(goal.id || goal.goalId || "").trim();
+    const goalName = normaliseGoalName(goal.name || goal.goalName || "");
+    const live = liveRows.find((item) => String(item.goalId || "").trim() === goalId)
+      || liveRows.find((item) => goalName && normaliseGoalName(item.goalName || "") === goalName)
+      || (isGeneralWealthName(goal.name || goal.goalName || goalId)
+        ? liveRows.find((item) => isGeneralWealthName(item.goalName || item.goalId))
+        : null);
+    if (!live) {
+      const currentAmount = portfolioAuthoritative ? 0 : Number(goal.currentAmount || 0);
+      return {
+        ...goal,
+        currentAmount,
+        currentValue: currentAmount,
+        monthlySip: portfolioAuthoritative ? 0 : Number(goal.monthlySip || goal.monthlyContribution || 0),
+        monthlyContribution: portfolioAuthoritative ? 0 : Number(goal.monthlyContribution || goal.monthlySip || 0),
+        progress: portfolioAuthoritative && Number(goal.targetAmount || 0) > 0 ? 0 : Number(goal.progress || 0),
+        status: portfolioAuthoritative ? "Not Started" : (goal.status || "Planning"),
+        progressSource: portfolioAuthoritative ? "portfolio_master" : (goal.progressSource || "profile")
+      };
+    }
     const currentAmount = Number(live.currentValue || 0);
     const monthlyContribution = Number(live.monthlyContribution || 0);
     const targetAmount = Number(goal.targetAmount || 0);
+    const progress = targetAmount > 0 ? Math.min(100, currentAmount / targetAmount * 100) : Number(goal.progress || 0);
+    const portfolioStatus = targetAmount > 0 && currentAmount >= targetAmount
+      ? "Completed"
+      : monthlyContribution > 0
+        ? "SIP Running"
+        : currentAmount > 0
+          ? "Invested / No Active SIP"
+          : "Not Started";
     return {
       ...goal,
       currentAmount,
       currentValue: currentAmount,
       monthlySip: monthlyContribution,
       monthlyContribution,
-      progress: targetAmount > 0 ? currentAmount / targetAmount * 100 : Number(goal.progress || 0)
+      progress,
+      status: portfolioStatus,
+      progressSource: "portfolio_master"
+    };
+  });
+}
+
+function reconcileGoalInvestments(investor = {}, items = []) {
+  const sourceGoals = goalMasterRows(investor);
+  return (Array.isArray(items) ? items : []).map((item) => {
+    const master = matchingGoalForLiveTotal(sourceGoals, item);
+    if (!master) return item;
+    return {
+      ...item,
+      goalId: String(master.id || master.goalId || item.goalId || ""),
+      goalName: master.name || master.goalName || item.goalName || ""
     };
   });
 }
@@ -414,12 +469,12 @@ export async function GET(request) {
 
     if (section === "report") {
       const reportId = String(searchParams.get("reportId") || "").trim();
-      if (!reportId) throw new AppRequestError("Monthly report is required.", 400, "report_required");
+      if (!reportId) throw new AppRequestError("Wealth Review is required.", 400, "report_required");
       const reportSnapshot = await adminDb.collection("monthlyReports").doc(reportId).get();
-      if (!reportSnapshot.exists) throw new AppRequestError("Monthly report was not found.", 404, "report_missing");
+      if (!reportSnapshot.exists) throw new AppRequestError("Wealth Review was not found.", 404, "report_missing");
       const reportMeta = { id: reportSnapshot.id, ...reportSnapshot.data() };
       if (String(reportMeta.investorId || "") !== String(investor.id)) {
-        throw new AppRequestError("You do not have access to this monthly report.", 403, "report_access_denied");
+        throw new AppRequestError("You do not have access to this Wealth Review.", 403, "report_access_denied");
       }
       if (reportMeta.investorVisible !== true || reportMeta.status !== "completed" || !reportMeta.activePublishedVersionId) {
         throw new AppRequestError("This report has not been published to the Investor App.", 403, "report_not_published");
@@ -444,8 +499,18 @@ export async function GET(request) {
     }
 
     const portfolio = await loadPortfolio(investor.id);
-    const goals = mergeGoals(investor, portfolio.goalTotals);
-    const base = { investor: publicProfile, portfolio, goals };
+    const goals = mergeGoals(investor, portfolio.goalTotals, { portfolioAuthoritative: portfolio.hasPortfolio });
+    const reconciledPortfolio = {
+      ...portfolio,
+      goalInvestments: reconcileGoalInvestments(investor, portfolio.goalInvestments),
+      goalTotals: goals.map((goal) => ({
+        goalId: String(goal.id || goal.goalId || ""),
+        goalName: goal.name || goal.goalName || "",
+        currentValue: Number(goal.currentValue ?? goal.currentAmount ?? 0),
+        monthlyContribution: Number(goal.monthlyContribution ?? goal.monthlySip ?? 0)
+      }))
+    };
+    const base = { investor: publicProfile, portfolio: reconciledPortfolio, goals };
 
     if (section === "goals") {
       return Response.json(serialise(base), { headers: { "Cache-Control": "private, no-store" } });

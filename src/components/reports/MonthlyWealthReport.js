@@ -37,7 +37,7 @@ import {
 } from "@/lib/utils/reportPresentation";
 const ReportTrendChart = dynamic(() => import("@/components/reports/ReportTrendChart"), { ssr: false, loading: () => <div className="h-64 animate-pulse rounded-2xl bg-slate-100" /> });
 const ReportDonutChart = dynamic(() => import("@/components/reports/ReportDonutChart"), { ssr: false, loading: () => <div className="h-64 animate-pulse rounded-full bg-slate-100" /> });
-import { getMonthLabel } from "@/lib/constants/report";
+import { REPORT_TYPE, getMonthLabel, getReportTypeLabel } from "@/lib/constants/report";
 import { resolveReportTemplate } from "@/lib/constants/reportTemplates";
 import { useBranding } from "@/contexts/BrandingContext";
 import { resolveReportBranding } from "@/lib/utils/reportBranding";
@@ -126,7 +126,7 @@ function downloadReviewIcs(report, branding = {}) {
     `DTSTART;VALUE=DATE:${date}`,
     `DTEND;VALUE=DATE:${end}`,
     `SUMMARY:${title}`,
-    `DESCRIPTION:${String(report.nextReview.note || `Portfolio review with ${branding.companyName || "GrowVest"} Advisor`).replace(/\n/g, "\\n")}`,
+    `DESCRIPTION:${String(report.nextReview.note || `Portfolio review with your ${branding.companyName || "GrowVest"} Partner`).replace(/\n/g, "\\n")}`,
     "END:VEVENT",
     "END:VCALENDAR"
   ].join("\r\n");
@@ -183,6 +183,8 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
   const [goalFilter, setGoalFilter] = useState("All Goals");
   const [goalView, setGoalView] = useState("grid");
   const summary = report.summary || {};
+  const isOpeningReview = report.reportType === REPORT_TYPE.OPENING;
+  const reportTypeLabel = getReportTypeLabel(report.reportType || REPORT_TYPE.MONTHLY);
   const goals = report.goals || [];
   const hasGoals = goals.length > 0;
   const tradingSummary = report.tradingSummary || null;
@@ -203,13 +205,13 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
   const monthlyChanges = Array.isArray(report.monthlyChanges) ? report.monthlyChanges : [];
   const health = derivePortfolioHealth(report);
   const trend = buildTrendData(report, history);
-  const previous = previousReportFor(report, history);
+  const previous = isOpeningReview ? null : previousReportFor(report, history);
   const previousValue = Number(previous?.summary?.totalCorpus || 0);
-  const monthChange = Number(summary.investmentGain || 0);
+  const monthChange = isOpeningReview ? 0 : Number(summary.investmentGain || 0);
   const monthChangePercentage = Number(summary.openingValue || previousValue) > 0 ? (monthChange / Number(summary.openingValue || previousValue)) * 100 : 0;
   const advisorEmail = report.advisorEmail || "cwp@growvest.info";
   const advisorPhone = report.advisorPhone || "";
-  const period = `${getMonthLabel(report.reportMonth)} ${report.reportYear}`;
+  const period = isOpeningReview ? `As of ${formatDate(report.statementDate)}` : `${getMonthLabel(report.reportMonth)} ${report.reportYear}`;
   const journeyMonths = Number(report.journeyDurationMonths || 0);
   const advisorDesignation = investorFacingAdvisorDesignation(report.advisorDesignation);
   const advisorOrganization = branding.legalName || branding.companyName || "GrowVest Advisors Private Limited";
@@ -289,7 +291,7 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
 
               <div className="min-w-0">
                 <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-cyan-400 sm:text-xs">
-                  Monthly Wealth Progress Report
+                  {reportTypeLabel}
                 </p>
                 <h1 className="mt-1 max-w-3xl font-heading text-[30px] font-bold leading-[1.08] tracking-[-0.025em] !text-white sm:text-4xl lg:text-[42px]">
                   {report.investorName}&apos;s Wealth Journey
@@ -298,12 +300,12 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
             </div>
 
             <p className="mt-5 max-w-3xl text-[15px] leading-7 text-slate-300 sm:text-base">
-              A clear view of your portfolio progress, financial priorities and recommended next actions for {period}.
+              {isOpeningReview ? `Your verified starting portfolio position, financial priorities and next actions ${period.toLowerCase()}.` : `A clear view of your portfolio progress, financial priorities and recommended next actions for ${period}.`}
             </p>
 
             <dl className="mt-6 grid gap-3 min-[520px]:grid-cols-2">
               {[
-                ["Reporting Period", period],
+                [isOpeningReview ? "Opening Position" : "Reporting Period", period],
                 ["Statement Date", formatDate(report.statementDate)],
                 ...(templateDocument.showClientCode !== false ? [["Client ID", report.clientCode || "—"]] : []),
                 ["Relationship", clientRelationship]
@@ -317,14 +319,14 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
           </div>
 
           {templateAppearance.advisorCardVisible !== false ? <aside className="rounded-2xl border border-white/15 bg-white/[0.065] p-4 sm:p-5">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-400 sm:text-xs">Your Advisor</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-400 sm:text-xs">Your Conscious Wealth Partner</p>
 
             <div className="mt-3 flex items-center gap-3">
               <span style={{ backgroundColor: templatePrimary }} className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-sm font-black text-white">
                 {initials(report.advisorName)}
               </span>
               <div className="min-w-0">
-                <p className="truncate font-bold text-white">{report.advisorName || `${branding.companyName || "GrowVest"} Advisor`}</p>
+                <p className="truncate font-bold text-white">{report.advisorName || `${branding.companyName || "GrowVest"} Partner`}</p>
                 <p className="mt-0.5 text-sm text-slate-300">{advisorDesignation}</p>
                 <p className="mt-0.5 line-clamp-2 text-xs font-semibold text-cyan-400">{advisorOrganization}</p>
               </div>
@@ -366,30 +368,36 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Total Portfolio Value</p>
             <p className="mt-2 text-4xl font-black tracking-tight text-slate-950">{compactCurrency(summary.totalCorpus)}</p>
-            <div className="mt-3 flex flex-wrap items-center gap-5 text-sm">
+            {isOpeningReview ? <div className="mt-3 flex flex-wrap items-center gap-5 text-sm"><span className="font-bold text-blue-700">Opening baseline established</span><span className="text-slate-500">Snapshot: <strong className="text-slate-950">{formatDate(report.statementDate)}</strong></span></div> : <div className="mt-3 flex flex-wrap items-center gap-5 text-sm">
               <span className={monthChange >= 0 ? "font-bold text-emerald-600" : "font-bold text-red-600"}>{monthChange >= 0 ? "+" : ""}{compactCurrency(monthChange)} this month</span>
               <span className="text-slate-500">Previous: <strong className="text-slate-950">{previousValue ? compactCurrency(previousValue) : "Not available"}</strong></span>
-            </div>
+            </div>}
             {hasGoals ? <>
               <div className="mt-5 flex items-center justify-between text-xs text-slate-400"><span>Overall Goal Progress — {Number(summary.overallProgress || 0).toFixed(1)}% of {compactCurrency(summary.lifetimeTarget)} combined target</span><strong className="text-blue-700">{Number(summary.overallProgress || 0).toFixed(1)}%</strong></div>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-blue-600" style={{ width: `${Math.min(100, Number(summary.overallProgress || 0))}%` }} /></div>
             </> : <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900"><span className="font-black">General Wealth (Default):</span> {compactCurrency(summary.generalWealthCorpus || summary.totalCorpus)} · No specific financial goal is required.</div>}
           </div>
           <div className="grid gap-4 sm:grid-cols-[120px_minmax(0,1fr)] lg:grid-cols-1">
-            <span className={`mx-auto inline-flex w-fit items-center gap-2 rounded-full px-4 py-2 text-sm font-black ${monthChangePercentage >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}><TrendingUp size={15} /> {monthChangePercentage >= 0 ? "+" : ""}{monthChangePercentage.toFixed(2)}%</span>
+            {isOpeningReview ? <span className="mx-auto inline-flex w-fit items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-black text-blue-700"><CheckCircle2 size={15} /> Opening baseline</span> : <span className={`mx-auto inline-flex w-fit items-center gap-2 rounded-full px-4 py-2 text-sm font-black ${monthChangePercentage >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}><TrendingUp size={15} /> {monthChangePercentage >= 0 ? "+" : ""}{monthChangePercentage.toFixed(2)}%</span>}
             <button type="button" onClick={() => document.getElementById("report-allocation")?.scrollIntoView({ behavior: "smooth" })} className="inline-flex min-h-12 items-center justify-center gap-3 rounded-2xl border border-blue-200 px-5 text-sm font-black text-blue-700 hover:bg-blue-50">View Portfolio Details <ArrowRight size={17} /></button>
           </div>
         </div>
       </SectionCard>
 
       <div style={sectionStyle("executiveSummary", 1)} className={`grid gap-4 sm:grid-cols-2 xl:grid-cols-5 ${sectionVisible("executiveSummary") ? "" : "hidden"}`}>
-        {[
+        {(isOpeningReview ? [
+          ["Active Monthly SIP", compactCurrency(summary.monthlySip), "Current running SIP", RefreshCcw, "text-blue-700 bg-blue-50"],
+          ["Total Invested", compactCurrency(summary.totalInvested), "Current cost basis", ArrowRight, "text-cyan-700 bg-cyan-50"],
+          ["Gain / Loss", compactCurrency(summary.portfolioGainLoss ?? (Number(summary.totalCorpus || 0) - Number(summary.totalInvested || 0))), "Since investment cost basis", TrendingUp, Number(summary.portfolioGainLoss ?? (Number(summary.totalCorpus || 0) - Number(summary.totalInvested || 0))) < 0 ? "text-red-700 bg-red-50" : "text-emerald-700 bg-emerald-50"],
+          ["Baseline Date", formatDate(report.statementDate), "Opening GrowVest snapshot", CalendarDays, "text-amber-700 bg-amber-50"],
+          [hasGoals ? "Active Financial Goals" : "General Wealth Corpus", hasGoals ? activeGoals : compactCurrency(summary.generalWealthCorpus || summary.totalCorpus), hasGoals ? `${onTrackGoals} on track · ${attentionGoals} need attention` : "Default bucket", Target, "text-violet-700 bg-violet-50"]
+        ] : [
           ["Monthly SIP", compactCurrency(summary.monthlySip), "Current running SIP", RefreshCcw, "text-blue-700 bg-blue-50"],
           ["Money Added", compactCurrency(summary.newMoneyAdded), "Confirmed this month", ArrowRight, "text-cyan-700 bg-cyan-50"],
           ["Money Withdrawn", compactCurrency(summary.totalWithdrawals), "Confirmed this month", ArrowRight, "text-amber-700 bg-amber-50"],
           ["Portfolio Gain / Loss", compactCurrency(summary.investmentGain), `Investment performance in ${getMonthLabel(report.reportMonth)}`, TrendingUp, Number(summary.investmentGain || 0) < 0 ? "text-red-700 bg-red-50" : "text-emerald-700 bg-emerald-50"],
           [hasGoals ? "Active Financial Goals" : "General Wealth Corpus", hasGoals ? activeGoals : compactCurrency(summary.generalWealthCorpus || summary.totalCorpus), hasGoals ? `${onTrackGoals} on track · ${attentionGoals} need attention` : "Default bucket", Target, "text-violet-700 bg-violet-50"]
-        ].map(([label, value, hint, Icon, tone]) => (
+        ]).map(([label, value, hint, Icon, tone]) => (
           <SectionCard key={label} className="p-5">
             <div className="flex items-start justify-between gap-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p><span className={`grid h-10 w-10 place-items-center rounded-full ${tone}`}><Icon size={16} /></span></div>
             <p className="mt-4 text-2xl font-black text-slate-950">{value}</p>
@@ -398,10 +406,10 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
         ))}
       </div>
 
-      <div id="portfolio-trend" style={sectionStyle("performanceTrend")} className={`scroll-mt-32 grid gap-5 xl:grid-cols-[1.45fr_0.95fr] ${sectionVisible("performanceTrend") ? "" : "hidden"}`}>
+      <div id="portfolio-trend" style={sectionStyle("performanceTrend")} className={`scroll-mt-32 grid gap-5 xl:grid-cols-[1.45fr_0.95fr] ${sectionVisible("performanceTrend") && !isOpeningReview ? "" : "hidden"}`}>
         <SectionCard className="p-6">
-          <div className="flex items-center justify-between gap-4"><div><h2 className="text-lg font-black text-slate-950">Portfolio Value Trend</h2><p className="mt-1 text-sm text-slate-400">Historical completed monthly reports</p></div><span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700">Last {trend.length} reports</span></div>
-          <div className="mt-5"><ReportTrendChart data={trend} /></div>
+          <div className="flex items-center justify-between gap-4"><div><h2 className="text-lg font-black text-slate-950">Portfolio Value Trend</h2><p className="mt-1 text-sm text-slate-400">Historical completed Monthly Wealth Reviews</p></div><span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700">Last {trend.length} reports</span></div>
+          <div className="mt-5"><ReportTrendChart data={trend} primaryColor={templatePrimary} chartStyle={templateAppearance.chartStyle || "modern"} /></div>
         </SectionCard>
         <SectionCard className="p-6">
           <h2 className="text-lg font-black text-slate-950">This Month at a Glance</h2>
@@ -415,14 +423,16 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
         </SectionCard>
       </div>
 
-      <SectionCard id="report-monthly-changes" style={sectionStyle("performance", 1)} className={`p-5 sm:p-6 ${sectionVisible("performance") ? "" : "hidden"}`}>
+      <SectionCard id="report-monthly-changes" style={sectionStyle("performance", 1)} className={`p-5 sm:p-6 ${sectionVisible("performance") && !isOpeningReview ? "" : "hidden"}`}>
         <div className="flex items-center justify-between gap-4"><div><h2 className="text-lg font-black text-slate-950">What Changed This Month</h2><p className="mt-1 text-sm text-slate-400">Confirmed portfolio activity only. Planned requests are shown separately under Upcoming Actions.</p></div><span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">Automatic</span></div>
         <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{monthlyChanges.length ? monthlyChanges.map((item) => <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{item.title}</p><p className="mt-2 font-black text-slate-950">{item.description || "Portfolio movement"}</p>{Number(item.amount || 0) ? <p className="mt-2 text-sm font-black text-blue-700">{compactCurrency(item.amount)}</p> : null}{String(item.type || "").startsWith("sip_") ? <p className="mt-1 text-xs text-slate-500">{compactCurrency(item.previousAmount || 0)} → {compactCurrency(item.amount || 0)} / month</p> : null}</div>) : <div className="sm:col-span-2 xl:col-span-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">No confirmed portfolio change was detected for this reporting month.</div>}</div>
       </SectionCard>
 
+      {isOpeningReview && sectionVisible("performance") ? <SectionCard id="report-opening-baseline" style={sectionStyle("performance", 1)} className="p-5 sm:p-6"><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Your starting point with GrowVest</p><h2 className="mt-2 text-xl font-black text-slate-950">Opening baseline established as of {formatDate(report.statementDate)}</h2><p className="mt-3 max-w-4xl text-sm leading-7 text-slate-500">This first review records the verified Portfolio Master position, active SIPs and goal allocations available at launch. Previous-period return and month-on-month cash movement are intentionally not inferred. Future Monthly Wealth Reviews will compare against verified history from this baseline onward.</p></SectionCard> : null}
+
       <SectionCard id="portfolio-composition" style={sectionStyle("performance", 2)} className={`p-5 sm:p-6 ${sectionVisible("performance") ? "" : "hidden"}`}>
         <div className="flex items-center justify-between"><h2 className="text-lg font-black text-slate-950">Portfolio Composition</h2><span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700">Current</span></div>
-        <div className="mt-6"><ReportDonutChart holdings={holdings} total={summary.totalCorpus} /></div>
+        <div className="mt-6"><ReportDonutChart holdings={holdings} total={summary.totalCorpus} chartStyle={templateAppearance.chartStyle || "modern"} /></div>
       </SectionCard>
 
       <section id="report-goals" style={sectionStyle("goals")} className={`scroll-mt-32 ${sectionVisible("goals") ? "" : "hidden"}`}>
@@ -466,7 +476,7 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
           {!allocation.length ? <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">No strategic allocation data is available for this report.</div> : null}
         </div>
         <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm leading-7 text-slate-800"><strong className="text-amber-600">Observation:</strong> {health.observation}</div>
-        <a href={`mailto:${advisorEmail}?subject=${encodeURIComponent(`${branding.companyName || "GrowVest"} Allocation Review`)}`} className="mt-4 inline-flex items-center gap-2 rounded-full border border-blue-200 px-5 py-3 text-sm font-black text-blue-700 hover:bg-blue-50"><TrendingUp size={16} /> Review Allocation With Advisor</a>
+        <a href={`mailto:${advisorEmail}?subject=${encodeURIComponent(`${branding.companyName || "GrowVest"} Allocation Review`)}`} className="mt-4 inline-flex items-center gap-2 rounded-full border border-blue-200 px-5 py-3 text-sm font-black text-blue-700 hover:bg-blue-50"><TrendingUp size={16} /> Review Allocation With Your Partner</a>
       </SectionCard>
 
       <SectionCard className="overflow-hidden">
@@ -523,10 +533,10 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
       <section id="report-commentary" style={{ ...sectionStyle("commentary"), backgroundColor: templateAppearance.darkColor || "#152238" }} className={`scroll-mt-32 rounded-2xl p-5 text-white sm:p-7 md:p-8 ${sectionVisible("commentary") ? "" : "hidden"}`}>
         <div className="grid gap-7 xl:grid-cols-[minmax(0,1.4fr)_410px] xl:items-start">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-400">Advisor Insights · {period}</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-400">Partner Insights · {period}</p>
             <blockquote className="mt-4 text-xl font-medium leading-8">&quot;{insights.narrative}&quot;</blockquote>
-            <div className="mt-5 flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-full bg-blue-600 text-sm font-black">{initials(report.advisorName)}</span><div><p className="font-black">{report.advisorName || `${branding.companyName || "GrowVest"} Advisor`}</p><p className="text-sm text-slate-400">{advisorDesignation} · {advisorOrganization}</p></div></div>
-            <a href={`mailto:${advisorEmail}?subject=${encodeURIComponent(`Discuss ${period} Wealth Report`)}`} className="mt-5 inline-flex items-center gap-2 rounded-full bg-blue-600 px-5 py-3 text-sm font-black hover:bg-blue-500"><Mail size={16} /> Discuss With Advisor</a>
+            <div className="mt-5 flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-full bg-blue-600 text-sm font-black">{initials(report.advisorName)}</span><div><p className="font-black">{report.advisorName || `${branding.companyName || "GrowVest"} Partner`}</p><p className="text-sm text-slate-400">{advisorDesignation} · {advisorOrganization}</p></div></div>
+            <a href={`mailto:${advisorEmail}?subject=${encodeURIComponent(`Discuss ${period} Wealth Review`)}`} className="mt-5 inline-flex items-center gap-2 rounded-full bg-blue-600 px-5 py-3 text-sm font-black hover:bg-blue-500"><Mail size={16} /> Discuss With Your Partner</a>
           </div>
           <div className="grid gap-3">
             {[
@@ -544,13 +554,13 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
       <SectionCard id="report-actions" style={sectionStyle("actions")} className={`scroll-mt-32 p-5 sm:p-6 ${sectionVisible("actions") ? "" : "hidden"}`}>
         <div className="flex items-center justify-between gap-4"><div><h2 className="text-lg font-black text-slate-950">Investor Profile Actions</h2><p className="mt-1 text-sm text-slate-400">Auto-fetched from the Investor Profile. Planned withdrawals and other requests remain non-financial until actual execution is confirmed.</p></div><span className="rounded-full bg-violet-50 px-4 py-2 text-xs font-bold text-violet-700">{profileActions.length} profile action{profileActions.length === 1 ? "" : "s"}</span></div>
         <div className="mt-5 grid gap-3">{profileActions.map((item) => <div key={item.id} className="rounded-2xl border border-violet-100 bg-violet-50/30 p-4 sm:p-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-black text-slate-950">{item.title || item.requestType || "Investor action"}</p><p className="mt-1 text-sm text-slate-500">{item.description || item.requestType || "Investor Profile action"}</p><p className="mt-2 text-xs font-semibold text-violet-700">{item.requestType || "Portfolio action"} · {item.status || "Requested"}{item.withdrawalBucketName || item.relatedGoalName ? ` · ${item.withdrawalBucketName || item.relatedGoalName}` : ""}</p></div><p className="shrink-0 text-sm text-slate-400">{item.requestedEffectiveDate ? formatDate(item.requestedEffectiveDate) : item.actualFinancialDate ? formatDate(item.actualFinancialDate) : "Profile"}</p></div>{Array.isArray(item.withdrawalItems) && item.withdrawalItems.length ? <div className="mt-3 grid gap-2">{item.withdrawalItems.map((fund, index) => <div key={fund.positionId || index} className="rounded-xl bg-white p-3 text-sm"><strong>{fund.instrumentName || "Mutual Fund"}</strong><span className="ml-2 text-slate-500">{fund.withdrawalMode === "full" ? "Complete withdrawal" : `Partial withdrawal ${compactCurrency(fund.requestedAmount || 0)}`} · SIP {fund.sipInstruction || "continue"}</span></div>)}</div> : null}</div>)}{!profileActions.length ? <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">No planned Investor Profile actions were recorded for this reporting period.</div> : null}</div>
-        <div className="mt-7 border-t border-slate-200 pt-6"><div className="flex items-center justify-between gap-4"><div><h3 className="text-base font-black text-slate-950">Advisor Recommendations & Next Steps</h3><p className="mt-1 text-sm text-slate-400">Advisor guidance only; withdrawal figures are not entered here.</p></div><span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-500">{nextSteps.length} item{nextSteps.length === 1 ? "" : "s"}</span></div><div className="mt-4 grid gap-3">{nextSteps.map((item) => <div key={item.id} className="flex flex-col gap-4 rounded-2xl border border-slate-200 p-4 sm:flex-row sm:items-start sm:justify-between sm:gap-5 sm:p-5"><div className="flex gap-4"><span className={`mt-1 grid h-6 w-6 place-items-center rounded-full border ${item.status === "Completed" ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300"}`}>{item.status === "Completed" ? <CheckCircle2 size={14} /> : null}</span><div><p className="font-black text-slate-950">{item.title || item.description}</p>{item.title && item.description && item.description !== item.title ? <p className="mt-1 text-sm text-slate-500">{item.description}</p> : null}<p className="mt-2 text-xs font-semibold text-blue-600">{item.recommendationType || "Portfolio Review"} · Owner: {item.owner} · {item.priority || "Planned"} · {item.status}</p><p className="mt-1 text-xs text-slate-400">Investor decision: {item.investorDecision || "Pending Discussion"}{item.sourceReportMonthKey ? ` · Carried from ${item.sourceReportMonthKey}` : ""}</p></div></div><p className="shrink-0 text-sm text-slate-400">{item.dueDate ? formatDate(item.dueDate) : "Next Review"}</p></div>)}{!nextSteps.length ? <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">No Advisor recommendations were recorded for this month.</div> : null}</div></div>
+        <div className="mt-7 border-t border-slate-200 pt-6"><div className="flex items-center justify-between gap-4"><div><h3 className="text-base font-black text-slate-950">GrowVest Recommendations & Next Steps</h3><p className="mt-1 text-sm text-slate-400">GrowVest guidance only; withdrawal figures are not entered here.</p></div><span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-500">{nextSteps.length} item{nextSteps.length === 1 ? "" : "s"}</span></div><div className="mt-4 grid gap-3">{nextSteps.map((item) => <div key={item.id} className="flex flex-col gap-4 rounded-2xl border border-slate-200 p-4 sm:flex-row sm:items-start sm:justify-between sm:gap-5 sm:p-5"><div className="flex gap-4"><span className={`mt-1 grid h-6 w-6 place-items-center rounded-full border ${item.status === "Completed" ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300"}`}>{item.status === "Completed" ? <CheckCircle2 size={14} /> : null}</span><div><p className="font-black text-slate-950">{item.title || item.description}</p>{item.title && item.description && item.description !== item.title ? <p className="mt-1 text-sm text-slate-500">{item.description}</p> : null}<p className="mt-2 text-xs font-semibold text-blue-600">{item.recommendationType || "Portfolio Review"} · Owner: {item.owner === "Advisor" ? "GrowVest Partner" : item.owner} · {item.priority || "Planned"} · {item.status}</p><p className="mt-1 text-xs text-slate-400">Investor decision: {item.investorDecision || "Pending Discussion"}{item.sourceReportMonthKey ? ` · Carried from ${item.sourceReportMonthKey}` : ""}</p></div></div><p className="shrink-0 text-sm text-slate-400">{item.dueDate ? formatDate(item.dueDate) : "Next Review"}</p></div>)}{!nextSteps.length ? <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">No GrowVest recommendations were recorded for this month.</div> : null}</div></div>
       </SectionCard>
 
       <SectionCard id="report-review" style={sectionStyle("actions", 1)} className={`scroll-mt-32 p-5 sm:p-6 ${sectionVisible("actions") ? "" : "hidden"}`}>
         <div className="grid gap-7 lg:grid-cols-[1fr_1fr] lg:items-center">
           <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">Upcoming</p><h2 className="mt-2 text-2xl font-black text-slate-950">Next Portfolio Review</h2><p className="mt-3 font-bold text-slate-950"><CalendarDays size={16} className="mr-2 inline text-slate-400" />{formatDate(report.nextReview?.date)} <span className="font-normal text-slate-400">· {report.advisorName}</span></p><p className="mt-5 text-xs font-bold uppercase text-slate-400">Review Agenda</p><ol className="mt-3 grid gap-3">{nextSteps.slice(0, 4).map((item, index) => <li key={item.id} className="flex items-center gap-3 text-sm text-slate-600"><span className="grid h-6 w-6 place-items-center rounded-full bg-blue-50 text-xs font-black text-blue-700">{index + 1}</span>{item.title || item.description}</li>)}</ol></div>
-          <div className="grid gap-3"><button type="button" onClick={() => downloadReviewIcs(report, branding)} disabled={!report.nextReview?.date} className="inline-flex min-h-12 items-center justify-center gap-3 rounded-full bg-blue-600 px-6 text-sm font-black text-white disabled:opacity-50"><CalendarDays size={17} /> Add to Calendar</button><Link href={viewer === "investor" ? "/investor/meetings" : `/meetings/create?investorId=${report.investorId}`} className="inline-flex min-h-12 items-center justify-center gap-3 rounded-full border border-slate-200 px-6 text-sm font-bold text-slate-600"><RefreshCcw size={17} /> Schedule / Reschedule</Link><a href={`mailto:${advisorEmail}`} className="inline-flex min-h-12 items-center justify-center gap-3 rounded-full border border-slate-200 px-6 text-sm font-bold text-slate-600"><Phone size={17} /> Contact Advisor</a><Link href={viewer === "investor" ? "/investor/meetings" : `/meetings?investorId=${report.investorId}`} className="inline-flex min-h-12 items-center justify-center gap-3 rounded-full border border-slate-200 px-6 text-sm font-bold text-slate-600">View Previous Review</Link></div>
+          <div className="grid gap-3"><button type="button" onClick={() => downloadReviewIcs(report, branding)} disabled={!report.nextReview?.date} className="inline-flex min-h-12 items-center justify-center gap-3 rounded-full bg-blue-600 px-6 text-sm font-black text-white disabled:opacity-50"><CalendarDays size={17} /> Add to Calendar</button><Link href={viewer === "investor" ? "/investor/meetings" : `/meetings/create?investorId=${report.investorId}`} className="inline-flex min-h-12 items-center justify-center gap-3 rounded-full border border-slate-200 px-6 text-sm font-bold text-slate-600"><RefreshCcw size={17} /> Schedule / Reschedule</Link><a href={`mailto:${advisorEmail}`} className="inline-flex min-h-12 items-center justify-center gap-3 rounded-full border border-slate-200 px-6 text-sm font-bold text-slate-600"><Phone size={17} /> Contact Your Partner</a><Link href={viewer === "investor" ? "/investor/meetings" : `/meetings?investorId=${report.investorId}`} className="inline-flex min-h-12 items-center justify-center gap-3 rounded-full border border-slate-200 px-6 text-sm font-bold text-slate-600">View Previous Review</Link></div>
         </div>
       </SectionCard>
 
@@ -558,7 +568,7 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
         <h2 className="font-heading text-xl font-bold text-slate-950">Report Information &amp; Disclaimer</h2>
         <div className="mt-5 grid gap-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
           <div><p className="text-slate-400">Report Generated</p><p className="mt-1 font-bold text-slate-600">{formatDate(report.completedAt || report.updatedAt)}</p><p className="mt-4 text-slate-400">Client ID</p><p className="mt-1 font-bold text-slate-600">{report.clientCode}</p></div>
-          <div><p className="text-slate-400">Report Reference</p><p className="mt-1 font-bold text-slate-600">{report.reportCode}</p><p className="mt-4 text-slate-400">Advisor</p><p className="mt-1 font-bold text-slate-600">{report.advisorName}</p></div>
+          <div><p className="text-slate-400">Report Reference</p><p className="mt-1 font-bold text-slate-600">{report.reportCode}</p><p className="mt-4 text-slate-400">Conscious Wealth Partner</p><p className="mt-1 font-bold text-slate-600">{report.advisorName}</p></div>
           <div><p className="text-slate-400">Data Last Updated</p><p className="mt-1 font-bold text-slate-600">{formatDate(report.updatedAt)}</p><p className="mt-4 text-slate-400">Version</p><p className="mt-1 font-bold text-slate-600">Version {report.version || 1}</p></div>
         </div>
         <p className="mt-6 rounded-2xl bg-slate-50 p-5 text-sm leading-7 text-slate-500">{report.disclaimer}</p>

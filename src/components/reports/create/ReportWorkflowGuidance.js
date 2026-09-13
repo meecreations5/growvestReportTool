@@ -11,9 +11,9 @@ import {
 
 export const REPORT_OUTPUT_MAP = {
   investor: {
-    title: "Investor identity and Advisor profile",
+    title: "Investor identity and Conscious Wealth Partner profile",
     description: "The selected profile supplies the investor identity used throughout the report.",
-    sections: ["Report cover", "Investor details", "Advisor profile"],
+    sections: ["Report cover", "Investor details", "Conscious Wealth Partner profile"],
     source: "Inherited from Investor Profile"
   },
   period: {
@@ -35,9 +35,9 @@ export const REPORT_OUTPUT_MAP = {
     source: "Calculated automatically"
   },
   commentary: {
-    title: "Advisor insights",
+    title: "Partner insights",
     description: "The narrative explains progress, priorities and opportunities in investor-friendly language.",
-    sections: ["Advisor insights", "Monthly commentary", "Highlights"],
+    sections: ["Partner insights", "Monthly commentary", "Highlights"],
     source: "Entered by staff"
   },
   goals: {

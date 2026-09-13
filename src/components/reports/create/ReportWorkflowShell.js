@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -8,6 +9,7 @@ import {
   ChevronDown,
   ChevronRight,
   Circle,
+  CircleHelp,
   Clock3,
   FileCheck2,
   FileText,
@@ -29,6 +31,79 @@ function stepStateClasses(step, active) {
   if (step.complete) return "border-emerald-100 bg-emerald-50/70 text-emerald-800";
   if (step.locked) return "border-transparent bg-transparent text-slate-400";
   return "border-transparent bg-transparent text-slate-600 hover:border-slate-200 hover:bg-white";
+}
+
+const REPORT_HOW_TO_USE_STEPS = [
+  ["1", "Select Investor", "Choose the investor. Profile details, assigned Conscious Wealth Partner, goals and available portfolio context are inherited automatically."],
+  ["2", "Reporting Period", "Confirm the Opening baseline date or select the Monthly Wealth Review period. Check duplicate and baseline warnings before continuing."],
+  ["3", "Portfolio Data", "Confirm the verified Portfolio Master snapshot, holdings, transactions and headline portfolio values for the reporting cutoff."],
+  ["4", "Review Calculations", "Resolve reconciliation differences before approval. Calculated percentages and performance checks are read-only."],
+  ["5", "Commentary", "Add the investor-facing Wealth Review narrative, progress highlight, priority attention and portfolio opportunity."],
+  ["6", "Goals & Allocation", "Review Bucket List progress, General Wealth assignments and current-versus-target allocation."],
+  ["7", "Template", "Select the report template. The selected template version is saved as a snapshot so future template changes do not alter this report."],
+  ["8", "Preview & Approval", "Review investor-visible actions, compliance text and all completion checks. Use Save & preview report before completing."],
+  ["9", "Generate Secure PDF", "Complete the report first, then generate or regenerate the secure PDF. If the report changes later, regenerate the PDF before publishing."],
+  ["10", "Deliver Report", "After the PDF is verified, publish the immutable version to the Investor Portal and send the investor communication."],
+];
+
+function ReportHowToUseDialog({ open, onClose }) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[220] flex items-end justify-center bg-slate-950/55 p-0 sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-labelledby="report-how-to-use-title">
+      <button type="button" className="absolute inset-0" aria-label="Close report instructions" onClick={onClose} />
+      <section className="relative z-10 flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl sm:rounded-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">Monthly Reports</p>
+            <h2 id="report-how-to-use-title" className="mt-1 font-heading text-2xl font-bold tracking-tight text-slate-950">How to use the report workflow</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Follow the workflow in order. The report stays editable as a working draft until completion; the secure PDF and published version should only be created after the preview has been reviewed.</p>
+          </div>
+          <button type="button" onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900" aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto px-5 py-5 sm:px-6">
+          <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-blue-700">Recommended sequence</p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-blue-950">Create / Edit → Save & Preview → Complete Report → Generate / Regenerate PDF → Verify PDF → Publish → Send to Investor</p>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {REPORT_HOW_TO_USE_STEPS.map(([number, title, description]) => (
+              <article key={number} className="flex gap-3 rounded-xl border border-slate-200 p-4">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-950 text-xs font-bold text-white">{number}</span>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-950">{title}</h3>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Before completing</p>
+              <p className="mt-2 text-xs leading-5 text-emerald-900">Check portfolio reconciliation, goal mapping, commentary, actions, disclaimer and the selected template.</p>
+            </div>
+            <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-amber-700">If data changes</p>
+              <p className="mt-2 text-xs leading-5 text-amber-900">Save the working report again. If a PDF already exists, it becomes stale and must be regenerated before delivery.</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Published reports</p>
+              <p className="mt-2 text-xs leading-5 text-slate-700">Published versions are immutable. Prepare and review a working revision, then publish it only after the new PDF is approved.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-200 bg-slate-50 px-5 py-4 text-right sm:px-6">
+          <Button type="button" onClick={onClose}>Got it</Button>
+        </div>
+      </section>
+    </div>
+  );
 }
 
 function StepStateIcon({ step, active, number }) {
@@ -64,6 +139,7 @@ export function ReportWorkflowHeader({
   copying,
   onCopyPrevious
 }) {
+  const [howToUseOpen, setHowToUseOpen] = useState(false);
   const investorName = form.investorName || "Investor not selected";
   const period = `${getMonthLabel(form.reportMonth)} ${form.reportYear}`;
 
@@ -91,7 +167,7 @@ export function ReportWorkflowHeader({
         </Link>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
           <h1 className="font-heading text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
-            {reportId ? "Edit Monthly Report" : "Create Monthly Report"}
+            {reportId ? "Edit Wealth Review" : "Create Wealth Review"}
           </h1>
           {isLocked ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
@@ -114,7 +190,16 @@ export function ReportWorkflowHeader({
         </div>
       </div>
 
-      <div className="hidden flex-wrap items-center gap-2 sm:flex sm:justify-end">
+      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={() => setHowToUseOpen(true)}
+        >
+          <CircleHelp size={15} />
+          How to use
+        </Button>
         {!reportId ? (
           <Button
             type="button"
@@ -122,13 +207,15 @@ export function ReportWorkflowHeader({
             size="sm"
             onClick={onCopyPrevious}
             disabled={copying || !form.investorId || isLocked}
+            className="hidden sm:inline-flex"
           >
             <FileText size={15} />
             {copying ? "Copying…" : "Copy previous"}
           </Button>
         ) : null}
-
       </div>
+
+      <ReportHowToUseDialog open={howToUseOpen} onClose={() => setHowToUseOpen(false)} />
     </div>
   );
 }
@@ -238,7 +325,7 @@ export function MobileReportProgress({ steps, activeStep, onSelect, progress, op
   );
 }
 
-export function ReportStepShell({ number, title, description, eyebrow = "Create monthly report", children, aside }) {
+export function ReportStepShell({ number, title, description, eyebrow = "Create wealth review", children, aside }) {
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <div className="border-b border-slate-200 px-4 py-5 sm:px-6">

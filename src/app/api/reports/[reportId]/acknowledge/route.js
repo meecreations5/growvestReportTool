@@ -14,9 +14,9 @@ export async function POST(request, { params }) {
     const requestDiscussion = Boolean(body.requestDiscussion);
     const comment = String(body.comment || "").trim().slice(0, 2000);
     const reportSnapshot = await adminDb.collection("monthlyReports").doc(reportId).get();
-    if (!reportSnapshot.exists) return NextResponse.json({ error: "Monthly report was not found." }, { status: 404 });
+    if (!reportSnapshot.exists) return NextResponse.json({ error: "Wealth Review was not found." }, { status: 404 });
     const report = { id: reportSnapshot.id, ...reportSnapshot.data() };
-    if (!canInvestorAccessReport(actor, report)) return NextResponse.json({ error: "You are not authorised to acknowledge this report." }, { status: 403 });
+    if (!canInvestorAccessReport(actor, report)) return NextResponse.json({ error: "You are not authorised to acknowledge this Wealth Review." }, { status: 403 });
 
     const acknowledgementId = `${reportId}_${actor.uid}`;
     const acknowledgementRef = adminDb.collection("reportAcknowledgements").doc(acknowledgementId);
@@ -31,15 +31,15 @@ export async function POST(request, { params }) {
         const existingAction = existingSnapshots.docs.find((item) => {
           const data = item.data();
           return data.requestedByUid === actor.uid
-            && data.requestType === "Monthly Report Discussion"
+            && ["Wealth Review Discussion", "Monthly Report Discussion"].includes(data.requestType)
             && !["Completed", "Rejected", "Cancelled"].includes(data.status);
         });
         const actionRef = existingAction ? existingAction.ref : adminDb.collection("investorActions").doc();
         const action = {
           ...normaliseCreateAction({
             investorId: report.investorId,
-            requestType: "Monthly Report Discussion",
-            title: `Discuss ${report.title || report.reportMonthKey || "monthly report"}`,
+            requestType: "Wealth Review Discussion",
+            title: `Discuss ${report.title || report.reportMonthKey || "Wealth Review"}`,
             description: comment,
             sourceReportId: reportId,
             sourceReportMonthKey: report.reportMonthKey || ""
@@ -94,10 +94,10 @@ export async function POST(request, { params }) {
       batch.set(notificationRef, {
         recipientUid: advisorRecipientUid,
         recipientType: "advisor",
-        title: requestDiscussion ? "Investor requested a report discussion" : "Investor acknowledged monthly report",
+        title: requestDiscussion ? "Investor requested a report discussion" : "Investor acknowledged Wealth Review",
         message: requestDiscussion
-          ? `${actor.fullName || report.investorName || "Investor"} requested a discussion about ${report.title || "the monthly report"}.`
-          : `${actor.fullName || report.investorName || "Investor"} acknowledged ${report.title || "the monthly report"}.`,
+          ? `${actor.fullName || report.investorName || "Investor"} requested a discussion about ${report.title || "the Wealth Review"}.`
+          : `${actor.fullName || report.investorName || "Investor"} acknowledged ${report.title || "the Wealth Review"}.`,
         eventType: requestDiscussion ? "report_discussion_requested" : "report_acknowledged",
         link: requestDiscussion ? "/actions" : `/reports/${reportId}`,
         investorId: report.investorId,
@@ -119,7 +119,7 @@ export async function POST(request, { params }) {
       advisorUid: advisorRecipientUid,
       action: requestDiscussion ? "report_discussion_requested" : "report_acknowledged",
       title: requestDiscussion ? "Investor requested report discussion" : "Investor acknowledged report",
-      description: `${actor.fullName || report.investorName || "Investor"} ${requestDiscussion ? "requested a discussion about" : "acknowledged"} ${report.title || "the monthly report"}.`,
+      description: `${actor.fullName || report.investorName || "Investor"} ${requestDiscussion ? "requested a discussion about" : "acknowledged"} ${report.title || "the Wealth Review"}.`,
       createdByUid: actor.uid,
       createdByName: actor.fullName || report.investorName || "Investor",
       createdAt: new Date()

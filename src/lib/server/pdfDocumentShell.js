@@ -1,5 +1,6 @@
 import { rgb } from "pdf-lib";
 import { resolveReportBranding } from "@/lib/utils/reportBranding";
+import { pdfSafeLine, pdfSafeMultiline } from "./pdfTextSanitizer.js";
 
 export const PDF_A4_WIDTH = 595.28;
 export const PDF_A4_HEIGHT = 841.89;
@@ -10,17 +11,12 @@ const DEFAULT_CYAN = rgb(0.09, 0.73, 0.83);
 const INK = rgb(0.04, 0.04, 0.06);
 const MUTED = rgb(0.42, 0.45, 0.5);
 
+export { pdfSafeLine, pdfSafeMultiline };
+
+// Backwards-compatible default: direct drawText calls must always receive a
+// single WinAnsi-safe line. Use pdfSafeMultiline only before deliberate wrapping.
 export function pdfSafeText(value) {
-  return String(value ?? "")
-    .replace(/₹/g, "Rs. ")
-    .replace(/[\u2013\u2014]/g, "-")
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201c\u201d]/g, '"')
-    .replace(/\u2026/g, "...")
-    .replace(/\u2022/g, "-")
-    .replace(/\u00b7/g, "|")
-    .normalize("NFKD")
-    .replace(/[^\x09\x0A\x0D\x20-\xFF]/g, "?");
+  return pdfSafeLine(value);
 }
 
 export function pdfHexColor(value, fallback = DEFAULT_BLUE) {
@@ -85,24 +81,71 @@ export function drawPdfDocumentChrome(page, fonts, report, pageNo, options = {})
   const showContact = options.showContactInformation !== false && branding.showContactInFooter !== false;
   const showConfidential = options.showConfidentialLabel !== false && branding.showConfidentialLabel !== false;
   const totalPages = Number(options.totalPages || 0);
+  const headerStyle = options.headerStyle || "compact";
+  const footerStyle = options.footerStyle || "legal";
   drawWatermark(page, report, branding);
 
-  page.drawText(pdfSafeText(documentTitle).toUpperCase(), { x: PDF_MARGIN, y: 817, size: 7.5, font: bold, color: primary });
-  page.drawText(pdfSafeText(branding.legalName || "GrowVest Advisors Private Limited").toUpperCase(), { x: PDF_MARGIN, y: 805, size: 6.5, font: regular, color: MUTED });
   const logo = report.__brandingAssets?.logo;
-  if (showLogo && logo) {
-    drawPdfImageFit(page, logo, { x: 350, y: 798, maxWidth: 201, maxHeight: 38, align: "right", valign: "top" });
-  } else if (showLogo) {
-    const wordmark = pdfSafeText(branding.companyName || "GrowVest");
-    const size = fitText(bold, wordmark, 14, 150, 9);
-    const width = bold.widthOfTextAtSize(wordmark, size);
-    page.drawText(wordmark, { x: 551 - width, y: 807, size, font: bold, color: INK });
+  if (headerStyle === "signature") {
+    if (showLogo && logo) {
+      drawPdfImageFit(page, logo, { x: PDF_MARGIN, y: 798, maxWidth: 145, maxHeight: 34, align: "left", valign: "top" });
+      page.drawText(pdfSafeText(branding.brandPositioning || "Your Conscious Wealth Partner"), { x: PDF_MARGIN + 30, y: 795, size: 5.5, font: regular, color: MUTED });
+    } else if (showLogo) {
+      const wordmark = pdfSafeText(branding.companyName || "GrowVest");
+      const size = fitText(bold, wordmark, 14, 145, 9);
+      page.drawText(wordmark, { x: PDF_MARGIN, y: 808, size, font: bold, color: primary });
+      page.drawText(pdfSafeText(branding.brandPositioning || "Your Conscious Wealth Partner"), { x: PDF_MARGIN, y: 795, size: 5.5, font: regular, color: MUTED });
+    }
+
+    const periodText = showReportMonth ? `${monthLabel(report.reportMonth)} ${report.reportYear || ""}`.trim() : "";
+    const titleText = pdfSafeText(documentTitle);
+    const titleSize = fitText(bold, titleText, 7.8, 190, 6.2);
+    const titleWidth = bold.widthOfTextAtSize(titleText, titleSize);
+    page.drawText(titleText, { x: 551 - titleWidth, y: 817, size: titleSize, font: bold, color: INK });
+    if (periodText) {
+      const safePeriod = pdfSafeText(periodText);
+      const periodSize = fitText(regular, safePeriod, 6.2, 190, 5.2);
+      const periodWidth = regular.widthOfTextAtSize(safePeriod, periodSize);
+      page.drawText(safePeriod, { x: 551 - periodWidth, y: 806, size: periodSize, font: regular, color: MUTED });
+    }
+    page.drawLine({ start: { x: PDF_MARGIN, y: 786 }, end: { x: 551, y: 786 }, thickness: 0.7, color: rgb(0.86, 0.89, 0.94) });
+    page.drawRectangle({ x: PDF_MARGIN, y: 785.3, width: 54, height: 1.5, color: primary });
+  } else {
+    page.drawText(pdfSafeText(documentTitle).toUpperCase(), { x: PDF_MARGIN, y: 817, size: 7.5, font: bold, color: primary });
+    page.drawText(pdfSafeText(branding.legalName || "GrowVest Advisors Private Limited").toUpperCase(), { x: PDF_MARGIN, y: 805, size: 6.5, font: regular, color: MUTED });
+    if (showLogo && logo) {
+      drawPdfImageFit(page, logo, { x: 350, y: 798, maxWidth: 201, maxHeight: 38, align: "right", valign: "top" });
+    } else if (showLogo) {
+      const wordmark = pdfSafeText(branding.companyName || "GrowVest");
+      const size = fitText(bold, wordmark, 14, 150, 9);
+      const width = bold.widthOfTextAtSize(wordmark, size);
+      page.drawText(wordmark, { x: 551 - width, y: 807, size, font: bold, color: INK });
+    }
+
+    page.drawRectangle({ x: PDF_MARGIN, y: 792, width: 370, height: 2.5, color: primary });
+    page.drawRectangle({ x: PDF_MARGIN + 370, y: 792, width: 137, height: 2.5, color: secondary });
   }
 
-  page.drawRectangle({ x: PDF_MARGIN, y: 792, width: 370, height: 2.5, color: primary });
-  page.drawRectangle({ x: PDF_MARGIN + 370, y: 792, width: 137, height: 2.5, color: secondary });
-
   page.drawLine({ start: { x: PDF_MARGIN, y: 38 }, end: { x: 551, y: 38 }, thickness: 0.55, color: rgb(0.84, 0.86, 0.89) });
+  if (footerStyle === "signature") {
+    const footerBrand = `${branding.companyName || "GrowVest"} | ${showConfidential ? (branding.confidentialLabel || "Private & Confidential") : "Investor Wealth Review"}`;
+    const safeBrand = pdfSafeText(footerBrand);
+    const footerSize = fitText(regular, safeBrand, 5.7, 250, 4.8);
+    page.drawText(safeBrand, { x: PDF_MARGIN, y: 18, size: footerSize, font: regular, color: MUTED });
+
+    const footerMeta = [
+      showReportMonth ? `${monthLabel(report.reportMonth)} ${report.reportYear || ""}`.trim() : "",
+      showPageNumbers ? `Page ${pageNo}${totalPages ? ` of ${totalPages}` : ""}` : ""
+    ].filter(Boolean).join(" | ");
+    if (footerMeta) {
+      const safeMeta = pdfSafeText(footerMeta);
+      const metaSize = fitText(regular, safeMeta, 5.7, 190, 4.8);
+      const metaWidth = regular.widthOfTextAtSize(safeMeta, metaSize);
+      page.drawText(safeMeta, { x: 551 - metaWidth, y: 18, size: metaSize, font: regular, color: MUTED });
+    }
+    return;
+  }
+
   const icon = report.__brandingAssets?.icon;
   if (icon) drawPdfImageFit(page, icon, { x: PDF_MARGIN, y: 10, maxWidth: 22, maxHeight: 22, valign: "center" });
   const footerX = icon ? PDF_MARGIN + 29 : PDF_MARGIN;

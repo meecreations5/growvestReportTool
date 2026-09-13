@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { subscribeInvestorReports, subscribeMonthlyReport } from "@/services/reportService";
 import { getInvestorReportDetail } from "@/services/investorAppService";
-import MonthlyReportPrintDocument from "@/components/reports/MonthlyReportPrintDocument";
+import ResponsiveReportPreview from "@/components/reports/ResponsiveReportPreview";
 
 export default function ReportPrintClient({ reportId }) {
   const router = useRouter();
@@ -48,7 +48,7 @@ export default function ReportPrintClient({ reportId }) {
 
     return subscribeMonthlyReport(reportId, (item) => {
       setReportMeta(item);
-      if (!item) setError("Monthly report was not found.");
+      if (!item) setError("Wealth Review was not found.");
       setLoading(false);
     }, (nextError) => {
       console.error(nextError);
@@ -80,16 +80,12 @@ export default function ReportPrintClient({ reportId }) {
 
   return (
     <div>
-      <div className="monthly-report-print-toolbar sticky top-0 z-50 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
-        <button type="button" onClick={() => router.push(backHref)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600"><ArrowLeft size={16} /> Back to report</button>
-        <div className="text-center"><p className="text-sm font-black text-slate-950">A4 Report Preview</p><p className="text-xs text-slate-400">{profile?.role === "investor" ? `Published version ${report.publishedVersion || 1}` : `Working version ${report.version || 1} · ${report.templateSnapshot?.name || "Report template"} v${report.templateVersion || report.templateSnapshot?.version || 1}`}</p></div>
-        <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2 text-sm font-bold text-white"><Printer size={16} /> Print</button>
+      <div className="monthly-report-print-toolbar sticky top-0 z-50 flex items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:px-4 sm:py-3">
+        <button type="button" onClick={() => router.push(backHref)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-bold text-slate-600 sm:px-4"><ArrowLeft size={16} /> <span className="hidden sm:inline">Back to report</span></button>
+        <div className="min-w-0 flex-1 text-center"><p className="truncate text-sm font-black text-slate-950">Exact Wealth Review</p><p className="hidden truncate text-xs text-slate-400 sm:block">{profile?.role === "investor" ? `Published version ${report.publishedVersion || 1}` : `Working version ${report.version || 1} · ${report.templateSnapshot?.name || "Report template"} v${report.templateVersion || report.templateSnapshot?.version || 1}`}</p></div>
+        <button type="button" onClick={() => window.print()} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-blue-700 px-3 text-sm font-bold text-white sm:px-4"><Printer size={16} /> <span className="hidden sm:inline">Print</span></button>
       </div>
-      <MonthlyReportPrintDocument
-        key={`${report.id}-${report.version || 1}-${report.templateId || "template"}-${report.templateVersion || 1}-${report.templateAppliedAt || "initial"}`}
-        report={report}
-        history={history}
-      />
+      <ResponsiveReportPreview report={report} history={history} />
     </div>
   );
 }

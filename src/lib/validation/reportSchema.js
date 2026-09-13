@@ -1,13 +1,22 @@
 import { z } from "zod";
+import { REPORT_TYPE } from "@/lib/constants/report";
+import { buildReportReconciliation } from "@/lib/reportReconciliation";
 
 const nonNegative = z.coerce.number().min(0, "Value cannot be negative");
 
 export const monthlyReportSchema = z.object({
   investorId: z.string().min(1, "Select an investor"),
+  reportType: z.enum([REPORT_TYPE.OPENING, REPORT_TYPE.MONTHLY]).optional().default(REPORT_TYPE.MONTHLY),
   reportMonth: z.coerce.number().min(1).max(12),
   reportYear: z.coerce.number().min(2020).max(2100),
   statementDate: z.string().min(1, "Statement date is required"),
   title: z.string().trim().min(3, "Report title is required"),
+  openingBaseline: z.object({
+    asOfDate: z.string().optional().default(""),
+    sourceSnapshotId: z.string().optional().default(""),
+    sourceSnapshotDate: z.string().optional().default(""),
+    established: z.boolean().optional().default(false)
+  }).nullable().optional(),
   summary: z.object({
     totalCorpus: nonNegative,
     lifetimeTarget: nonNegative,
@@ -47,7 +56,7 @@ export function validateCompletedReport(payload) {
   const verification = payload.portfolioVerification;
   if (verification?.required) {
     if (!payload.sourcePortfolioSnapshotId || !verification.snapshotId) {
-      errors.push("A verified Portfolio Master snapshot is required before completing this monthly report.");
+      errors.push("A verified Portfolio Master snapshot is required before completing this Wealth Review.");
     } else if (["blocked", "pending"].includes(String(verification.status || ""))) {
       errors.push("Portfolio verification is blocked. Resolve the Portfolio Master issues before completing the report.");
     } else if (verification.status === "review_required" && !verification.acknowledged) {
@@ -71,9 +80,13 @@ export function validateCompletedReport(payload) {
   if (!legitimateZeroClosingBalance && !payload.holdings?.some((item) => Number(item.currentValue || 0) > 0)) {
     errors.push("Add at least one holdings breakdown row with a current value.");
   }
-  if (!payload.advisorNote?.content?.trim()) errors.push("Advisor note is required before completion.");
+  if (!payload.advisorNote?.content?.trim()) errors.push("Partner commentary is required before completion.");
   if (!legitimateZeroClosingBalance && !payload.funds?.some((item) => item.instrumentName?.trim() && Number(item.currentValue || 0) > 0)) {
     errors.push("Add at least one fund or instrument with a current value.");
   }
-  return errors;
+  const reconciliation = buildReportReconciliation(payload);
+  reconciliation.checks.filter((item) => item.status === "block").forEach((item) => {
+    errors.push(`${item.label}: ${item.detail}`);
+  });
+  return [...new Set(errors)];
 }

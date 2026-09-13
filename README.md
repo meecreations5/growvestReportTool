@@ -1,3 +1,36 @@
+## v0.34.24 - Report Renderer Root Reconciliation
+
+Removes the recurring PDF alignment drift at its source. Starting Point, Performance information, Protection notices and closing treatment now use one shared secure-PDF geometry instead of separate hard-coded baselines; the browser renderer mirrors the same compact grid. Official GrowVest icon artwork replaces the unstable hand-drawn leaf in the affected callouts. The cover is moved to a versioned clarity asset path so old browser/PWA image caches cannot be reused, and secure PDF metadata now identifies renderer `2.4.10`. Financial/report logic and the Investor App Guide are unchanged. Installed PWA caches are refreshed to `v0.34.24-report-root1`.
+
+## v0.34.23 - Report Alignment & Cover Clarity Reconciliation
+
+Reconciles the remaining visual issues observed in the generated Opening Wealth Review PDF: tighter and vertically balanced Starting Point, Performance note, Protection and closing-banner callouts; consistent icon/text insets across secure PDF and browser renderers; corrected centred GrowVest leaf badge geometry; and a stronger detail-recovery pass on the packaged cover photograph while preserving the locked crop and composition. Financial/report logic is unchanged. Secure PDF renderer version is `2.4.9`; Investor PWA caches are refreshed to `v0.34.23-report-align1`.
+
+## v0.34.22 - Report Visual Reconciliation
+
+Reconciles the locked GrowVest Signature Wealth Review against the approved visual direction: smooth solid allocation donut rendering in secure PDFs, tighter Starting Point treatment, improved intro/disclaimer readability, a restrained blue closing banner with cyan accent, removal of the redundant cover confidence fragment, and a conservative sharpening pass on the existing locked cover artwork without changing its composition. Secure PDF renderer version is `2.4.8`; Investor PWA caches are refreshed to `v0.34.22-report-visual1`.
+
+## v0.34.21 - Investor App Guide Tour + Report Design Verification
+
+Adds a phone-only first-run Investor App guide with spotlight steps for Home, Portfolio, GrowVest, Bucket List and Reports, plus a permanent **GrowVest -> App guide** replay entry. The locked report design and secure PDF paths were reviewed without changing financial logic. The current cover is proportionally rendered, but the packaged source photograph itself is visibly soft; a sharper original asset is required for a truly sharper final cover. Installed PWA caches are refreshed to `v0.34.21-app-guide1`.
+
+## v0.34.20 - Secure PDF Rupee Glyph Orientation Hotfix
+
+Fixes the vertically mirrored Indian Rupee symbol visible in downloaded secure Wealth Review PDFs. The custom `pdf-lib` Rupee outline is now transformed into the correct SVG coordinate orientation, while all existing icons, numeric alignment, responsive exact-design viewer and locked GrowVest report design remain unchanged. Financial/report logic is unchanged.
+
+## v0.34.19 - Responsive Exact Report Viewer
+
+The locked GrowVest Signature Wealth Review now has a responsive preview that preserves the exact A4 design on desktop, tablet and mobile. The report itself never reflows; only the viewer scales. Mobile investors can open **View exact report design**, fit the full page to screen, and zoom for reading without changing the canonical PDF layout. Financial/report logic is unchanged.
+
+## v0.34.18 - Locked Report Visual Parity
+
+The GrowVest Signature Wealth Review now matches the locked reference more closely: native PDF icons replace generic dots/minus marks, browser and secure PDF icon roles are aligned, financial table values and secondary gain/loss details are right-aligned, and tabular numerals stabilize KPI/goal/performance number columns. Financial logic is unchanged.
+
+
+## v0.34.15 - GrowVest Signature Render Lock Hotfix
+
+The investor-launch report visual is now enforced in the actual browser and secure PDF rendering paths for every new/unpublished Wealth Review. Older draft template metadata can no longer silently fall back to the legacy PDF layout. Historical published report snapshots remain preserved.
+
 ## Version 0.33.6 - Investor Mobile Finance App Redesign + Official SVG Brand Polish
 
 - Uses the supplied official GrowVest SVG assets for the phone Home header, internal app headers, Investor Login and loading/splash experience.
@@ -941,3 +974,76 @@ Real Investors can now enable a phone-only **App Lock** from **Profile → Login
 Desktop/web Investor security is separate and device-specific. **Require sign-in after browser closes** is enabled by default and uses Firebase session persistence; the Investor can opt to keep that browser signed in. Desktop inactivity sign-out can be set to 15 minutes, 30 minutes, 1 hour or Off. Installed PWA caches use `v0.34.9-investor-security1`.
 
 See `docs/INVESTOR_DEVICE_SECURITY_APP_LOCK_v0.34.9.md`, `docs/INVESTOR_DEVICE_SECURITY_APP_LOCK_CODE_MANIFEST_v0.34.9.md` and `RELEASE_VALIDATION_v0.34.9.md`.
+
+## v0.34.10 - Monthly Report PDF Design Review & How-To-Use Guidance
+
+The Monthly Report Create / Edit workspace now includes a responsive **How to use** guide covering the full 10-step reporting workflow and the safe delivery sequence: **Create / Edit -> Save & Preview -> Complete Report -> Generate / Regenerate PDF -> Verify PDF -> Publish -> Send to Investor**.
+
+The secure PDF renderer also corrects the no-goals state so **General Wealth Corpus** is shown consistently instead of an inapplicable Overall Goal Progress value. PDF renderer version is `2.1.1`. No Portfolio Master calculations, report schemas, publication rules, version history or Investor access rules were changed.
+
+The PDF architecture/design review is documented in `docs/REPORT_PDF_DESIGN_REVIEW_v0.34.10.md`. Any next visual redesign should update the browser A4 preview and the secure `pdf-lib` renderer together so Preview and Download stay aligned. Installed PWA caches use `v0.34.10-report-help1`.
+
+## v0.34.12 - Asset Allocation Chart PDF Hotfix
+
+The Premium Monthly Wealth Review now renders Asset Allocation with an explicit vector chart instead of relying on a CSS conic-gradient. This fixes the blank allocation ring seen in print/PDF output while the allocation values and legend were still present.
+
+The browser A4 Preview uses an inline SVG allocation ring, and the secure server PDF draws its own native vector allocation ring. The Portfolio Allocation page now shows the ring, legend, current values, percentages and Current vs Target comparison consistently. Secure PDF renderer version is `2.2.1`.
+
+No Portfolio Master calculations, report source data, completion/publish rules, version history, storage paths or Investor permissions were changed. See `docs/REPORT_ASSET_ALLOCATION_CHART_HOTFIX_v0.34.12.md`, `docs/REPORT_ASSET_ALLOCATION_CHART_CODE_MANIFEST_v0.34.12.md` and `RELEASE_VALIDATION_v0.34.12.md`. Installed PWA caches use `v0.34.12-report-asset1`.
+
+## v0.34.11 - Premium Monthly Wealth Review PDF
+
+The Monthly Report module has been reviewed end to end and its financial/report lifecycle remains intact. The investor-facing A4 report is redesigned as a more premium wealth-review document rather than a dashboard exported to paper, with a stronger editorial cover, cleaner page hierarchy, quieter metrics, print-aware charts, content-aware table widths, refined goal/commentary/action treatments and more compact legal pages.
+
+The browser **Preview PDF** and secure server PDF are updated together. Report-template `coverStyle`, `coverPattern`, `chartStyle` and `tableDensity` now have meaningful output impact, and trend charts use the selected template primary colour instead of a hard-coded blue. Secure PDF renderer version is `2.2.0`.
+
+No Portfolio Master calculations, report schemas, completion rules, publication/history behavior, access controls or Investor delivery rules are intentionally changed. The app-wide Guided Tour / Product Tour remains the next phase after Report design acceptance.
+
+See `docs/REPORT_MODULE_REVIEW_AND_PDF_DESIGN_v0.34.11.md`, `docs/REPORT_PDF_DESIGN_CODE_MANIFEST_v0.34.11.md` and `RELEASE_VALIDATION_v0.34.11.md`. Installed PWA caches use `v0.34.11-report-design1`.
+
+## v0.34.13 - Investor Launch Opening Wealth Review, Goal Reconciliation & Naming Standard
+
+GrowVest now treats an investor's first published report as an **Opening Wealth Review** tied to the latest verified Portfolio Master snapshot. It establishes a truthful launch baseline without backdating newer valuations or inventing previous-period performance. The Opening review must be published before new Monthly Wealth Reviews begin, and monthly reporting starts from the following month.
+
+Goal/Bucket List current corpus, Active Monthly SIP, progress and status are derived from Portfolio Master allocations while the Investor profile remains the source of the goal definition/target. Legacy General Wealth naming is reconciled to the Investor's canonical General Wealth / Corpus Creation goal, and new allocation changes carry an effective-from date plus a verified snapshot for historical safety.
+
+A server-side pre-publish reconciliation gate blocks contradictory portfolio, SIP, allocation, goal or Opening-baseline values. Reporting terminology is standardised to **Wealth Reviews**, **Opening Wealth Review** and **Monthly Wealth Review**, with `GV-OWR` / `GV-MWR` report references, `v001` immutable versions and structured PDF filenames/storage paths. Secure PDF renderer version is `2.3.0`. Installed Investor PWA caches use `v0.34.13-opening-review1`.
+
+See `docs/INVESTOR_LAUNCH_OPENING_WEALTH_REVIEW_v0.34.13.md`, `docs/INVESTOR_LAUNCH_OPENING_WEALTH_REVIEW_CODE_MANIFEST_v0.34.13.md` and `RELEASE_VALIDATION_v0.34.13.md`.
+
+## v0.34.14 - GrowVest Signature Investor Report & Opening Review UX Fix
+
+v0.34.14 makes **GrowVest Signature** the default investor-report template using the approved GrowVest palette: Royal Trust Blue `#1F4ED8`, Electric Sky-Blue `#0CC0DF`, Deep Premium Black `#0B0B0F`, Strategic Red `#E53935`, Insight Yellow `#F5B301`, Soft Gray `#F4F6F9`, Medium Gray `#6B7280` and White `#FFFFFF`.
+
+The approved 9-page wealth-review structure is implemented in both the browser/A4 preview and the native secure PDF renderer. Opening Wealth Reviews show a verified starting position instead of manufactured monthly performance. The first-report UI now waits for report-history resolution before save/autosave, eliminating the race that could expose the Opening Wealth Review protection error.
+
+Staff navigation is restored to **Monthly Reports** while the module continues to distinguish Opening Wealth Review and Monthly Wealth Review internally. The approved report screenshot is now frozen in the repository as the **locked visual reference**, and the Signature cover uses a packaged lifestyle landscape fallback instead of an abstract placeholder. Secure PDF renderer version is `2.4.1`; installed Investor PWA caches use `v0.34.14-signature-report2`.
+
+See `docs/GROWVEST_SIGNATURE_INVESTOR_REPORT_v0.34.14.md`, `docs/GROWVEST_SIGNATURE_LOCKED_VISUAL_REFERENCE_v0.34.14.md`, `docs/GROWVEST_SIGNATURE_INVESTOR_REPORT_CODE_MANIFEST_v0.34.14.md` and `RELEASE_VALIDATION_v0.34.14.md`.
+
+## v0.34.15 - GrowVest Signature Render Lock Hotfix
+
+v0.34.15 fixes the case where the approved GrowVest Signature design existed in code but a live report still rendered the older Premium Blue / Executive / custom layout because the report carried stale template metadata from an earlier draft.
+
+All **new and unpublished** Opening and Monthly Wealth Reviews now render through the locked GrowVest Signature path in both browser Preview and the secure server PDF. Existing unpublished drafts are migrated to the Signature template when opened in the Report Form, and template selection is constrained to the locked launch design. Historical already-published reports continue to preserve their frozen historical visual snapshot.
+
+The Signature renderer also uses packaged GrowVest artwork and the locked official palette instead of allowing stale remote Branding/Template values to silently change the approved visual. Secure PDF renderer version is `2.4.3`; installed Investor PWA caches use `v0.34.15-signature-lock2`.
+
+See `docs/GROWVEST_SIGNATURE_RENDER_LOCK_HOTFIX_v0.34.15.md`, `docs/GROWVEST_SIGNATURE_RENDER_LOCK_HOTFIX_CODE_MANIFEST_v0.34.15.md` and `RELEASE_VALIDATION_v0.34.15.md`.
+
+
+### v0.34.15 follow-up - Cover quality and stale-report recovery
+
+The locked GrowVest Signature cover now renders its packaged lifestyle artwork proportionally on the right side instead of stretching the portrait source across the full A4 page. This removes the visible cover distortion/softness and keeps browser/secure-PDF treatment aligned. Report loading also self-heals stale edit links after draft report-ID migration by resolving the current record and updating the route before subsequent saves. Secure PDF renderer version is `2.4.3`; installed Investor PWA caches use `v0.34.15-signature-lock2`.
+
+## v0.34.16 - PDF Encoding & Opening Verification Stability
+
+v0.34.16 hardens the first investor-facing Opening Wealth Review without changing the locked GrowVest Signature visual direction.
+
+The native `pdf-lib` render path now separates **single-line WinAnsi-safe text** from **intentional multiline paragraph text**. Direct `drawText()` content removes newlines, tabs, C0/C1 control characters and unsupported Unicode before StandardFonts receive it, while wrapped narrative blocks preserve deliberate paragraph breaks and draw each safe line separately. This closes the reported `WinAnsi cannot encode "\\n" (0x000a)` failure path.
+
+Opening Portfolio Verification now treats the investor's first verified holdings as the **opening baseline**, not as monthly new/exited movement. New/Exited cards show `N/A` for an Opening Wealth Review and movement comparison begins with the next Monthly Wealth Review. Portfolio Intelligence issue severity is used when detailed issue rows are available: blocking valuation/duplicate/integrity issues remain hard blockers, review warnings require acknowledgement, and informational issues do not block the report merely because an older aggregate status is stale. The Report Form exposes the actual reconciliation issue titles/descriptions instead of only showing an issue count.
+
+Secure PDF renderer version is `2.4.4`; installed Investor PWA caches use `v0.34.16-pdf-stability1`. The locked v0.34.14 GrowVest Signature layout, palette and cover direction are unchanged.
+
+See `docs/PDF_ENCODING_OPENING_VERIFICATION_STABILITY_v0.34.16.md`, `docs/PDF_ENCODING_OPENING_VERIFICATION_STABILITY_CODE_MANIFEST_v0.34.16.md` and `RELEASE_VALIDATION_v0.34.16.md`.

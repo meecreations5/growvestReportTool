@@ -37,7 +37,7 @@ import {
 } from "@/services/communicationService";
 import { openWhatsAppChat } from "@/lib/utils/whatsapp";
 import { reportWhatsAppMessage } from "@/lib/utils/reportPresentation";
-import { getMonthLabel } from "@/lib/constants/report";
+import { REPORT_TYPE, getMonthLabel, getReportTypeLabel } from "@/lib/constants/report";
 import MonthlyWealthReport from "@/components/reports/MonthlyWealthReport";
 import ReportStatusBadge from "@/components/reports/ReportStatusBadge";
 import ReportVersionHistory from "@/components/reports/ReportVersionHistory";
@@ -85,11 +85,11 @@ export default function ReportDetailClient({ reportId }) {
         (item) => {
           setReport(item);
           setLoading(false);
-          if (!item) setError("Monthly report was not found.");
+          if (!item) setError("Wealth Review was not found.");
         },
         (nextError) => {
           console.error(nextError);
-          setError("You do not have access to this monthly report.");
+          setError("You do not have access to this Wealth Review.");
           setLoading(false);
         }
       ),
@@ -143,7 +143,7 @@ export default function ReportDetailClient({ reportId }) {
   async function publishReport() {
     if (!report) return;
     if (report.status !== "completed") {
-      setError("Complete the report before publishing it to the Investor Portal.");
+      setError("Complete the Wealth Review before publishing it to the Investor Portal.");
       return;
     }
     setWorking(true);
@@ -161,7 +161,7 @@ export default function ReportDetailClient({ reportId }) {
         }.`
       );
     } catch (nextError) {
-      setError(nextError.message || "Unable to publish report.");
+      setError(nextError.message || "Unable to publish Wealth Review.");
     } finally {
       setWorking(false);
     }
@@ -174,9 +174,9 @@ export default function ReportDetailClient({ reportId }) {
     setNotice("");
     try {
       await setReportInvestorVisibility(report.id, false, profile);
-      setNotice("Report removed from the Investor Portal. Published version history has been preserved.");
+      setNotice("Wealth Review removed from the Investor Portal. Published version history has been preserved.");
     } catch (nextError) {
-      setError(nextError.message || "Unable to unpublish report.");
+      setError(nextError.message || "Unable to unpublish Wealth Review.");
     } finally {
       setWorking(false);
     }
@@ -213,11 +213,11 @@ export default function ReportDetailClient({ reportId }) {
     if (!report || !canDeleteReport) return;
     const reason = deleteReason.trim();
     if (reason.length < 5) {
-      setError("Enter a reason for deleting this report.");
+      setError("Enter a reason for deleting this Wealth Review.");
       return;
     }
     if (deleteConfirmation.trim().toUpperCase() !== "DELETE") {
-      setError("Type DELETE to confirm report deletion.");
+      setError("Type DELETE to confirm Wealth Review deletion.");
       return;
     }
     setWorking(true);
@@ -229,7 +229,7 @@ export default function ReportDetailClient({ reportId }) {
       router.replace("/reports");
       router.refresh();
     } catch (nextError) {
-      setError(nextError.message || "Unable to delete report.");
+      setError(nextError.message || "Unable to delete Wealth Review.");
     } finally {
       setWorking(false);
     }
@@ -254,7 +254,7 @@ export default function ReportDetailClient({ reportId }) {
   if (loading) {
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">
-        Loading monthly report…
+        Loading Wealth Review…
       </div>
     );
   }
@@ -270,7 +270,7 @@ export default function ReportDetailClient({ reportId }) {
           href="/reports"
           className="inline-flex w-fit items-center gap-2 text-sm font-semibold text-red-700 hover:underline"
         >
-          <ArrowLeft size={16} /> Back to reports
+          <ArrowLeft size={16} /> Back to Monthly Reports
         </Link>
       </div>
     );
@@ -279,6 +279,10 @@ export default function ReportDetailClient({ reportId }) {
   if (!report) return null;
 
   const reportPeriod = `${getMonthLabel(report.reportMonth)} ${report.reportYear}`;
+  const reportTypeLabel = getReportTypeLabel(report.reportType || REPORT_TYPE.MONTHLY);
+  const reportHeading = report.reportType === REPORT_TYPE.OPENING
+    ? `${reportTypeLabel} - ${report.statementDate || reportPeriod}`
+    : `${reportTypeLabel} - ${reportPeriod}`;
   const emailSuccessful = ["sent", "delivered", "opened", "clicked"].includes(
     String(report.lastEmailStatus || "").toLowerCase()
   );
@@ -292,7 +296,7 @@ export default function ReportDetailClient({ reportId }) {
               href="/reports"
               className="inline-flex min-h-10 items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-950"
             >
-              <ArrowLeft size={16} /> Back to reports
+              <ArrowLeft size={16} /> Back to Monthly Reports
             </Link>
 
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -319,7 +323,7 @@ export default function ReportDetailClient({ reportId }) {
             </div>
 
             <h1 className="mt-2 font-heading text-2xl font-bold leading-tight text-slate-950 sm:text-3xl">
-              {reportPeriod} Monthly Report
+              {reportHeading}
             </h1>
             <p className="mt-1 text-sm text-slate-500">
               {report.investorName} · {report.clientCode || report.reportCode} · Working version {report.version || 1} · {report.templateSnapshot?.name || "Report template"} v{report.templateVersion || report.templateSnapshot?.version || 1}
@@ -514,7 +518,7 @@ export default function ReportDetailClient({ reportId }) {
       ) : null}
 
       {deleteOpen ? (
-        <div className="fixed inset-0 z-[200] flex items-end justify-center bg-slate-950/60 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label="Delete Monthly Report">
+        <div className="fixed inset-0 z-[200] flex items-end justify-center bg-slate-950/60 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label="Delete Wealth Review">
           <button type="button" className="absolute inset-0" aria-label="Close delete report dialog" onClick={() => working ? null : setDeleteOpen(false)} />
           <section className="relative z-10 w-full max-w-xl rounded-t-[28px] bg-white p-5 shadow-2xl sm:rounded-2xl sm:p-6">
             <div className="flex items-start justify-between gap-4">
@@ -528,7 +532,7 @@ export default function ReportDetailClient({ reportId }) {
               <button type="button" onClick={() => setDeleteOpen(false)} disabled={working} className="grid h-10 w-10 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="Close"><X size={18} /></button>
             </div>
             <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-              This removes the Monthly Report, its stored PDFs, published versions, acknowledgements/download records and Investor Portal visibility. Portfolio Master, Bucket Lists, Profile actions, completed withdrawals and financial transactions are preserved.
+              This removes the Wealth Review, its stored PDFs, published versions, acknowledgements/download records and Investor Portal visibility. Portfolio Master, Bucket Lists, Profile actions, completed withdrawals and financial transactions are preserved.
             </div>
             {reportIsPublished ? <p className="mt-3 text-xs font-semibold text-red-700">This report is published. Deleting it removes the live Investor Portal report immediately.</p> : null}
             <div className="mt-5 grid gap-4">

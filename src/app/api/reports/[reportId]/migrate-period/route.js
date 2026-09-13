@@ -6,6 +6,7 @@ import {
   canStaffAccessRecord,
   verifyStaffRequest
 } from "@/lib/server/firebaseAdmin";
+import { REPORT_TYPE, getCanonicalReportId, getReportCode } from "@/lib/constants/report";
 
 export const runtime = "nodejs";
 
@@ -16,9 +17,12 @@ function requestError(message, statusCode = 422) {
 }
 
 function canonicalReportId(report = {}) {
-  const investorId = String(report.investorId || "").trim();
-  const monthKey = String(report.reportMonthKey || "").trim();
-  return investorId && /^\d{4}-\d{2}$/.test(monthKey) ? `${investorId}_${monthKey}` : "";
+  return getCanonicalReportId(
+    report.investorId,
+    report.reportType === REPORT_TYPE.OPENING ? REPORT_TYPE.OPENING : REPORT_TYPE.MONTHLY,
+    report.reportMonthKey,
+    report.statementDate
+  );
 }
 
 function isPublished(report = {}) {
@@ -95,7 +99,7 @@ export async function POST(request, { params }) {
       ]);
 
       if (!sourceSnapshot.exists) {
-        if (!targetSnapshot.exists) throw requestError("Monthly report was not found.", 404);
+        if (!targetSnapshot.exists) throw requestError("Wealth Review was not found.", 404);
         const targetData = { id: targetSnapshot.id, ...targetSnapshot.data() };
         if (!canStaffAccessRecord(actor, targetData)) throw requestError("You are not authorised to move this report period.", 403);
         if (String(targetData.migratedFromReportId || "") === reportId) {
@@ -107,7 +111,10 @@ export async function POST(request, { params }) {
 
       const report = { id: sourceSnapshot.id, ...sourceSnapshot.data() };
       if (!canStaffAccessRecord(actor, report)) throw requestError("You are not authorised to move this report period.", 403);
-      if (isPublished(report)) throw requestError("A published Monthly Report cannot be moved to another reporting month. Create a revision or unpublish through the controlled workflow instead.", 422);
+      if (isPublished(report)) throw requestError("A published Wealth Review cannot be moved to another reporting period. Create a revision or unpublish through the controlled workflow instead.", 422);
+      if (report.reportType === REPORT_TYPE.OPENING) {
+        throw requestError("The Opening Wealth Review baseline period is fixed to its verified Portfolio Master snapshot and cannot be moved.", 422);
+      }
 
       const expectedTargetId = canonicalReportId(report);
       if (!expectedTargetId || expectedTargetId !== requestedTargetId) {
@@ -117,7 +124,7 @@ export async function POST(request, { params }) {
       if (targetSnapshot.exists) {
         const targetData = { id: targetSnapshot.id, ...targetSnapshot.data() };
         if (String(targetData.migratedFromReportId || "") !== reportId) {
-          throw requestError("A Monthly Report already exists for this Investor and reporting month.", 409);
+          throw requestError("A Wealth Review already exists for this Investor and reporting period.", 409);
         }
         transaction.delete(sourceRef);
         migratedReport = targetData;
@@ -127,7 +134,13 @@ export async function POST(request, { params }) {
       const investorRef = report.investorId ? adminDb.collection("investors").doc(report.investorId) : null;
       const investorSnapshot = investorRef ? await transaction.get(investorRef) : null;
       const now = new Date();
-      const generatedReportCode = `GV-RPT-${Number(report.reportYear || 0)}-${String(Number(report.reportMonth || 0)).padStart(2, "0")}-${report.clientCode || requestedTargetId.slice(-8)}`;
+      const generatedReportCode = getReportCode({
+        reportType: REPORT_TYPE.MONTHLY,
+        reportYear: report.reportYear,
+        reportMonth: report.reportMonth,
+        clientCode: report.clientCode,
+        fallbackToken: requestedTargetId.slice(-8)
+      });
       const targetData = {
         ...sourceSnapshot.data(),
         reportCode: generatedReportCode,
@@ -161,8 +174,8 @@ export async function POST(request, { params }) {
       investorId: migratedReport?.investorId || null,
       advisorUid: migratedReport?.advisorUid || migratedReport?.assignedAdvisorUid || actor.uid,
       action: "monthly_report_period_migrated",
-      title: "Monthly report period updated",
-      description: `Draft Monthly Report was moved from ${reportId} to ${requestedTargetId} after its reporting month changed.`,
+      title: "Wealth Review period updated",
+      description: `Draft Wealth Review was moved from ${reportId} to ${requestedTargetId} after its reporting month changed.`,
       metadata: { sourceReportId: reportId, targetReportId: requestedTargetId, linked },
       createdByUid: actor.uid,
       createdByName: actor.fullName || actor.email || "GrowVest User",
@@ -177,9 +190,9 @@ export async function POST(request, { params }) {
       linked
     });
   } catch (error) {
-    console.error("Monthly report period migration failed", error);
+    console.error("Wealth Review period migration failed", error);
     return NextResponse.json(
-      { error: error?.message || "Unable to update Monthly Report period." },
+      { error: error?.message || "Unable to update Wealth Review period." },
       { status: appRequestErrorStatus(error, error?.statusCode || 500) }
     );
   }

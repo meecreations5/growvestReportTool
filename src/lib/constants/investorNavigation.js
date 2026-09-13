@@ -5,10 +5,10 @@ import { BellRing, CalendarClock, ChartNoAxesCombined, CircleDollarSign, FileBar
 // Home, Portfolio, central GrowVest action, Bucket List and Reports. Profile
 // remains accessible from the Home avatar and the GrowVest action menu.
 export const INVESTOR_NAV_ITEMS = [
-  { label: "Home", href: "/investor/dashboard", icon: Home, mobile: true },
-  { label: "Portfolio", href: "/investor/portfolio", icon: ChartNoAxesCombined, mobile: true },
-  { label: "Bucket List", href: "/investor/goals", icon: Target, mobile: true },
-  { label: "Reports", href: "/investor/reports", icon: FileBarChart2, mobile: true },
+  { label: "Home", href: "/investor/dashboard", icon: Home, mobile: true, tourKey: "home" },
+  { label: "Portfolio", href: "/investor/portfolio", icon: ChartNoAxesCombined, mobile: true, tourKey: "portfolio" },
+  { label: "Bucket List", href: "/investor/goals", icon: Target, mobile: true, tourKey: "goals" },
+  { label: "Reports", href: "/investor/reports", icon: FileBarChart2, mobile: true, tourKey: "reports" },
   { label: "Profile", href: "/investor/profile", icon: UserRound },
   { label: "Insurance & Protection", href: "/investor/insurance", icon: ShieldCheck },
   { label: "Documents", href: "/investor/documents", icon: Files },

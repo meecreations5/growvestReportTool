@@ -298,11 +298,11 @@ export async function mapGenericPortfolioImport(batchId, fileId, file, config = 
 export const previewFundbazaarImport = previewPortfolioImport;
 export const commitFundbazaarImport = commitPortfolioImport;
 
-export async function updatePortfolioGoal(positionId, goalId = "") {
+export async function updatePortfolioGoal(positionId, goalId = "", { effectiveFrom = "" } = {}) {
   return authenticatedFetch(`/api/portfolio/positions/${positionId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ goalId })
+    body: JSON.stringify({ goalId, effectiveFrom })
   });
 }
 

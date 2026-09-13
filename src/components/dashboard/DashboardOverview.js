@@ -260,9 +260,9 @@ function DashboardHeader({ selectedMonthKey, onMonthChange, financialYear, onFin
     <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
       <div>
         <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-blue-700">Monthly reporting workspace</p>
-        <h1 className="mt-2 font-heading text-[34px] font-bold leading-none text-slate-950 sm:text-[42px]">Monthly Report Dashboard</h1>
+        <h1 className="mt-2 font-heading text-[34px] font-bold leading-none text-slate-950 sm:text-[42px]">Wealth Review Dashboard</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-[15px]">
-          Create, review and deliver professional monthly Investor reports from one focused workspace.
+          Create, review and deliver Opening and Monthly Wealth Reviews from one focused workspace.
         </p>
         <p className="mt-2 text-xs font-medium text-slate-400">{today}</p>
       </div>
@@ -505,7 +505,7 @@ function RecentReports({ reports, search, onSearchChange, statusFilter, onStatus
           <div>
             <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-blue-50 text-blue-700"><FileText size={22} /></span>
             <h3 className="mt-4 font-heading text-xl font-bold text-slate-950">No reports found for {monthKeyLabel(selectedMonthKey)}</h3>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Generate a monthly report or adjust the current search and status filter.</p>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Generate a Wealth Review or adjust the current search and status filter.</p>
             <Link href={`/reports/create?month=${selectedMonthKey}`} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-lg bg-blue-700 px-4 text-sm font-semibold text-white"><Plus size={16} /> Generate New Report</Link>
           </div>
         </div>

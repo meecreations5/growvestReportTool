@@ -348,6 +348,7 @@ export async function createPortfolioSnapshot(investorId, actor, { snapshotDate 
       latestSipDate: position.latestSipDate || "",
       sipDebitDay: Number(position.sipDebitDay || 0),
       goalAllocations: position.goalAllocations || [],
+      goalAllocationEffectiveFrom: position.goalAllocationEffectiveFrom || "",
       allocationStatus: position.allocationStatus || portfolioAllocationStatus(position.goalAllocations),
       defaultBucketId: GENERAL_WEALTH_BUCKET_ID,
       defaultBucketName: GENERAL_WEALTH_BUCKET_NAME,

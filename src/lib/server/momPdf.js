@@ -4,6 +4,7 @@ import {
   drawPdfDocumentChrome,
   pdfHexColor,
   pdfSafeText,
+  pdfSafeMultiline,
   PDF_A4_HEIGHT,
   PDF_A4_WIDTH,
   PDF_MARGIN
@@ -58,9 +59,9 @@ function splitLongWord(word, font, size, maxWidth) {
 }
 
 function wrapText(value, font, size, maxWidth) {
-  const text = pdfSafeText(value || "");
+  const text = pdfSafeMultiline(value || "");
   const lines = [];
-  text.split(/\r?\n/).forEach((paragraph, paragraphIndex, paragraphs) => {
+  text.split(/\n/).forEach((paragraph, paragraphIndex, paragraphs) => {
     const words = paragraph.split(/\s+/).filter(Boolean);
     let current = "";
     words.forEach((word) => {

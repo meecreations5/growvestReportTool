@@ -59,6 +59,7 @@ import {
   getPrimaryGoal
 } from "@/lib/constants/assessment";
 import { getMonthLabel } from "@/lib/constants/report";
+import { derivePortfolioGoalProgress } from "@/lib/portfolioGoalAllocation";
 import { formatDateTime } from "@/lib/utils/date";
 import { formatCurrency, formatDate } from "@/lib/utils/format";
 import { nextAnnualOccasion, turningAge } from "@/lib/utils/occasions";
@@ -66,6 +67,7 @@ import { subscribeAssessmentVersions, subscribeInvestor } from "@/services/asses
 import { subscribeInvestorMeetings } from "@/services/meetingService";
 import { subscribeInvestorReports } from "@/services/reportService";
 import { subscribeInvestorActions } from "@/services/actionService";
+import { getInvestorPortfolioView } from "@/services/portfolioService";
 import { ACTION_TERMINAL_STATUSES, isStructuredWithdrawalAction } from "@/lib/constants/actions";
 
 const INVESTOR_PROFILE_TABS = new Set([
@@ -318,7 +320,7 @@ function GoalCard({ goal }) {
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           ["Timeline", goal.timeline || (goal.targetYear ? `By ${goal.targetYear}` : "—")],
-          ["Monthly", formatCurrency(goal.monthlyContribution)],
+          ["Monthly", formatCurrency(goal.monthlyContribution ?? goal.monthlySip)],
           ["Goal type", goal.goalNature || goal.flexibility || "—"],
           ["Target year", goal.targetYear || "—"]
         ].map(([label, value]) => (
@@ -411,6 +413,7 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
   const [meetings, setMeetings] = useState([]);
   const [reports, setReports] = useState([]);
   const [actions, setActions] = useState([]);
+  const [portfolioView, setPortfolioView] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [tab, setTab] = useState(INVESTOR_PROFILE_TABS.has(initialTab) ? initialTab : "overview");
@@ -454,6 +457,21 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
   }, [investor?.id, profile]);
 
   useEffect(() => {
+    if (!investor?.id || !profile) {
+      setPortfolioView(null);
+      return undefined;
+    }
+    let active = true;
+    getInvestorPortfolioView(investor.id)
+      .then((view) => { if (active) setPortfolioView(view); })
+      .catch((nextError) => {
+        console.error("Unable to load Portfolio Master goal progress", nextError);
+        if (active) setPortfolioView(null);
+      });
+    return () => { active = false; };
+  }, [investor?.id, investor?.latestPortfolioSnapshotId, profile]);
+
+  useEffect(() => {
     if (!investor?.id || !profile) return undefined;
     return subscribeInvestorActions(
       investor.id,
@@ -473,7 +491,12 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
     );
   }, [investor?.leadId, profile]);
 
-  const goals = useMemo(() => investorGoals(investor), [investor]);
+  const rawGoals = useMemo(() => investorGoals(investor), [investor]);
+  const liveGoalProgress = useMemo(
+    () => portfolioView?.positions ? derivePortfolioGoalProgress(rawGoals, portfolioView.positions) : null,
+    [portfolioView?.positions, rawGoals]
+  );
+  const goals = liveGoalProgress?.goals || rawGoals;
   const primaryGoal = useMemo(() => getPrimaryGoal(goals), [goals]);
 
   const sortedReports = useMemo(
@@ -514,7 +537,8 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
   const totalGoalCurrent = goals.reduce((sum, goal) => sum + Number(goal.currentAmount || 0), 0);
   const totalInvestments = investments.reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
   const totalLiabilities = liabilities.reduce((sum, item) => sum + Number(item.outstandingAmount || 0), 0);
-  const currentPortfolio = Number(investor.latestPortfolioValue || 0);
+  const currentPortfolio = Number(portfolioView?.investor?.latestPortfolioValue ?? investor.latestPortfolioValue ?? 0);
+  const activeMonthlySip = Number(portfolioView?.investor?.latestPortfolioMonthlySip ?? liveGoalProgress?.activeMonthlySip ?? investor.latestPortfolioMonthlySip ?? 0);
   const latestGain = Number(latestReport?.summary?.investmentGain || 0);
   const latestNewMoney = Number(latestReport?.summary?.newMoneyAdded || 0);
   const latestWithdrawals = Number(latestReport?.summary?.withdrawals || latestReport?.summary?.amountWithdrawn || 0);
@@ -534,7 +558,7 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
     { value: "portfolio", label: "Portfolio", icon: WalletCards },
     { value: "protection", label: "Insurance & Protection", icon: ShieldCheck },
     { value: "withdrawals", label: "Withdrawals & Cash Needs", icon: CircleDollarSign, count: actions.filter(isStructuredWithdrawalAction).length },
-    { value: "reports", label: "Monthly Reports", icon: FileBarChart, count: reports.length },
+    { value: "reports", label: "Wealth Reviews", icon: FileBarChart, count: reports.length },
     { value: "actions", label: "Advisor Follow-up", icon: ListChecks, count: actions.filter((item) => !ACTION_TERMINAL_STATUSES.includes(item.status)).length },
     { value: "meetings", label: "Meetings & MOM", icon: CalendarDays, count: meetings.length },
     { value: "assessment", label: "Assessment", icon: ClipboardCheck },
@@ -651,7 +675,7 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
               <CalendarPlus size={16} /> Meeting
             </Link>
             <Link href={`/reports/create?investorId=${investor.id}`} className="col-span-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#1F4ED8] px-5 text-sm font-semibold text-white transition hover:bg-[#183FB3]">
-              <FileBarChart size={16} /> Create Monthly Report
+              <FileBarChart size={16} /> Create Wealth Review
             </Link>
           </div>
         </div>
@@ -694,8 +718,8 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
               <SectionHeader
                 eyebrow="Financial journey"
                 title="Progress at a glance"
-                description="The latest reported portfolio, primary goal and monthly contribution capacity in one view."
-                action={<Link href={`/reports/create?investorId=${investor.id}`} className="text-sm font-semibold text-blue-700 hover:underline">Create this month&apos;s report</Link>}
+                description="The latest verified portfolio, goal progress and active monthly SIP in one view."
+                action={<Link href={`/reports/create?investorId=${investor.id}`} className="text-sm font-semibold text-blue-700 hover:underline">Create Wealth Review</Link>}
               />
 
               <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(250px,0.75fr)]">
@@ -727,9 +751,9 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
                     <p className="mt-1 text-xs text-slate-500">{goals.length} goal{goals.length === 1 ? "" : "s"} · {goalProgress.toFixed(1)}% funded</p>
                   </div>
                   <div className="rounded-xl border border-slate-200 p-4">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Monthly investment capacity</p>
-                    <p className="mt-2 font-heading text-2xl font-bold text-slate-950 tabular-nums">{formatCurrency(preferenceTotals.sipAmount)}</p>
-                    <p className="mt-1 text-xs text-slate-500">Across {preferences.length} preference plan{preferences.length === 1 ? "" : "s"}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Active monthly SIP</p>
+                    <p className="mt-2 font-heading text-2xl font-bold text-slate-950 tabular-nums">{formatCurrency(activeMonthlySip)}</p>
+                    <p className="mt-1 text-xs text-slate-500">Portfolio Master{preferenceTotals.sipAmount ? ` · Planned capacity ${formatCurrency(preferenceTotals.sipAmount)}` : ""}</p>
                   </div>
                 </div>
               </div>
@@ -790,7 +814,7 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
             <Card className="p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">Latest monthly report</p>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">Latest Wealth Review</p>
                   <h2 className="mt-1 font-heading text-xl font-bold text-slate-950">{reportMonthText(latestReport)}</h2>
                 </div>
                 <span className="grid h-10 w-10 place-items-center rounded-lg bg-blue-50 text-blue-700"><FileBarChart size={19} /></span>
@@ -813,7 +837,7 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
                   </div>
                 </>
               ) : (
-                <div className="mt-4 rounded-lg bg-slate-50 p-4 text-sm leading-6 text-slate-500">No monthly report has been created for this investor.</div>
+                <div className="mt-4 rounded-lg bg-slate-50 p-4 text-sm leading-6 text-slate-500">No Wealth Review has been created for this investor.</div>
               )}
             </Card>
 
@@ -832,7 +856,7 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
                 </div>
                 <span className="grid h-10 w-10 place-items-center rounded-lg bg-cyan-50 text-cyan-700"><UserRound size={19} /></span>
               </div>
-              <p className="mt-3 text-sm leading-6 text-slate-500">Responsible for reviews, advisory communication and monthly report delivery.</p>
+              <p className="mt-3 text-sm leading-6 text-slate-500">Responsible for reviews, investor communication and Wealth Review delivery.</p>
               {investor.assignedAdvisorEmail ? <a href={`mailto:${investor.assignedAdvisorEmail}`} className="mt-4 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Mail size={15} /> Email advisor</a> : null}
             </Card>
 
@@ -952,7 +976,7 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
         <div className="grid gap-5">
           <WithdrawalCashNeedsPanel investor={investor} staff />
           <Card className="p-5 sm:p-6">
-            <SectionHeader eyebrow="Single source of truth" title="How withdrawals flow" description="Plan the cash need once in the Investor Profile. Monthly Reports read the planned/in-process/completed state automatically; the report does not ask the Advisor to enter withdrawal figures again." />
+            <SectionHeader eyebrow="Single source of truth" title="How withdrawals flow" description="Plan the cash need once in the Investor Profile. Wealth Reviews read the planned/in-process/completed state automatically; the review does not ask the Partner to enter withdrawal figures again." />
             <div className="mt-5 grid gap-3 md:grid-cols-3">
               <div className="rounded-xl border border-violet-200 bg-violet-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-violet-700">Planned</p><p className="mt-2 text-sm leading-6 text-violet-900">Choose the Bucket List, one or more Mutual Funds, Partial/Complete withdrawal and SIP Continue/Pause/Stop.</p></div>
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-amber-700">In process</p><p className="mt-2 text-sm leading-6 text-amber-900">Advisor executes the redemption. Portfolio figures remain unchanged until actual execution is confirmed.</p></div>

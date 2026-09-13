@@ -19,6 +19,11 @@ export async function PATCH(request, { params }) {
     const investor = await getAccessibleInvestor(actor, position.investorId);
 
     const goalId = String(payload?.goalId || "").trim();
+    const today = indiaDateKey();
+    const requestedEffectiveFrom = String(payload?.effectiveFrom || "").slice(0, 10);
+    const effectiveFrom = /^\d{4}-\d{2}-\d{2}$/.test(requestedEffectiveFrom) && requestedEffectiveFrom <= today
+      ? requestedEffectiveFrom
+      : today;
     let goalAllocations = [generalWealthAllocation()];
     if (goalId) {
       const goals = Array.isArray(investor.bucketList) && investor.bucketList.length ? investor.bucketList : (investor.goals || []);
@@ -39,6 +44,7 @@ export async function PATCH(request, { params }) {
       allocationStatus: portfolioAllocationStatus(goalAllocations),
       defaultBucketApplied: goalAllocations.some((item) => !item.goalId),
       goalAllocationSource: "staff",
+      goalAllocationEffectiveFrom: effectiveFrom,
       goalAllocationUpdatedAt: FieldValue.serverTimestamp(),
       goalAllocationUpdatedByUid: actor.uid,
       goalAllocationUpdatedByName: actor.fullName || actor.email || "GrowVest User",
@@ -64,7 +70,8 @@ export async function PATCH(request, { params }) {
           previousGoalId: previousGoal?.goalId || "",
           previousGoalName: previousGoal?.goalName || "General Wealth",
           nextGoalId: nextGoal?.goalId || "",
-          nextGoalName: nextGoal?.goalName || "General Wealth"
+          nextGoalName: nextGoal?.goalName || "General Wealth",
+          effectiveFrom
         },
         createdByUid: actor.uid,
         createdByName: actor.fullName || actor.email || "GrowVest User",
@@ -73,12 +80,12 @@ export async function PATCH(request, { params }) {
     }
 
     const snapshot = await createPortfolioSnapshot(position.investorId, actor, {
-      snapshotDate: indiaDateKey(),
+      snapshotDate: today,
       verificationStatus: "verified",
       sourceImportId: position.sourceImportId || null
     });
 
-    return Response.json({ positionId, goalAllocations, snapshot });
+    return Response.json({ positionId, goalAllocations, goalAllocationEffectiveFrom: effectiveFrom, snapshot });
   } catch (error) {
     console.error("Portfolio goal allocation failed", error);
     return Response.json({ error: error?.message || "Unable to update goal allocation." }, { status: appRequestErrorStatus(error, 500) });

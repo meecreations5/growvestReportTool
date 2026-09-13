@@ -263,8 +263,8 @@ export async function seedDefaultCommentaryExamples(currentUser) {
       category: "monthly_summary",
       scope: COMMENTARY_SCOPE.REUSABLE,
       summary: "A calm, long-term market summary suitable for standard monthly reports.",
-      content: "Markets can move differently over short periods, but the portfolio should continue to be evaluated against the Investor's goals, time horizon and agreed asset allocation. This month's review focuses on progress, disciplined contributions and any rebalancing required to keep the financial journey on track.",
-      tags: ["monthly", "discipline", "long-term"]
+      content: "Markets can move differently over short periods, but the portfolio should continue to be evaluated against the Investor's goals, time horizon and agreed asset allocation. This month's review focuses on progress, consistent contributions and any rebalancing required to keep the financial journey on track.",
+      tags: ["monthly", "consistency", "long-term"]
     },
     {
       title: "Volatility and portfolio risk note",

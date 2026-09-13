@@ -58,7 +58,7 @@ function InvestorOption({ investor, selected, onSelect, disabled = false, compac
                 <span className="mt-0.5 block text-xs font-semibold text-slate-800">{formatCurrency(portfolioValue(investor))}</span>
               </span>
               <span>
-                <span className="block text-[10px] font-bold uppercase tracking-wide text-slate-400">Advisor</span>
+                <span className="block text-[10px] font-bold uppercase tracking-wide text-slate-400">Conscious Wealth Partner</span>
                 <span className="mt-0.5 block truncate text-xs font-semibold text-slate-800">{investor.assignedAdvisorName || investor.advisorName || "Not assigned"}</span>
               </span>
             </span>
@@ -121,7 +121,7 @@ export default function InvestorSelectionStep({ investors, selectedInvestor, onS
 
           <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <InvestorFact icon={WalletCards} label="Current portfolio" value={formatCurrency(portfolioValue(selectedInvestor))} />
-            <InvestorFact icon={BriefcaseBusiness} label="Assigned Advisor" value={selectedInvestor.assignedAdvisorName || selectedInvestor.advisorName || "Not assigned"} />
+            <InvestorFact icon={BriefcaseBusiness} label="Conscious Wealth Partner" value={selectedInvestor.assignedAdvisorName || selectedInvestor.advisorName || "Not assigned"} />
             <InvestorFact icon={Mail} label="Email" value={selectedInvestor.email || "Not available"} />
             <InvestorFact icon={ShieldCheck} label="Investor Portal" value={selectedInvestor.portalEnabled ? "Active" : "Not enabled"} />
           </dl>
@@ -132,7 +132,7 @@ export default function InvestorSelectionStep({ investors, selectedInvestor, onS
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-700"><Check size={17} /></span>
             <div>
               <p className="text-sm font-semibold text-slate-950">Investor profile linked</p>
-              <p className="mt-1 text-sm leading-6 text-slate-500">Client code, contact details, Advisor information and goal definitions are inherited from this profile. Current holdings come only from the verified Portfolio Master.</p>
+              <p className="mt-1 text-sm leading-6 text-slate-500">Client code, contact details, Conscious Wealth Partner information and goal definitions are inherited from this profile. Current holdings come only from the verified Portfolio Master.</p>
             </div>
           </div>
         </div>

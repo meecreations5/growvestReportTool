@@ -61,7 +61,7 @@ export const DEFAULT_BRANDING = {
   whiteColor: "#FFFFFF",
   watermarkOpacity: 4,
   confidentialLabel: "Confidential client report",
-  pdfFilenamePattern: "{InvestorName}_{Month}_{Year}_GrowVest_Report.pdf",
+  pdfFilenamePattern: "{CompanyName}_{ReportType}_{InvestorName}_{ReportPeriod}.pdf",
   showPageNumbers: true,
   showContactInFooter: true,
   showFooterTagline: true,

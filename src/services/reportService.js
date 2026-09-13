@@ -17,15 +17,22 @@ import { USER_ROLES } from "@/lib/constants/roles";
 import {
   ASSET_CLASS_COLORS,
   REPORT_STATUS,
+  REPORT_TYPE,
   calculatePercentage,
+  getCanonicalReportId,
   getMonthLabel,
-  getReportMonthKey
+  getReportCode,
+  getReportDisplayTitle,
+  getReportMonthKey,
+  getReportTypeLabel
 } from "@/lib/constants/report";
 import { sanitizeForFirestore } from "@/services/assessmentService";
+import { buildReportReconciliation } from "@/lib/reportReconciliation";
 import { syncMonthlyReportActions } from "@/services/actionService";
 import { GENERAL_WEALTH_BUCKET_NAME, normalisePortfolioGoalAllocations, portfolioBucketLabel } from "@/lib/portfolioGoalAllocation";
 import {
   DEFAULT_REPORT_TEMPLATE_ID,
+  LOCKED_REPORT_VISUAL_VERSION,
   createReportTemplateSnapshot,
   getSystemReportTemplate
 } from "@/lib/constants/reportTemplates";
@@ -50,6 +57,59 @@ function rowsFromSnapshot(snapshot) {
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
 }
 
+function reportRouteHint(reportId = "") {
+  const value = String(reportId || "").trim();
+  if (!value) return null;
+  if (value.endsWith("_opening")) {
+    return { investorId: value.slice(0, -"_opening".length), reportType: REPORT_TYPE.OPENING, reportMonthKey: "" };
+  }
+  const monthly = value.match(/^(.*)_(\d{4}-\d{2})$/);
+  if (monthly) {
+    return { investorId: monthly[1], reportType: REPORT_TYPE.MONTHLY, reportMonthKey: monthly[2] };
+  }
+  return null;
+}
+
+async function resolveMissingMonthlyReport(reportId) {
+  // Draft report IDs can change when an unpublished report is moved to its
+  // canonical period ID. Resolve that migration so stale edit links self-heal.
+  try {
+    const migrated = await getDocs(query(
+      collection(db, "monthlyReports"),
+      where("migratedFromReportId", "==", reportId),
+      limit(2)
+    ));
+    const migratedRows = rowsFromSnapshot(migrated);
+    if (migratedRows.length === 1) return migratedRows[0];
+    if (migratedRows.length > 1) return sortReportsDescending(migratedRows)[0];
+  } catch (error) {
+    console.warn("Unable to resolve migrated Wealth Review ID", error?.message || error);
+  }
+
+  // v0.34.13 introduced canonical IDs (`{investorId}_opening` and
+  // `{investorId}_YYYY-MM`). If the route uses the new ID while a pre-release
+  // draft still carries its legacy Firestore ID, recover it by investor/period.
+  const hint = reportRouteHint(reportId);
+  if (!hint?.investorId) return null;
+  try {
+    const snapshot = await getDocs(query(
+      collection(db, "monthlyReports"),
+      where("investorId", "==", hint.investorId)
+    ));
+    const candidates = sortReportsDescending(rowsFromSnapshot(snapshot));
+    if (hint.reportType === REPORT_TYPE.OPENING) {
+      return candidates.find((item) => item.reportType === REPORT_TYPE.OPENING) || null;
+    }
+    return candidates.find((item) =>
+      item.reportType !== REPORT_TYPE.OPENING
+      && String(item.reportMonthKey || "") === hint.reportMonthKey
+    ) || null;
+  } catch (error) {
+    console.warn("Unable to resolve legacy Wealth Review ID", error?.message || error);
+    return null;
+  }
+}
+
 
 async function migrateMonthlyReportPeriod(sourceReportId, targetReportId) {
   if (!sourceReportId || !targetReportId || sourceReportId === targetReportId) return targetReportId || sourceReportId;
@@ -60,7 +120,7 @@ async function migrateMonthlyReportPeriod(sourceReportId, targetReportId) {
     body: JSON.stringify({ targetReportId })
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || "Unable to move the Monthly Report to the selected reporting month.");
+  if (!response.ok) throw new Error(payload.error || "Unable to move the Wealth Review to the selected reporting period.");
   return payload.reportId || targetReportId;
 }
 
@@ -134,6 +194,7 @@ function normaliseFunds(rows = []) {
     goalId: item.goalId || primaryBucket?.goalId || "",
     goalName: item.goalName || primaryBucket?.goalName || GENERAL_WEALTH_BUCKET_NAME,
     goalAllocations,
+    goalAllocationEffectiveFrom: item.goalAllocationEffectiveFrom || "",
     bucketLabel: item.bucketLabel || portfolioBucketLabel(goalAllocations),
     monthlySip: Number(item.monthlySip || 0),
     currentValue: Number(item.currentValue || 0),
@@ -292,7 +353,11 @@ function renderableReportData(report = {}) {
     reportMonth: Number(report.reportMonth || 0),
     reportYear: Number(report.reportYear || 0),
     reportMonthKey: report.reportMonthKey || "",
+    reportType: report.reportType || REPORT_TYPE.MONTHLY,
+    reportTypeLabel: report.reportTypeLabel || getReportTypeLabel(report.reportType || REPORT_TYPE.MONTHLY),
     statementDate: report.statementDate || "",
+    openingBaseline: report.openingBaseline || null,
+    reportReconciliation: report.reportReconciliation || null,
     portfolioAsOfDate: report.portfolioAsOfDate || "",
     sourcePortfolioSnapshotId: report.sourcePortfolioSnapshotId || "",
     portfolioVerificationStatus: report.portfolioVerificationStatus || "",
@@ -370,7 +435,8 @@ function normaliseReportPayload(payload, currentUser, status) {
   const reportYear = Number(payload.reportYear);
   const reportMonthKey = getReportMonthKey(reportYear, reportMonth);
 
-  return {
+  const reportType = payload.reportType === REPORT_TYPE.OPENING ? REPORT_TYPE.OPENING : REPORT_TYPE.MONTHLY;
+  const normalised = {
     investorId: payload.investorId,
     investorName: payload.investorName || "",
     clientCode: payload.clientCode || "",
@@ -387,7 +453,15 @@ function normaliseReportPayload(payload, currentUser, status) {
     reportMonth,
     reportYear,
     reportMonthKey,
+    reportType,
+    reportTypeLabel: getReportTypeLabel(reportType),
     statementDate: payload.statementDate,
+    openingBaseline: reportType === REPORT_TYPE.OPENING ? {
+      asOfDate: payload.openingBaseline?.asOfDate || payload.statementDate || "",
+      sourceSnapshotId: payload.openingBaseline?.sourceSnapshotId || payload.sourcePortfolioSnapshotId || "",
+      sourceSnapshotDate: payload.openingBaseline?.sourceSnapshotDate || payload.portfolioAsOfDate || payload.statementDate || "",
+      established: Boolean(payload.openingBaseline?.established || payload.sourcePortfolioSnapshotId)
+    } : null,
     portfolioAsOfDate: payload.portfolioAsOfDate || "",
     sourcePortfolioSnapshotId: payload.sourcePortfolioSnapshotId || null,
     portfolioVerificationStatus: payload.portfolioVerificationStatus || "",
@@ -426,7 +500,7 @@ function normaliseReportPayload(payload, currentUser, status) {
       date: item.date || "",
       status: item.status || "actual"
     })),
-    title: payload.title || `Monthly Portfolio Report — ${getMonthLabel(reportMonth)} ${reportYear}`,
+    title: payload.title || getReportDisplayTitle(reportType, reportMonth, reportYear),
     status,
     investorVisible: Boolean(payload.investorVisible && status === REPORT_STATUS.COMPLETED),
     templateId: payload.templateId || payload.templateSnapshot?.id || DEFAULT_REPORT_TEMPLATE_ID,
@@ -528,6 +602,8 @@ function normaliseReportPayload(payload, currentUser, status) {
     updatedByName: currentUser.fullName,
     updatedAt: serverTimestamp()
   };
+  normalised.reportReconciliation = buildReportReconciliation(normalised);
+  return normalised;
 }
 
 export function subscribeMonthlyReports(currentUser, callback, onError) {
@@ -649,7 +725,19 @@ export function subscribeMonthlyReport(reportId, callback, onError) {
 
 export async function getMonthlyReport(reportId) {
   const snapshot = await getDoc(doc(db, "monthlyReports", reportId));
-  return snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
+  if (snapshot.exists()) return { id: snapshot.id, ...snapshot.data() };
+  return resolveMissingMonthlyReport(reportId);
+}
+
+export async function getOpeningInvestorReport(investorId) {
+  const canonicalId = getCanonicalReportId(investorId, REPORT_TYPE.OPENING, "", "");
+  const canonical = await getDoc(doc(db, "monthlyReports", canonicalId));
+  if (canonical.exists()) return { id: canonical.id, ...canonical.data() };
+
+  // Compatibility fallback for prerelease/test opening records that used a
+  // dated document ID before the one-opening-per-investor convention.
+  const snapshot = await getDocs(query(collection(db, "monthlyReports"), where("investorId", "==", investorId)));
+  return sortReportsDescending(rowsFromSnapshot(snapshot)).find((item) => item.reportType === REPORT_TYPE.OPENING) || null;
 }
 
 export async function getLatestInvestorReport(investorId, excludeMonthKey = "") {
@@ -673,11 +761,38 @@ export async function getLatestInvestorReport(investorId, excludeMonthKey = "") 
 export async function saveMonthlyReport(payload, currentUser, { reportId = null, complete = false, autosave = false } = {}) {
   const status = complete ? REPORT_STATUS.COMPLETED : REPORT_STATUS.DRAFT;
   const normalised = normaliseReportPayload(payload, currentUser, status);
-  const documentId = reportId || `${normalised.investorId}_${normalised.reportMonthKey}`;
+  const canonicalPeriodId = getCanonicalReportId(normalised.investorId, normalised.reportType, normalised.reportMonthKey, normalised.statementDate);
+
+  if (normalised.reportType === REPORT_TYPE.MONTHLY) {
+    const [openingReport, publishedReports] = await Promise.all([
+      getOpeningInvestorReport(normalised.investorId),
+      getPublishedInvestorReportsOnce(normalised.investorId, 12)
+    ]);
+    const hasLegacyPublishedReview = publishedReports.some((item) => item.reportType !== REPORT_TYPE.OPENING);
+    if (!openingReport && !hasLegacyPublishedReview) {
+      throw new Error("The first investor-facing GrowVest report must be an Opening Wealth Review. Create and publish the Opening Wealth Review before starting Monthly Wealth Reviews.");
+    }
+    if (openingReport) {
+      const openingPublished = Boolean(
+        openingReport.investorVisible === true
+        && (
+          openingReport.activePublishedVersionId
+          || Number(openingReport.publishedVersion || 0) > 0
+          || openingReport.publicationStatus === "published"
+        )
+      );
+      if (!openingPublished) {
+        throw new Error("Publish the Opening Wealth Review before creating a Monthly Wealth Review for this investor.");
+      }
+      if (openingReport.reportMonthKey && normalised.reportMonthKey <= openingReport.reportMonthKey) {
+        throw new Error(`The Opening Wealth Review already establishes this investor's baseline in ${getMonthLabel(openingReport.reportMonth)} ${openingReport.reportYear}. Monthly Wealth Reviews must start from the following month.`);
+      }
+    }
+  }
+
+  const documentId = reportId || canonicalPeriodId;
   const reportRef = doc(db, "monthlyReports", documentId);
   const existingSnapshot = await getDoc(reportRef);
-  const canonicalPeriodId = `${normalised.investorId}_${normalised.reportMonthKey}`;
-
   if (!reportId && existingSnapshot.exists()) {
     throw new Error(`A report already exists for ${normalised.investorName} for ${getMonthLabel(normalised.reportMonth)} ${normalised.reportYear}.`);
   }
@@ -685,7 +800,7 @@ export async function saveMonthlyReport(payload, currentUser, { reportId = null,
   const expectedVersion = Number(payload.version || 0);
   const existingVersion = Number(existingSnapshot.data()?.version || 0);
   if (reportId && existingSnapshot.exists() && expectedVersion > 0 && existingVersion > expectedVersion) {
-    throw new Error("This Monthly Report was updated in another session. Refresh the report before saving so newer changes are not overwritten.");
+    throw new Error("This Wealth Review was updated in another session. Refresh before saving so newer changes are not overwritten.");
   }
 
   if (reportId && canonicalPeriodId !== reportId) {
@@ -700,13 +815,25 @@ export async function saveMonthlyReport(payload, currentUser, { reportId = null,
   const existing = existingSnapshot.data() || {};
   const hasPublishedSnapshot = Boolean(existing.activePublishedVersionId || Number(existing.publishedVersion || 0) > 0 || existing.publicationStatus === "published");
   if (reportId && canonicalPeriodId !== reportId && hasPublishedSnapshot) {
-    throw new Error("A published Monthly Report cannot be moved to another reporting month. Create a new report or use the controlled revision workflow.");
+    throw new Error("A published Wealth Review cannot be moved to another reporting period. Create a new report or use the controlled revision workflow.");
   }
-  const generatedReportCode = `GV-RPT-${normalised.reportYear}-${String(normalised.reportMonth).padStart(2, "0")}-${normalised.clientCode || documentId.slice(-8)}`;
-  // Preserve the immutable browser-side reportCode while editing an existing
-  // draft. If the reporting month changed, the authenticated server migration
-  // recalculates the canonical code when it moves the document ID.
-  const reportCode = existing.reportCode || generatedReportCode;
+  const generatedReportCode = getReportCode({
+    reportType: normalised.reportType,
+    statementDate: normalised.statementDate,
+    reportYear: normalised.reportYear,
+    reportMonth: normalised.reportMonth,
+    clientCode: normalised.clientCode,
+    fallbackToken: documentId.slice(-8)
+  });
+  // Keep the published report reference immutable. During a first Opening
+  // Wealth Review draft, however, the verified Portfolio Master snapshot can
+  // replace the provisional statement date; in that case refresh the code so
+  // its YYYYMMDD token matches the actual opening baseline.
+  const openingBaselineDateChanged = normalised.reportType === REPORT_TYPE.OPENING
+    && existing.reportType === REPORT_TYPE.OPENING
+    && String(existing.statementDate || "") !== String(normalised.statementDate || "")
+    && !hasPublishedSnapshot;
+  const reportCode = openingBaselineDateChanged ? generatedReportCode : (existing.reportCode || generatedReportCode);
   const version = autosave && existingSnapshot.exists()
     ? Math.max(1, Number(existing.version || 1))
     : Number(existing.version || 0) + 1;
@@ -717,6 +844,7 @@ export async function saveMonthlyReport(payload, currentUser, { reportId = null,
     && Boolean(existing.pdfStoragePath || existing.activePublishedVersionId);
   const reportWrite = {
     ...normalised,
+    visualDesignVersion: existing.visualDesignVersion || (!hasPublishedSnapshot ? LOCKED_REPORT_VISUAL_VERSION : (normalised.visualDesignVersion || "")),
     reportCode,
     version,
     status: hasPublishedSnapshot ? REPORT_STATUS.COMPLETED : normalised.status,
@@ -760,7 +888,7 @@ export async function saveMonthlyReport(payload, currentUser, { reportId = null,
       advisorUid: normalised.advisorUid,
       assignedAdvisorUid: normalised.assignedAdvisorUid,
       action: complete ? "monthly_report_completed" : "monthly_report_saved",
-      title: complete ? "Monthly report completed" : "Monthly report draft saved",
+      title: complete ? `${normalised.reportTypeLabel} completed` : `${normalised.reportTypeLabel} draft saved`,
       description: `${normalised.title} was ${complete ? "completed" : "saved as a draft"} by ${currentUser.fullName}.`,
       metadata: {
         reportMonthKey: normalised.reportMonthKey,
@@ -779,6 +907,7 @@ export async function saveMonthlyReport(payload, currentUser, { reportId = null,
   batch.update(doc(db, "investors", normalised.investorId), {
     latestReportId: documentId,
     latestReportMonthKey: normalised.reportMonthKey,
+    latestReportType: normalised.reportType,
     latestReportStatus: reportWrite.status,
     latestReportedCorpus: normalised.summary.totalCorpus,
     nextReviewDate: normalised.nextReview.date || null,
@@ -805,10 +934,10 @@ export async function saveMonthlyReport(payload, currentUser, { reportId = null,
 export async function setReportInvestorVisibility(reportId, investorVisible, currentUser) {
   const reportRef = doc(db, "monthlyReports", reportId);
   const snapshot = await getDoc(reportRef);
-  if (!snapshot.exists()) throw new Error("Monthly report was not found.");
+  if (!snapshot.exists()) throw new Error("Wealth review was not found.");
   const report = snapshot.data();
   if (investorVisible && report.status !== REPORT_STATUS.COMPLETED) {
-    throw new Error("Complete the monthly report before publishing it to the Investor Portal.");
+    throw new Error("Complete the wealth review before publishing it to the Investor Portal.");
   }
 
   const batch = writeBatch(db);
@@ -825,9 +954,11 @@ export async function setReportInvestorVisibility(reportId, investorVisible, cur
     batch.set(notificationRef, {
       recipientUid: report.investorPortalUid,
       recipientType: "investor",
-      title: "Monthly Wealth Report Available",
-      message: `Your GrowVest report for ${getMonthLabel(report.reportMonth)} ${report.reportYear} is ready.`,
-      eventType: "monthly_report_published",
+      title: `${getReportTypeLabel(report.reportType || REPORT_TYPE.MONTHLY)} Available`,
+      message: report.reportType === REPORT_TYPE.OPENING
+        ? `Your GrowVest Opening Wealth Review as of ${report.statementDate || report.reportMonthKey} is ready.`
+        : `Your GrowVest Monthly Wealth Review for ${getMonthLabel(report.reportMonth)} ${report.reportYear} is ready.`,
+      eventType: report.reportType === REPORT_TYPE.OPENING ? "opening_wealth_review_published" : "monthly_report_published",
       link: `/investor/reports/${reportId}`,
       investorId: report.investorId,
       reportId,
@@ -846,9 +977,9 @@ export async function setReportInvestorVisibility(reportId, investorVisible, cur
     reportId,
     investorId: report.investorId,
     advisorUid: report.advisorUid,
-    action: investorVisible ? "monthly_report_published" : "monthly_report_unpublished",
-    title: investorVisible ? "Monthly report published" : "Monthly report removed from Investor Portal",
-    description: `${report.title || "Monthly report"} was ${investorVisible ? "published" : "unpublished"} by ${currentUser.fullName}.`,
+    action: investorVisible ? "wealth_review_published" : "wealth_review_unpublished",
+    title: investorVisible ? `${getReportTypeLabel(report.reportType || REPORT_TYPE.MONTHLY)} published` : "Wealth review removed from Investor Portal",
+    description: `${report.title || getReportTypeLabel(report.reportType || REPORT_TYPE.MONTHLY)} was ${investorVisible ? "published" : "unpublished"} by ${currentUser.fullName}.`,
     createdByUid: currentUser.id,
     createdByName: currentUser.fullName,
     createdAt: serverTimestamp()
@@ -905,10 +1036,10 @@ export async function acknowledgePublishedReport(report, currentUser, { requestD
     batch.set(notificationRef, {
       recipientUid: report.advisorUid,
       recipientType: "advisor",
-      title: requestDiscussion ? "Investor requested a report discussion" : "Investor acknowledged monthly report",
+      title: requestDiscussion ? "Investor requested a report discussion" : "Investor acknowledged Wealth Review",
       message: requestDiscussion
-        ? `${currentUser.fullName || report.investorName || "Investor"} requested a discussion about ${report.title || "the monthly report"}.`
-        : `${currentUser.fullName || report.investorName || "Investor"} acknowledged ${report.title || "the monthly report"}.`,
+        ? `${currentUser.fullName || report.investorName || "Investor"} requested a discussion about ${report.title || "the Wealth Review"}.`
+        : `${currentUser.fullName || report.investorName || "Investor"} acknowledged ${report.title || "the Wealth Review"}.`,
       eventType: requestDiscussion ? "report_discussion_requested" : "report_acknowledged",
       link: `/reports/${report.id}`,
       investorId: report.investorId,

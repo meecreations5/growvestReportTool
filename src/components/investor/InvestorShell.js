@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Bell,
+  CircleHelp,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -25,6 +26,7 @@ import InvestorNotificationToasts from "@/components/notifications/InvestorNotif
 import BrandLogo from "@/components/branding/BrandLogo";
 import InvestorBrandMark from "@/components/investor/mobile/InvestorBrandMark";
 import InvestorEntryMotion from "@/components/investor/mobile/InvestorEntryMotion";
+import InvestorAppGuideTour, { OPEN_GUIDE_EVENT } from "@/components/investor/InvestorAppGuideTour";
 import DemoInvestorCta from "@/components/investor/DemoInvestorCta";
 import { PwaConnectionBanner, PwaInstallCard, PwaUpdateBanner } from "@/components/pwa/PwaStatus";
 import ThemeToggle from "@/components/layout/ThemeToggle";
@@ -125,6 +127,7 @@ export default function InvestorShell({ children }) {
       <PwaConnectionBanner />
       <PwaUpdateBanner />
       <InvestorNotificationToasts />
+      <InvestorAppGuideTour investorId={profile?.investorId || profile?.id} pathname={pathname} />
 
       <header className="sticky top-0 z-30 pt-[env(safe-area-inset-top)]">
         {/* v0.34.3 visual-corrected mobile app bar. Home joins the Royal Trust Blue wealth hero; every secondary screen has a consistent back path. */}
@@ -250,14 +253,14 @@ export default function InvestorShell({ children }) {
             const Icon = item.icon;
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
-              <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={`gv-signature-nav-item flex min-h-[60px] touch-manipulation flex-col items-center justify-center gap-1 text-[10px] font-semibold transition ${active ? "text-[#1F4ED8]" : "text-[#6B7280]"}`}>
+              <Link key={item.href} href={item.href} data-investor-tour={item.tourKey} aria-current={active ? "page" : undefined} className={`gv-signature-nav-item flex min-h-[60px] touch-manipulation flex-col items-center justify-center gap-1 text-[10px] font-semibold transition ${active ? "text-[#1F4ED8]" : "text-[#6B7280]"}`}>
                 <Icon size={19} strokeWidth={active ? 1.55 : 1.4} />
                 <span className="leading-none">{item.label}</span>
               </Link>
             );
           })}
 
-          <button type="button" onClick={() => setMoreOpen(true)} aria-current={mobileMoreActive ? "page" : undefined} className="gv-signature-center relative flex min-h-[60px] touch-manipulation flex-col items-center justify-end pb-1.5" aria-label="Open GrowVest actions">
+          <button type="button" onClick={() => setMoreOpen(true)} data-investor-tour="growvest" aria-current={mobileMoreActive ? "page" : undefined} className="gv-signature-center relative flex min-h-[60px] touch-manipulation flex-col items-center justify-end pb-1.5" aria-label="Open GrowVest actions">
             <span className="absolute -top-4 grid h-12 w-12 place-items-center rounded-full border-4 border-white bg-[#1F4ED8] shadow-[0_8px_20px_rgba(31,78,216,.24)]">
               <InvestorBrandMark variant="icon" inverse className="h-auto w-[27px] brightness-0 invert" />
             </span>
@@ -268,7 +271,7 @@ export default function InvestorShell({ children }) {
             const Icon = item.icon;
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
-              <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={`gv-signature-nav-item flex min-h-[60px] touch-manipulation flex-col items-center justify-center gap-1 text-[10px] font-semibold transition ${active ? "text-[#1F4ED8]" : "text-[#6B7280]"}`}>
+              <Link key={item.href} href={item.href} data-investor-tour={item.tourKey} aria-current={active ? "page" : undefined} className={`gv-signature-nav-item flex min-h-[60px] touch-manipulation flex-col items-center justify-center gap-1 text-[10px] font-semibold transition ${active ? "text-[#1F4ED8]" : "text-[#6B7280]"}`}>
                 <Icon size={19} strokeWidth={active ? 1.55 : 1.4} />
                 <span className="max-w-[68px] truncate leading-none">{item.label}</span>
               </Link>
@@ -328,6 +331,11 @@ export default function InvestorShell({ children }) {
                 <span className="min-w-0 flex-1 text-[12px] font-semibold">Notifications</span>
                 {notifications?.unreadCount ? <span className="rounded-full bg-[#E53935] px-2 py-0.5 text-[9px] font-bold text-white">{Math.min(notifications.unreadCount, 99)}</span> : <ChevronRight size={16} strokeWidth={1.5} className="text-slate-300" />}
               </Link>
+              <button type="button" onClick={() => { setMoreOpen(false); window.setTimeout(() => window.dispatchEvent(new Event(OPEN_GUIDE_EVENT)), 60); }} className="flex min-h-[54px] w-full items-center gap-3 border-t border-slate-100 py-3 text-left text-[#0B0B0F]">
+                <CircleHelp size={18} strokeWidth={1.5} className="text-[#1F4ED8]" />
+                <span className="min-w-0 flex-1"><span className="block text-[12px] font-semibold">App guide</span><span className="block text-[10px] text-[#6B7280]">Replay the quick Investor App tour</span></span>
+                <ChevronRight size={16} strokeWidth={1.5} className="text-slate-300" />
+              </button>
               <button type="button" onClick={togglePrivacyMode} className="flex min-h-[54px] w-full items-center gap-3 border-t border-slate-100 py-3 text-left text-[#0B0B0F]">
                 {privacyMode ? <EyeOff size={18} strokeWidth={1.5} className="text-[#1F4ED8]" /> : <Eye size={18} strokeWidth={1.5} className="text-[#1F4ED8]" />}
                 <span className="min-w-0 flex-1"><span className="block text-[12px] font-semibold">Financial privacy</span><span className="block text-[10px] text-[#6B7280]">{privacyMode ? "Values are hidden" : "Hide values across the app"}</span></span>

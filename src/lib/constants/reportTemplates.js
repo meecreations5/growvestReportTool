@@ -80,16 +80,16 @@ export const REPORT_TEMPLATE_SECTIONS = [
   },
   {
     key: "commentary",
-    label: "Advisor Commentary",
-    shortLabel: "Commentary",
-    description: "Performance explanation, portfolio observations, risks and outlook.",
+    label: "GrowVest View",
+    shortLabel: "GrowVest View",
+    description: "GrowVest perspective on portfolio progress, priorities, observations and outlook.",
     mandatory: false
   },
   {
     key: "actions",
-    label: "Recommended Actions",
-    shortLabel: "Actions",
-    description: "Recommended next steps, responsibility, due date and next review.",
+    label: "Your Next Steps",
+    shortLabel: "Next Steps",
+    description: "Agreed or recommended next steps, responsibility, due date and next review.",
     mandatory: false
   },
   {
@@ -123,7 +123,12 @@ function template({
   chartStyle = "modern",
   tableDensity = "comfortable",
   advisorCardVisible = true,
-  coverPattern = "orbital"
+  coverPattern = "orbital",
+  designVariant = "classic",
+  headingStyle = "brand",
+  headerStyle = "compact",
+  footerStyle = "legal",
+  document = {}
 }) {
   return {
     id,
@@ -132,7 +137,7 @@ function template({
     description,
     category,
     status: TEMPLATE_STATUS.ACTIVE,
-    isDefault: id === "premium-blue",
+    isDefault: id === "growvest-signature",
     isSystemTemplate: true,
     version: 1,
     estimatedPages,
@@ -141,16 +146,18 @@ function template({
     appearance: {
       coverStyle,
       coverPattern,
+      designVariant,
       primaryColor,
       secondaryColor,
       darkColor,
       chartStyle,
       tableDensity,
       advisorCardVisible,
-      headingStyle: "brand",
+      headingStyle,
       bodyDensity: tableDensity,
-      headerStyle: "compact",
-      footerStyle: "legal"
+      headerStyle,
+      footerStyle,
+      document
     },
     delivery: {
       emailTemplateId: DEFAULT_EMAIL_TEMPLATE_ID,
@@ -167,10 +174,41 @@ function template({
 
 export const SYSTEM_REPORT_TEMPLATES = [
   template({
+    id: "growvest-signature",
+    name: "GrowVest Signature",
+    slug: "growvest-signature",
+    description: "GrowVest launch-standard premium investor review using the official Royal Trust Blue, Electric Sky-Blue and Deep Premium Black brand system.",
+    category: "premium",
+    coverStyle: "signature-light",
+    sectionOrder: ["cover", "executiveSummary", "allocation", "goals", "holdings", "performance", "commentary", "actions", "disclaimer"],
+    visibleSections: ["cover", "executiveSummary", "allocation", "goals", "holdings", "performance", "commentary", "actions", "disclaimer"],
+    estimatedPages: "9-11 pages",
+    primaryColor: "#1F4ED8",
+    secondaryColor: "#0CC0DF",
+    darkColor: "#0B0B0F",
+    chartStyle: "signature",
+    tableDensity: "comfortable",
+    advisorCardVisible: false,
+    coverPattern: "signature-sky",
+    designVariant: "growvest-signature",
+    headingStyle: "signature",
+    headerStyle: "signature",
+    footerStyle: "signature",
+    document: {
+      showLogo: true,
+      showClientCode: false,
+      showReportMonth: true,
+      showConfidentialLabel: true,
+      showPageNumbers: true,
+      showContactInformation: false,
+      disclaimerStyle: "compact"
+    }
+  }),
+  template({
     id: "premium-blue",
     name: "Premium Blue",
     slug: "premium-blue",
-    description: "GrowVest's complete premium monthly wealth report with goals, allocation, holdings and advisor guidance.",
+    description: "GrowVest's complete premium monthly wealth report with goals, allocation, holdings and GrowVest guidance.",
     category: "premium",
     coverStyle: "premium-dark",
     sectionOrder: ["cover", "executiveSummary", "performance", "performanceTrend", "goals", "allocation", "holdings", "commentary", "actions", "disclaimer"],
@@ -269,25 +307,50 @@ export function visibleTemplateSections(templateValue) {
 }
 
 
-export const DEFAULT_REPORT_TEMPLATE_ID = "premium-blue";
+export const DEFAULT_REPORT_TEMPLATE_ID = "growvest-signature";
+export const LOCKED_REPORT_VISUAL_VERSION = "growvest-signature-2026-09";
+
+export function hasPublishedReportSnapshot(report = {}) {
+  return Boolean(
+    report?.publicationStatus === "published"
+    || report?.activePublishedVersionId
+    || Number(report?.publishedVersion || 0) > 0
+    || report?.publishedAt
+  );
+}
+
+export function shouldUseGrowVestSignatureDesign(report = {}, templateValue = null) {
+  const resolvedTemplate = templateValue || resolveReportTemplate(report);
+  if (String(report?.visualDesignVersion || "") === LOCKED_REPORT_VISUAL_VERSION) return true;
+  if (resolvedTemplate?.appearance?.designVariant === "growvest-signature") return true;
+  // The launch design is mandatory for every new/unpublished Wealth Review.
+  // Historical published reviews keep their frozen visual snapshot.
+  return !hasPublishedReportSnapshot(report);
+}
+
+export function getLockedGrowVestSignatureTemplate() {
+  return createReportTemplateSnapshot(getSystemReportTemplate(DEFAULT_REPORT_TEMPLATE_ID));
+}
 
 export function createReportTemplateSnapshot(templateValue) {
   const template = templateValue || getSystemReportTemplate(DEFAULT_REPORT_TEMPLATE_ID);
+  const baseTemplate = getSystemReportTemplate(template?.id || template?.slug || DEFAULT_REPORT_TEMPLATE_ID)
+    || getSystemReportTemplate(DEFAULT_REPORT_TEMPLATE_ID);
   return {
     id: template?.id || DEFAULT_REPORT_TEMPLATE_ID,
-    name: template?.name || "Premium Blue",
+    name: template?.name || "GrowVest Signature",
     version: Number(template?.version || 1),
     category: template?.category || "premium",
-    estimatedPages: template?.estimatedPages || "8–10 pages",
+    estimatedPages: template?.estimatedPages || "9-11 pages",
     sectionOrder: Array.isArray(template?.sectionOrder)
       ? [...template.sectionOrder]
-      : [...(getSystemReportTemplate(DEFAULT_REPORT_TEMPLATE_ID)?.sectionOrder || [])],
+      : [...(baseTemplate?.sectionOrder || [])],
     sectionVisibility: {
-      ...(getSystemReportTemplate(DEFAULT_REPORT_TEMPLATE_ID)?.sectionVisibility || {}),
+      ...(baseTemplate?.sectionVisibility || {}),
       ...(template?.sectionVisibility || {})
     },
     appearance: {
-      ...(getSystemReportTemplate(DEFAULT_REPORT_TEMPLATE_ID)?.appearance || {}),
+      ...(baseTemplate?.appearance || {}),
       ...(template?.appearance || {}),
       document: {
         showLogo: true,
@@ -297,7 +360,7 @@ export function createReportTemplateSnapshot(templateValue) {
         showPageNumbers: true,
         showContactInformation: true,
         disclaimerStyle: "standard",
-        ...(getSystemReportTemplate(DEFAULT_REPORT_TEMPLATE_ID)?.appearance?.document || {}),
+        ...(baseTemplate?.appearance?.document || {}),
         ...(template?.appearance?.document || {})
       }
     },
@@ -310,7 +373,7 @@ export function createReportTemplateSnapshot(templateValue) {
       includeSecureLink: true,
       attachPdf: true,
       includeSignature: true,
-      ...(getSystemReportTemplate(DEFAULT_REPORT_TEMPLATE_ID)?.delivery || {}),
+      ...(baseTemplate?.delivery || {}),
       ...(template?.delivery || {}),
       emailTemplateSnapshot: createEmailTemplateSnapshot(
         template?.delivery?.emailTemplateSnapshot

@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { subscribeMonthlyReports } from "@/services/reportService";
-import { getMonthLabel } from "@/lib/constants/report";
+import { REPORT_TYPE, getMonthLabel, getReportTypeLabel } from "@/lib/constants/report";
 import { formatCurrency, formatDate } from "@/lib/utils/format";
 import { inputClassName } from "@/components/ui/Field";
 import ReportStatusBadge from "@/components/reports/ReportStatusBadge";
@@ -26,6 +26,11 @@ import EmptyState from "@/components/ui/EmptyState";
 function currentMonthKey() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function reportPeriodLabel(report = {}) {
+  if (report.reportType === REPORT_TYPE.OPENING) return `As of ${formatDate(report.statementDate)}`;
+  return `${getMonthLabel(report.reportMonth)} ${report.reportYear}`;
 }
 
 export default function ReportsTable() {
@@ -47,7 +52,7 @@ export default function ReportsTable() {
       },
       (nextError) => {
         console.error(nextError);
-        setError("Unable to load monthly reports. Deploy the included Firestore indexes if Firebase requests one.");
+        setError("Unable to load wealth reviews. Deploy the included Firestore indexes if Firebase requests one.");
         setLoading(false);
       }
     );
@@ -97,13 +102,13 @@ export default function ReportsTable() {
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
           <p className="gv-eyebrow">Portfolio reporting</p>
-          <h1 className="gv-page-title mt-2">Monthly portfolio reports</h1>
+          <h1 className="gv-page-title mt-2">Monthly Reports &amp; Wealth Reviews</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-            Prepare, review, publish and track every Investor report from one operational workspace.
+            Prepare, review, publish and track every Investor report from one operational workspace. A first-time investor automatically starts with an Opening Wealth Review; later periods use Monthly Wealth Reviews.
           </p>
         </div>
         <Link href="/reports/create" className="gv-button-primary inline-flex min-h-12 items-center justify-center gap-2 px-5">
-          <Plus size={18} /> Create monthly report
+          <Plus size={18} /> Create report
         </Link>
       </div>
 
@@ -126,7 +131,7 @@ export default function ReportsTable() {
               className={`${inputClassName} pl-10`}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search Investor, client code, report or Advisor"
+              placeholder="Search Investor, client code, review or Partner"
             />
           </div>
           <SegmentedTabs items={tabs} value={status} onChange={setStatus} ariaLabel="Report status" />
@@ -137,7 +142,7 @@ export default function ReportsTable() {
         </div>
 
         {loading ? (
-          <div className="p-8 text-sm text-slate-500">Loading monthly reports…</div>
+          <div className="p-8 text-sm text-slate-500">Loading wealth reviews…</div>
         ) : filtered.length ? (
           <>
             <div className="grid gap-3 p-4 md:hidden">
@@ -145,15 +150,16 @@ export default function ReportsTable() {
                 <article key={report.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate font-heading text-lg font-bold text-[var(--gv-ink)]">{getMonthLabel(report.reportMonth)} {report.reportYear}</p>
-                      <p className="mt-1 text-xs text-slate-500">{report.reportCode || report.id}</p>
+                      <p className="truncate font-heading text-lg font-bold text-[var(--gv-ink)]">{getReportTypeLabel(report.reportType || REPORT_TYPE.MONTHLY)}</p>
+                      <p className="mt-1 text-xs font-semibold text-slate-500">{reportPeriodLabel(report)}</p>
+                      <p className="mt-1 text-[11px] text-slate-400">{report.reportCode || report.id}</p>
                     </div>
                     <ReportStatusBadge status={report.status} />
                   </div>
 
                   <div className="mt-4 rounded-xl bg-slate-50 p-3">
                     <p className="font-semibold text-slate-950">{report.investorName}</p>
-                    <p className="mt-1 text-xs text-slate-500">{report.clientCode} · {report.advisorName || "Advisor not assigned"}</p>
+                    <p className="mt-1 text-xs text-slate-500">{report.clientCode} · {report.advisorName || "Partner not assigned"}</p>
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -195,7 +201,7 @@ export default function ReportsTable() {
                   <tr>
                     <th className="px-5 py-3 font-bold">Report</th>
                     <th className="px-5 py-3 font-bold">Investor</th>
-                    <th className="px-5 py-3 font-bold">Advisor</th>
+                    <th className="px-5 py-3 font-bold">Conscious Wealth Partner</th>
                     <th className="px-5 py-3 text-right font-bold">Corpus</th>
                     <th className="px-5 py-3 font-bold">Statement date</th>
                     <th className="px-5 py-3 font-bold">Status</th>
@@ -207,8 +213,9 @@ export default function ReportsTable() {
                     <tr key={report.id} className="transition hover:bg-slate-50/80">
                       <td className="px-5 py-4">
                         <Link href={`/reports/${report.id}`} className="group block">
-                          <p className="font-bold text-slate-950 group-hover:text-blue-700">{getMonthLabel(report.reportMonth)} {report.reportYear}</p>
-                          <p className="mt-1 text-xs text-slate-500">{report.reportCode || report.id}</p>
+                          <p className="font-bold text-slate-950 group-hover:text-blue-700">{getReportTypeLabel(report.reportType || REPORT_TYPE.MONTHLY)}</p>
+                          <p className="mt-1 text-xs font-semibold text-slate-500">{reportPeriodLabel(report)}</p>
+                          <p className="mt-1 text-[11px] text-slate-400">{report.reportCode || report.id}</p>
                         </Link>
                       </td>
                       <td className="px-5 py-4"><p className="font-bold text-slate-900">{report.investorName}</p><p className="mt-1 text-xs text-slate-500">{report.clientCode}</p></td>
@@ -238,7 +245,7 @@ export default function ReportsTable() {
             <EmptyState
               icon={FileBarChart}
               title="No reports found"
-              description="Create the first monthly report or change the current search and filters."
+              description="Create the first Opening Wealth Review or change the current search and filters."
               action={<Link href="/reports/create" className="gv-button-primary inline-flex min-h-11 items-center gap-2 px-4"><Plus size={16} /> Create report</Link>}
             />
           </div>

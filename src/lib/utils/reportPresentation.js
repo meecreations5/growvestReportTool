@@ -1,4 +1,4 @@
-import { ASSET_CLASS_COLORS } from "@/lib/constants/report";
+import { ASSET_CLASS_COLORS, REPORT_TYPE, getReportTypeLabel } from "@/lib/constants/report";
 
 export function compactCurrency(value) {
   const amount = Number(value || 0);
@@ -32,7 +32,7 @@ export function investorFacingAdvisorDesignation(value = "") {
     "system administrator"
   ]);
 
-  if (!designation || internalTitles.has(normalized)) return "Relationship Advisor";
+  if (!designation || internalTitles.has(normalized) || normalized.includes("advisor")) return "Conscious Wealth Partner";
   return designation;
 }
 
@@ -122,7 +122,7 @@ export function deriveReportHighlights(report = {}) {
       id: "attention",
       type: "danger",
       title: attentionGoal.name,
-      description: gap ? `Requires ${compactCurrency(gap)} additional contribution.` : "Requires Advisor attention."
+      description: gap ? `Requires ${compactCurrency(gap)} additional contribution.` : "Requires GrowVest Partner attention."
     });
   }
   return highlights.slice(0, 4);
@@ -159,7 +159,7 @@ export function deriveAdvisorInsights(report = {}) {
           title: "Allocation Review",
           description: largestGap
             ? `${largestGap.assetClass} is ${Math.abs(Number(largestGap.variance || 0)).toFixed(1)}% ${Number(largestGap.variance || 0) > 0 ? "above" : "below"} target allocation.`
-            : "Review allocation opportunities with your Advisor."
+            : "Review allocation opportunities with your Conscious Wealth Partner."
         }
   };
 }
@@ -173,7 +173,7 @@ export function derivePortfolioHealth(report = {}) {
   const gaps = allocation.filter((item) => Math.abs(Number(item.variance || 0)) >= 5).length;
   const needsRebalancing = gaps > 0;
   const observation = report.portfolioHealth?.observation || (needsRebalancing
-    ? "One or more asset classes differ materially from the target allocation. Review the balance with your Advisor before making changes."
+    ? "One or more asset classes differ materially from the target allocation. Review the balance with your Conscious Wealth Partner before making changes."
     : "The portfolio allocation is broadly aligned with the target allocation.");
   return { growth, stable, gaps, needsRebalancing, observation };
 }
@@ -199,14 +199,18 @@ export function previousReportFor(report = {}, history = []) {
 }
 
 export function reportWhatsAppMessage(report = {}, viewUrl = "") {
+  const typeLabel = getReportTypeLabel(report.reportType || REPORT_TYPE.MONTHLY);
+  const period = report.reportType === REPORT_TYPE.OPENING
+    ? `as of ${report.statementDate || report.reportMonthKey || "the opening date"}`
+    : `for ${report.title?.replace("GrowVest Monthly Wealth Review - ", "") || report.reportMonthKey || "the latest period"}`;
   return [
     `Hello ${report.investorName || ""},`,
     "",
-    `Your GrowVest Monthly Wealth Progress Report for ${report.title?.replace("Monthly Portfolio Report — ", "") || report.reportMonthKey || "the latest period"} is now available.`,
+    `Your GrowVest ${typeLabel} ${period} is now available.`,
     viewUrl ? `View report: ${viewUrl}` : "Please log in to the GrowVest Investor Portal to view the report.",
     "",
-    `Regards,`,
-    `${report.advisorName || "GrowVest Advisor"}`,
+    "Regards,",
+    `${report.advisorName || "GrowVest Partner"}`,
     "GrowVest"
   ].join("\n");
 }

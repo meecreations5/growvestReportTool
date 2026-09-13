@@ -20,11 +20,11 @@ import {
   downloadReportPdf,
   submitReportAcknowledgement
 } from "@/services/communicationService";
-import { getMonthLabel } from "@/lib/constants/report";
+import { REPORT_TYPE, getMonthLabel, getReportTypeLabel } from "@/lib/constants/report";
 import MonthlyWealthReport from "@/components/reports/MonthlyWealthReport";
 import InvestorReportSectionNav from "@/components/investor/InvestorReportSectionNav";
 import { reportTemplateNavItems } from "@/lib/constants/reportTemplates";
-import { formatCurrency } from "@/lib/utils/format";
+import { formatCurrency, formatDate } from "@/lib/utils/format";
 import DemoInvestorCta from "@/components/investor/DemoInvestorCta";
 
 
@@ -66,7 +66,7 @@ export default function InvestorReportDetailClient({ reportId }) {
       .catch((nextError) => {
         if (!active) return;
         console.error(nextError);
-        setError(nextError?.message || "You do not have access to this monthly report.");
+        setError(nextError?.message || "You do not have access to this wealth review.");
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -83,7 +83,7 @@ export default function InvestorReportDetailClient({ reportId }) {
 
   async function handleDownload() {
     if (isDemoInvestor) {
-      setNotice("This is an illustrative Monthly Review. Secure PDF downloads are available once you become part of GrowVest.");
+      setNotice("This is an illustrative Wealth Review. Secure PDF downloads are available once you become part of GrowVest.");
       return;
     }
     setWorking(true);
@@ -128,7 +128,7 @@ export default function InvestorReportDetailClient({ reportId }) {
   if (loading || (reportMeta && !publishedVersion)) {
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">
-        Loading your published monthly report…
+        Loading your published wealth review…
       </div>
     );
   }
@@ -143,13 +143,15 @@ export default function InvestorReportDetailClient({ reportId }) {
 
   if (!report) return null;
 
-  const reportPeriod = `${getMonthLabel(report.reportMonth)} ${report.reportYear}`;
+  const isOpeningReview = report.reportType === REPORT_TYPE.OPENING;
+  const reportTypeLabel = getReportTypeLabel(report.reportType || REPORT_TYPE.MONTHLY);
+  const reportPeriod = isOpeningReview ? `As of ${formatDate(report.statementDate)}` : `${getMonthLabel(report.reportMonth)} ${report.reportYear}`;
   const mobileSummary = report.summary || {};
   const mobileValue = Number(mobileSummary.totalCorpus || 0);
-  const mobileGain = Number(mobileSummary.investmentGain || mobileSummary.gainLoss || 0);
+  const mobileGain = Number(isOpeningReview ? (mobileSummary.portfolioGainLoss ?? (Number(mobileSummary.totalCorpus || 0) - Number(mobileSummary.totalInvested || 0))) : (mobileSummary.investmentGain || mobileSummary.gainLoss || 0));
   const mobileNewMoney = Number(mobileSummary.newMoneyAdded || 0);
   const mobileWithdrawals = Number(mobileSummary.totalWithdrawals || 0);
-  const mobileMonthChange = mobileNewMoney - mobileWithdrawals + mobileGain;
+  const mobileMonthChange = isOpeningReview ? 0 : mobileNewMoney - mobileWithdrawals + mobileGain;
 
   return (
     <div className="grid gap-4 pb-4 lg:pb-0">
@@ -161,10 +163,10 @@ export default function InvestorReportDetailClient({ reportId }) {
               href="/investor/reports"
               className="inline-flex min-h-10 items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-950"
             >
-              <ArrowLeft size={16} /> Back to monthly reports
+              <ArrowLeft size={16} /> Back to wealth reviews
             </Link>
             <p className="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
-              Monthly wealth report
+              {reportTypeLabel}
             </p>
             <h1 className="mt-1 font-heading text-2xl font-bold text-slate-950 sm:text-3xl">
               {reportPeriod}
@@ -245,11 +247,11 @@ export default function InvestorReportDetailClient({ reportId }) {
       <section className="md:hidden">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[12px] font-semibold text-[#6B7280]">Your {reportPeriod} in 60 seconds</p>
-            <h2 className="mt-0.5 font-heading text-[1.55rem] font-bold text-[#0B0B0F]">{reportPeriod}</h2>
-            <p className="mt-1 text-[11px] text-[#6B7280]">Monthly Review · Updated review {report.publishedVersion || 1}</p>
+            <p className="text-[12px] font-semibold text-[#6B7280]">{isOpeningReview ? "Your starting point with GrowVest" : `Your ${reportPeriod} in 60 seconds`}</p>
+            <h2 className="mt-0.5 font-heading text-[1.55rem] font-bold text-[#0B0B0F]">{isOpeningReview ? reportTypeLabel : reportPeriod}</h2>
+            <p className="mt-1 text-[11px] text-[#6B7280]">{reportTypeLabel} · Version {report.publishedVersion || 1}{isOpeningReview ? ` · ${reportPeriod}` : ""}</p>
           </div>
-          <button type="button" onClick={handleDownload} disabled={working} className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-slate-200 bg-white text-[#1F4ED8] disabled:opacity-50" aria-label="Download monthly review">
+          <button type="button" onClick={handleDownload} disabled={working} className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-slate-200 bg-white text-[#1F4ED8] disabled:opacity-50" aria-label="Download wealth review">
             <Download size={17} strokeWidth={1.5} />
           </button>
         </div>
@@ -257,17 +259,22 @@ export default function InvestorReportDetailClient({ reportId }) {
         <div className="mt-5 rounded-[18px] bg-[#0B0B0F] p-5 text-white">
           <p className="text-[11px] font-medium text-white/55">Portfolio Value</p>
           <p className="gv-private-value mt-1 font-heading text-[2rem] font-bold leading-none text-white">{formatCurrency(mobileValue)}</p>
-          <p className={`gv-private-value mt-2 text-[12px] font-semibold ${mobileMonthChange >= 0 ? "text-[#9BB2FF]" : "text-red-300"}`}>{mobileMonthChange >= 0 ? "+" : ""}{formatCurrency(mobileMonthChange)} net change</p>
+          {isOpeningReview ? <p className="mt-2 text-[12px] font-semibold text-white/70">Opening position {reportPeriod.toLowerCase()}</p> : <p className={`gv-private-value mt-2 text-[12px] font-semibold ${mobileMonthChange >= 0 ? "text-[#9BB2FF]" : "text-red-300"}`}>{mobileMonthChange >= 0 ? "+" : ""}{formatCurrency(mobileMonthChange)} net change</p>}
 
-          <div className="mt-5 grid grid-cols-2 border-t border-white/15 pt-4">
+          {isOpeningReview ? <div className="mt-5 grid grid-cols-2 border-t border-white/15 pt-4">
+            <div className="border-r border-white/15 pr-4"><p className="text-[10px] text-white/45">Total Invested</p><p className="gv-private-value mt-1 font-heading text-[15px] font-bold text-white">{formatCurrency(mobileSummary.totalInvested)}</p></div>
+            <div className="pl-4"><p className="text-[10px] text-white/45">Active Monthly SIP</p><p className="gv-private-value mt-1 font-heading text-[15px] font-bold text-white">{formatCurrency(mobileSummary.monthlySip)}</p></div>
+            <div className="mt-4 border-r border-t border-white/15 pr-4 pt-4"><p className="text-[10px] text-white/45">Gain / Loss</p><p className={`gv-private-value mt-1 font-heading text-[15px] font-bold ${mobileGain >= 0 ? "text-[#9BB2FF]" : "text-red-300"}`}>{mobileGain >= 0 ? "+" : ""}{formatCurrency(mobileGain)}</p></div>
+            <div className="mt-4 border-t border-white/15 pl-4 pt-4"><p className="text-[10px] text-white/45">Baseline Date</p><p className="mt-1 font-heading text-[13px] font-bold text-white">{formatDate(report.statementDate)}</p></div>
+          </div> : <div className="mt-5 grid grid-cols-2 border-t border-white/15 pt-4">
             <div className="border-r border-white/15 pr-4"><p className="text-[10px] text-white/45">Money Added</p><p className="gv-private-value mt-1 font-heading text-[15px] font-bold text-white">{formatCurrency(mobileNewMoney)}</p></div>
             <div className="pl-4"><p className="text-[10px] text-white/45">Investment Movement</p><p className={`gv-private-value mt-1 font-heading text-[15px] font-bold ${mobileGain >= 0 ? "text-[#9BB2FF]" : "text-red-300"}`}>{mobileGain >= 0 ? "+" : ""}{formatCurrency(mobileGain)}</p></div>
             <div className="mt-4 border-r border-t border-white/15 pr-4 pt-4"><p className="text-[10px] text-white/45">Withdrawals</p><p className="gv-private-value mt-1 font-heading text-[15px] font-bold text-white">{formatCurrency(mobileWithdrawals)}</p></div>
             <div className="mt-4 border-t border-white/15 pl-4 pt-4"><p className="text-[10px] text-white/45">Net Change</p><p className={`gv-private-value mt-1 font-heading text-[15px] font-bold ${mobileMonthChange >= 0 ? "text-[#9BB2FF]" : "text-red-300"}`}>{mobileMonthChange >= 0 ? "+" : ""}{formatCurrency(mobileMonthChange)}</p></div>
-          </div>
+          </div>}
         </div>
 
-        <div className="mt-6">
+        {isOpeningReview ? <div className="mt-6 rounded-[15px] border border-blue-100 bg-blue-50 px-4 py-4"><h3 className="font-heading text-[1.05rem] font-bold text-[#0B0B0F]">Your GrowVest starting point</h3><p className="mt-2 text-[12px] leading-5 text-[#6B7280]">This Opening Wealth Review records your verified portfolio, active SIPs and goal progress as of {formatDate(report.statementDate)}. Future Monthly Wealth Reviews will show change from this baseline.</p></div> : <div className="mt-6">
           <h3 className="font-heading text-[1.1rem] font-bold text-[#0B0B0F]">What changed this month?</h3>
           <div className="mt-2 overflow-hidden border-y border-slate-200 bg-white">
             {[
@@ -282,13 +289,18 @@ export default function InvestorReportDetailClient({ reportId }) {
               </div>
             ))}
           </div>
-        </div>
+        </div>}
 
-        <p className="mt-5 rounded-[15px] bg-[#F4F6F9] px-4 py-3 text-[12px] leading-5 text-[#6B7280]">Detailed insights, goal progress, protection updates and GrowVest next steps are included in your full monthly review.</p>
+        <p className="mt-5 rounded-[15px] bg-[#F4F6F9] px-4 py-3 text-[12px] leading-5 text-[#6B7280]">Detailed insights, goal progress, protection updates and GrowVest next steps are included in your full {isOpeningReview ? "Opening Wealth Review" : "Monthly Wealth Review"}.</p>
 
         <div className="mt-5 grid gap-2">
-          <button type="button" onClick={() => setMobileExpanded((current) => !current)} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[14px] bg-[#1F4ED8] px-4 text-[13px] font-bold text-white">
-            {mobileExpanded ? "Hide full review" : "View full review"} <ChevronRight size={16} strokeWidth={1.5} className={mobileExpanded ? "rotate-90" : ""} />
+          {!isDemoInvestor ? (
+            <Link href={`/report-print/${reportId}`} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[14px] bg-[#1F4ED8] px-4 text-[13px] font-bold text-white">
+              <Printer size={17} strokeWidth={1.5} /> View exact report design
+            </Link>
+          ) : null}
+          <button type="button" onClick={() => setMobileExpanded((current) => !current)} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[14px] border border-blue-200 bg-blue-50 px-4 text-[13px] font-bold text-[#1F4ED8]">
+            {mobileExpanded ? "Hide interactive review" : "View interactive review"} <ChevronRight size={16} strokeWidth={1.5} className={mobileExpanded ? "rotate-90" : ""} />
           </button>
           <button type="button" onClick={() => document.getElementById("report-discussion")?.scrollIntoView({ behavior: "smooth" })} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[14px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-[#0B0B0F]">
             <MessageCircleMore size={17} strokeWidth={1.5} className="text-[#1F4ED8]" /> Discuss with GrowVest

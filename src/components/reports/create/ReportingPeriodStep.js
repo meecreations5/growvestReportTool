@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Field, inputClassName } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
-import { getMonthLabel, getReportMonthKey } from "@/lib/constants/report";
+import { REPORT_TYPE, getMonthLabel, getReportMonthKey } from "@/lib/constants/report";
 import { formatCurrency, formatDate } from "@/lib/utils/format";
 
 function financialYearLabel(month, year) {
@@ -27,6 +27,7 @@ export default function ReportingPeriodStep({
   fieldErrors,
   previousReport,
   duplicateReport,
+  openingPeriodConflict,
   lookupLoading,
   copying,
   onUpdatePeriod,
@@ -35,6 +36,7 @@ export default function ReportingPeriodStep({
   periodLocked = false
 }) {
   const periodLabel = `${getMonthLabel(form.reportMonth)} ${form.reportYear}`;
+  const isOpeningReview = form.reportType === REPORT_TYPE.OPENING;
 
   return (
     <div className="grid gap-6">
@@ -51,13 +53,25 @@ export default function ReportingPeriodStep({
         </div>
       ) : null}
 
-      {!reportId ? <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900"><strong>Monthly reporting:</strong> GrowVest starts with the last completed calendar month. You can change the reporting month/year here before completing the report.</div> : null}
+      {openingPeriodConflict ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-100 text-amber-700"><AlertTriangle size={17} /></span>
+            <div>
+              <p className="text-sm font-semibold text-amber-950">Opening baseline already established in {getMonthLabel(openingPeriodConflict.reportMonth)} {openingPeriodConflict.reportYear}</p>
+              <p className="mt-1 text-sm leading-6 text-amber-800">Monthly Wealth Reviews start from the following month. Select a later reporting month once that period is ready for review.</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {!reportId ? <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">{isOpeningReview ? <><strong>Opening Wealth Review:</strong> this is the investor&apos;s first GrowVest report. The latest verified Portfolio Master snapshot becomes the opening baseline. No previous-period return or movement is inferred.</> : <><strong>Monthly Wealth Review:</strong> GrowVest starts with the last completed calendar month. You can change the reporting month/year here before completing the report.</>}</div> : null}
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-        <Field label="Reporting month" required>
+        <Field label={isOpeningReview ? "Opening baseline month" : "Reporting month"} required>
           <div className="grid gap-1.5">
             <input
-              disabled={periodLocked}
+              disabled={periodLocked || isOpeningReview}
               type="month"
               min="2020-01"
               max={getReportMonthKey(new Date().getFullYear(), new Date().getMonth() + 1)}
@@ -65,7 +79,7 @@ export default function ReportingPeriodStep({
               value={getReportMonthKey(form.reportYear, form.reportMonth)}
               onChange={(event) => onUpdatePeriod("reportMonthKey", event.target.value)}
             />
-            <span className="text-[11px] font-semibold text-blue-700">Choose the month this report belongs to. Example: select August 2026 even when preparing it between 1–5 September.</span>
+            <span className="text-[11px] font-semibold text-blue-700">{isOpeningReview ? "Automatically uses the month containing the verified opening snapshot." : "Choose the month this report belongs to. Example: select August 2026 even when preparing it between 1–5 September."}</span>
           </div>
         </Field>
         <Field label="Report year">
@@ -74,8 +88,8 @@ export default function ReportingPeriodStep({
         <Field label="Financial year">
           <input readOnly className={`${inputClassName} bg-slate-50`} value={financialYearLabel(form.reportMonth, form.reportYear)} />
         </Field>
-        <Field label="Portfolio cutoff date" required error={fieldErrors.statementDate}>
-          <div className="grid gap-1.5"><input readOnly type="date" className={`${inputClassName} border-emerald-200 bg-emerald-50/60 text-emerald-900`} value={form.statementDate || ""} /><span className="text-[11px] font-semibold text-emerald-700">Automatic: month-end for a completed month, or today for the current month</span></div>
+        <Field label={isOpeningReview ? "Opening snapshot date" : "Portfolio cutoff date"} required error={fieldErrors.statementDate}>
+          <div className="grid gap-1.5"><input readOnly type="date" className={`${inputClassName} border-emerald-200 bg-emerald-50/60 text-emerald-900`} value={form.statementDate || ""} /><span className="text-[11px] font-semibold text-emerald-700">{isOpeningReview ? "Automatic: date of the verified opening Portfolio Master snapshot" : "Automatic: month-end for a completed month, or today for the current month"}</span></div>
         </Field>
         <Field label="Report title" required error={fieldErrors.title}>
           <input className={inputClassName} value={form.title || ""} onChange={(event) => onTopLevelChange("title", event.target.value)} />
@@ -89,20 +103,20 @@ export default function ReportingPeriodStep({
         <div className="flex items-start gap-3">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white text-blue-700 shadow-sm"><CalendarDays size={18} /></span>
           <div>
-            <p className="text-sm font-semibold text-slate-950">Reporting period</p>
-            <p className="mt-1 text-sm text-slate-500">This report will cover {periodLabel}, even if it is prepared between the 1st and 5th of the next month. Portfolio values are taken only up to the automatic cutoff date.</p>
+            <p className="text-sm font-semibold text-slate-950">{isOpeningReview ? "Opening baseline" : "Reporting period"}</p>
+            <p className="mt-1 text-sm text-slate-500">{isOpeningReview ? `This review establishes the investor's GrowVest baseline as of ${form.statementDate || periodLabel}. Future Monthly Wealth Reviews will compare against verified historical snapshots.` : `This report will cover ${periodLabel}, even if it is prepared between the 1st and 5th of the next month. Portfolio values are taken only up to the automatic cutoff date.`}</p>
           </div>
         </div>
         <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm">
-          <CheckCircle2 size={15} className="text-emerald-600" /> Period configured
+          <CheckCircle2 size={15} className="text-emerald-600" /> {isOpeningReview ? "Baseline configured" : "Period configured"}
         </span>
       </div>
 
       <section className="rounded-xl border border-slate-200 bg-white">
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3.5">
           <div>
-            <h3 className="text-sm font-semibold text-slate-950">Previous monthly report</h3>
-            <p className="mt-1 text-xs text-slate-500">Use the previous month as a starting point and update only the latest values.</p>
+            <h3 className="text-sm font-semibold text-slate-950">Previous wealth review</h3>
+            <p className="mt-1 text-xs text-slate-500">{isOpeningReview ? "No previous report is expected for an Opening Wealth Review." : "Use the previous month as a starting point and update only the latest values."}</p>
           </div>
           {lookupLoading ? <LoaderCircle size={18} className="animate-spin text-blue-600" /> : null}
         </div>
@@ -129,7 +143,7 @@ export default function ReportingPeriodStep({
             </div>
           </div>
         ) : (
-          <div className="p-5 text-sm text-slate-500">{lookupLoading ? "Checking previous report history…" : "No earlier monthly report was found for this investor."}</div>
+          <div className="p-5 text-sm text-slate-500">{lookupLoading ? "Checking previous report history…" : isOpeningReview ? "This will be the investor's first GrowVest wealth review." : "No earlier Monthly Wealth Review was found for this investor."}</div>
         )}
       </section>
     </div>

@@ -4,6 +4,7 @@ import { reportEmailContent } from "@/lib/server/emailTemplates";
 import { getServerEmailTemplate } from "@/lib/server/emailTemplateServer";
 import { DEFAULT_EMAIL_TEMPLATE_ID, SIGNATURE_SOURCES, createEmailTemplateSnapshot } from "@/lib/constants/emailTemplates";
 import { getAdvisorEmailProfile, getServerBranding, getServerCommunicationSettings } from "@/lib/server/settingsServer";
+import { REPORT_TYPE, getReportTypeLabel } from "@/lib/constants/report";
 
 function cleanEmail(value = "") {
   return String(value || "").trim().toLowerCase();
@@ -63,7 +64,7 @@ async function validateReportRecipients({ report, actor, recipientEmail, cc = []
     const investorEmail = cleanEmail(report.investorEmail);
     if (!investorEmail) throw new Error("Investor email address is missing from the Investor profile/report.");
     if (primary !== investorEmail) {
-      throw new Error("For investor privacy, Monthly Reports can only be sent to the verified Investor email stored on the report.");
+      throw new Error("For investor privacy, Wealth Reviews can only be sent to the verified Investor email stored on the report.");
     }
   }
 
@@ -82,9 +83,17 @@ async function validateReportRecipients({ report, actor, recipientEmail, cc = []
 }
 
 function reportPeriod(report) {
+  if (report.reportType === REPORT_TYPE.OPENING) {
+    const value = report.statementDate || report.openingBaseline?.asOfDate || "";
+    const date = value ? new Date(String(value).includes("T") ? value : `${value}T00:00:00`) : null;
+    if (date && !Number.isNaN(date.getTime())) {
+      return `as of ${new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "long", year: "numeric" }).format(date)}`;
+    }
+    return "opening position";
+  }
   const month = Number(report.reportMonth || 0);
   const year = Number(report.reportYear || 0);
-  if (!month || !year) return report.reportMonthKey || "Monthly report";
+  if (!month || !year) return report.reportMonthKey || "latest period";
   return new Intl.DateTimeFormat("en-IN", { month: "long", year: "numeric" }).format(new Date(year, month - 1, 1));
 }
 
@@ -167,14 +176,15 @@ async function pdfAttachment(report, attachPdf) {
 
 export async function loadDeliveryReport(reportId, actor) {
   const snapshot = await adminDb.collection("monthlyReports").doc(reportId).get();
-  if (!snapshot.exists) throw new Error("Monthly report was not found.");
+  if (!snapshot.exists) throw new Error("Wealth Review was not found.");
   const report = { id: snapshot.id, ...snapshot.data() };
   if (!canSend(actor, report)) throw new Error("You are not authorised to manage this report delivery.");
   return report;
 }
 
 export function defaultReportDeliveryMessage(report, branding = {}) {
-  return `Your ${branding.companyName || "GrowVest"} monthly wealth report for ${reportPeriod(report)} is ready. Please review the report through your secure Investor Portal. You may reply to this email or contact your Advisor if you would like to discuss any part of the report.`;
+  const typeLabel = getReportTypeLabel(report.reportType || REPORT_TYPE.MONTHLY);
+  return `Your ${branding.companyName || "GrowVest"} ${typeLabel} ${reportPeriod(report)} is ready. Please review it through your secure Investor Portal. You may reply to this email or contact your GrowVest Partner if you would like to discuss any part of the review.`;
 }
 
 export async function createScheduledDelivery({ report, actor, payload }) {
@@ -198,7 +208,7 @@ export async function createScheduledDelivery({ report, actor, payload }) {
     reportVersionId: report.activePublishedVersionId || null,
     publishedVersion: Number(report.publishedVersion || 0),
     reportCode: report.reportCode || "",
-    reportTitle: report.title || "Monthly Wealth Report",
+    reportTitle: report.title || getReportTypeLabel(report.reportType || REPORT_TYPE.MONTHLY),
     reportMonthKey: report.reportMonthKey || "",
     reportMonth: report.reportMonth || null,
     reportYear: report.reportYear || null,
@@ -208,7 +218,7 @@ export async function createScheduledDelivery({ report, actor, payload }) {
     recipientEmail,
     cc,
     bcc,
-    subject: String(payload.subject || emailTemplate.content?.subject || `Your ${branding.companyName || "GrowVest"} Monthly Wealth Report — ${reportPeriod(report)}`).trim(),
+    subject: String(payload.subject || emailTemplate.content?.subject || `Your ${branding.companyName || "GrowVest"} ${getReportTypeLabel(report.reportType || REPORT_TYPE.MONTHLY)} ${reportPeriod(report)}`).trim(),
     message: String(payload.message || emailTemplate.content?.body || defaultReportDeliveryMessage(report, branding)).trim(),
     emailTemplateId: emailTemplate.id,
     emailTemplateName: emailTemplate.name,
@@ -257,7 +267,7 @@ export async function sendReportDelivery({ report, actor, payload = {}, delivery
   if (deliveryId) {
     if (!snapshot?.exists) throw new Error("The selected delivery record was not found.");
     if (existing.reportId && existing.reportId !== report.id) {
-      throw new Error("The selected delivery record belongs to a different Monthly Report.");
+      throw new Error("The selected delivery record belongs to a different wealth review.");
     }
     if (actor.role === "advisor" && existing.advisorUid && existing.advisorUid !== actor.uid) {
       throw new Error("You are not authorised to reuse this delivery record.");
@@ -301,7 +311,7 @@ export async function sendReportDelivery({ report, actor, payload = {}, delivery
     reportVersionId: report.activePublishedVersionId || null,
     publishedVersion: Number(report.publishedVersion || 0),
     reportCode: report.reportCode || "",
-    reportTitle: report.title || "Monthly Wealth Report",
+    reportTitle: report.title || getReportTypeLabel(report.reportType || REPORT_TYPE.MONTHLY),
     reportMonthKey: report.reportMonthKey || "",
     reportMonth: report.reportMonth || null,
     reportYear: report.reportYear || null,

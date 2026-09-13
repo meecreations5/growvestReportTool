@@ -11,7 +11,8 @@ export default function ReportTemplateSelectionStep({
   selectedTemplateVersion,
   onSelect,
   disabled = false,
-  applyingTemplateId = ""
+  applyingTemplateId = "",
+  lockedVisual = false
 }) {
   const available = templates.filter((item) => item.status === "active");
 
@@ -27,7 +28,14 @@ export default function ReportTemplateSelectionStep({
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+    <div>
+      {lockedVisual ? (
+        <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
+          <strong className="block">GrowVest Signature design is locked for investor launch.</strong>
+          Opening and Monthly Wealth Reviews use the approved blue / cyan / black visual reference. Historical published reports keep their original frozen design.
+        </div>
+      ) : null}
+      <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
       {available.map((template) => {
         const currentTemplate = selectedTemplateId === template.id;
         const activeVersion = Number(template.version || 1);
@@ -62,7 +70,7 @@ export default function ReportTemplateSelectionStep({
               </div>
               <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs">
                 <span className="block font-semibold text-blue-700">Assigned delivery email</span>
-                <strong className="mt-1 block truncate text-blue-950">{template.delivery?.emailTemplateName || "Monthly Report Ready — Premium"}</strong>
+                <strong className="mt-1 block truncate text-blue-950">{template.delivery?.emailTemplateName || "Wealth Review Ready — Premium"}</strong>
               </div>
               {hasUnpublishedDraft ? <p className="mt-2 rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs leading-5 text-violet-800">This report uses the active version. Activate the template draft before applying those latest editor changes.</p> : null}
 
@@ -77,6 +85,7 @@ export default function ReportTemplateSelectionStep({
           </article>
         );
       })}
+      </div>
     </div>
   );
 }

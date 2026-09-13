@@ -84,8 +84,8 @@ export const PERMISSION_GROUPS = [
       },
       {
         key: "reports",
-        label: "Monthly Reports",
-        description: "Create, review, publish and download monthly reports.",
+        label: "Wealth Reviews",
+        description: "Create, review, publish and download Opening and Monthly Wealth Reviews.",
         access: {
           [USER_ROLES.SUPER_ADMIN]: ACCESS_LEVELS.FULL,
           [USER_ROLES.ADMIN]: ACCESS_LEVELS.FULL,

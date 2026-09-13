@@ -1,5 +1,5 @@
-const CACHE_NAME = "growvest-investor-v0.34.9-investor-security1";
-const PAGE_CACHE = "growvest-pages-v0.34.9-investor-security1";
+const CACHE_NAME = "growvest-investor-v0.34.24-report-root1";
+const PAGE_CACHE = "growvest-pages-v0.34.24-report-root1";
 const OFFLINE_PREF_CACHE = "growvest-offline-preference-v1";
 const OFFLINE_PREF_URL = "/__growvest_offline_access__";
 const APP_SHELL = [
@@ -16,7 +16,11 @@ const APP_SHELL = [
   "/brand/growvest-logo-dark.svg",
   "/brand/growvest-logo-white.svg",
   "/brand/growvest-wordmark-dark.svg",
-  "/brand/growvest-wordmark-white.svg"
+  "/brand/growvest-wordmark-white.svg",
+  "/brand/growvest-wealth-review-cover-v03424.jpg",
+  "/brand/growvest-icon-blue-v03424.png",
+  "/brand/growvest-icon-white-v03424.png",
+  "/brand/growvest-cover-wash.png"
 ];
 
 const OFFLINE_SHELL_ROUTES = new Set([

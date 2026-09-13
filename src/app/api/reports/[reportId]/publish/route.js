@@ -9,6 +9,8 @@ import {
 } from "@/lib/server/firebaseAdmin";
 import { createAndUploadReportPdf, publishedSnapshotData } from "@/lib/server/reportServer";
 import { sendReportDelivery } from "@/lib/server/reportDelivery";
+import { REPORT_TYPE, getReportTypeLabel, getReportVersionId } from "@/lib/constants/report";
+import { buildReportReconciliation } from "@/lib/reportReconciliation";
 
 export const runtime = "nodejs";
 
@@ -24,6 +26,17 @@ function claimDate(value) {
   if (!value) return null;
   const date = value?.toDate?.() || new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isPublishedReview(report = {}) {
+  return Boolean(
+    report.investorVisible === true
+      && (
+        report.activePublishedVersionId
+        || Number(report.publishedVersion || 0) > 0
+        || report.publicationStatus === "published"
+      )
+  );
 }
 
 async function publishLinkedActionVisibility({ investorId, reportId, publishedVersion }) {
@@ -75,7 +88,7 @@ async function releasePublishClaim(reportRef, claimToken, fallbackPublicationSta
       }, { merge: true });
     });
   } catch (releaseError) {
-    console.error("Unable to release Monthly Report publication claim", releaseError);
+    console.error("Unable to release Wealth Review publication claim", releaseError);
   }
 }
 
@@ -92,10 +105,39 @@ export async function POST(request, { params }) {
 
     const claim = await adminDb.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(reportRef);
-      if (!snapshot.exists) throw requestError("Monthly report was not found.", 404);
+      if (!snapshot.exists) throw requestError("Wealth Review was not found.", 404);
       const report = { id: snapshot.id, ...snapshot.data() };
       if (!canStaffAccessRecord(actor, report)) throw requestError("You are not authorised to publish this report.", 403);
       if (report.status !== "completed") throw requestError("Complete the report before publishing it.", 422);
+
+      if (report.reportType === REPORT_TYPE.MONTHLY && report.investorId) {
+        const historyQuery = adminDb.collection("monthlyReports")
+          .where("investorId", "==", report.investorId)
+          .limit(50);
+        const historySnapshot = await transaction.get(historyQuery);
+        const history = historySnapshot.docs
+          .filter((item) => item.id !== reportId)
+          .map((item) => ({ id: item.id, ...item.data() }));
+        const openingReport = history.find((item) => item.reportType === REPORT_TYPE.OPENING) || null;
+        const hasLegacyPublishedReview = history.some((item) => item.reportType !== REPORT_TYPE.OPENING && isPublishedReview(item));
+        if (!openingReport && !hasLegacyPublishedReview) {
+          throw requestError("The first investor-facing GrowVest report must be an Opening Wealth Review. Create and publish the Opening Wealth Review before publishing Monthly Wealth Reviews.", 422);
+        }
+        if (openingReport) {
+          if (!isPublishedReview(openingReport)) {
+            throw requestError("Publish the Opening Wealth Review before publishing a Monthly Wealth Review for this investor.", 422);
+          }
+          if (openingReport.reportMonthKey && String(report.reportMonthKey || "") <= String(openingReport.reportMonthKey)) {
+            throw requestError(`The Opening Wealth Review already establishes this investor's baseline in ${openingReport.reportMonthKey}. Monthly Wealth Reviews must start from the following month.`, 422);
+          }
+        }
+      }
+
+      const reportReconciliation = buildReportReconciliation(report);
+      if (reportReconciliation.status === "blocked") {
+        const blockers = reportReconciliation.checks.filter((item) => item.status === "block").map((item) => item.label).join(", ");
+        throw requestError(`Pre-publish reconciliation is blocked: ${blockers}. Reopen the report and resolve the data mismatch before publishing.`, 422);
+      }
 
       const sourceVersion = Number(report.version || 1);
       const alreadyPublished = Boolean(
@@ -108,15 +150,16 @@ export async function POST(request, { params }) {
 
       const claimedAt = claimDate(report.publicationClaim?.claimedAt);
       if (report.publicationClaim?.token && claimedAt && Date.now() - claimedAt.getTime() < PUBLISH_CLAIM_TTL_MS) {
-        throw requestError("This Monthly Report is already being published. Wait a moment and refresh before trying again.", 409);
+        throw requestError("This Wealth Review is already being published. Wait a moment and refresh before trying again.", 409);
       }
 
       const nextPublishedVersion = Number(report.publishedVersion || 0) + 1;
-      const versionId = `${reportId}_v${nextPublishedVersion}`;
+      const versionId = getReportVersionId(reportId, nextPublishedVersion);
       const token = randomUUID();
       fallbackPublicationStatus = report.activePublishedVersionId ? "revision_ready" : (report.publicationStatus || "internal");
       transaction.set(reportRef, {
         publicationStatus: "publishing",
+        reportReconciliation,
         publicationClaim: {
           token,
           sourceVersion,
@@ -201,9 +244,11 @@ export async function POST(request, { params }) {
       batch.set(notificationRef, {
         recipientUid: report.investorPortalUid,
         recipientType: "investor",
-        title: nextPublishedVersion > 1 ? "Updated Monthly Wealth Report Available" : "Monthly Wealth Report Available",
+        title: nextPublishedVersion > 1
+          ? `Updated ${getReportTypeLabel(report.reportType)} Available`
+          : `${getReportTypeLabel(report.reportType)} Available`,
         message: `Your GrowVest report for ${report.title || report.reportMonthKey || "this month"} is ready.`,
-        eventType: nextPublishedVersion > 1 ? "monthly_report_updated" : "monthly_report_published",
+        eventType: nextPublishedVersion > 1 ? "wealth_report_updated" : "wealth_report_published",
         link: `/investor/reports/${reportId}`,
         investorId: report.investorId || null,
         reportId,
@@ -220,9 +265,9 @@ export async function POST(request, { params }) {
       batch.set(advisorNotificationRef, {
         recipientUid: report.advisorUid,
         recipientType: "advisor",
-        title: "Monthly report published",
-        message: `${report.investorName || "Investor"}'s monthly report version ${nextPublishedVersion} was published.`,
-        eventType: "monthly_report_publish_confirmation",
+        title: `${getReportTypeLabel(report.reportType)} published`,
+        message: `${report.investorName || "Investor"}'s ${getReportTypeLabel(report.reportType).toLowerCase()} version ${nextPublishedVersion} was published.`,
+        eventType: "wealth_report_publish_confirmation",
         link: `/reports/${reportId}`,
         investorId: report.investorId || null,
         reportId,
@@ -241,8 +286,8 @@ export async function POST(request, { params }) {
       investorId: report.investorId || null,
       advisorUid: report.advisorUid || actor.uid,
       action: nextPublishedVersion > 1 ? "monthly_report_revision_published" : "monthly_report_published",
-      title: nextPublishedVersion > 1 ? "Monthly report revision published" : "Monthly report published",
-      description: `${report.title || "Monthly report"} version ${nextPublishedVersion} was published by ${actor.fullName || actor.email}.`,
+      title: nextPublishedVersion > 1 ? `${getReportTypeLabel(report.reportType)} revision published` : `${getReportTypeLabel(report.reportType)} published`,
+      description: `${report.title || getReportTypeLabel(report.reportType)} version ${nextPublishedVersion} was published by ${actor.fullName || actor.email}.`,
       metadata: { publishedVersion: nextPublishedVersion, versionId, pdfStoragePath: pdf.pdfStoragePath },
       createdByUid: actor.uid,
       createdByName: actor.fullName || actor.email,
@@ -258,7 +303,7 @@ export async function POST(request, { params }) {
         publishedVersion: nextPublishedVersion
       });
     } catch (actionError) {
-      console.error("Monthly report published but linked action visibility sync failed", actionError);
+      console.error("Wealth Review published but linked action visibility sync failed", actionError);
     }
 
     let emailStatus = "not_requested";
@@ -300,7 +345,7 @@ export async function POST(request, { params }) {
     }
     console.error("Report publication failed", error);
     return NextResponse.json(
-      { error: error.message || "Unable to publish monthly report." },
+      { error: error.message || "Unable to publish wealth review." },
       { status: appRequestErrorStatus(error, error?.statusCode || 500) }
     );
   }
