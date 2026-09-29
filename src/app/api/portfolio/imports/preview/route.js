@@ -119,8 +119,8 @@ function sourceClientCode(investor = {}, source = "") {
   if (source === PORTFOLIO_SOURCES.ULIP) {
     return String(investor.ulipClientCode || investor.insuranceClientCode || "").trim().toUpperCase();
   }
-  if (source === PORTFOLIO_SOURCES.GROWVEST_STANDARD) {
-    return String(investor.clientCode || "").trim().toUpperCase();
+  if (source === PORTFOLIO_SOURCES.GROWVEST_STANDARD || source === PORTFOLIO_SOURCES.GROWVEST_TRADING) {
+    return String(investor.clientCode || investor.tradingClientCode || investor.brokerClientCode || "").trim().toUpperCase();
   }
   return "";
 }
@@ -214,7 +214,8 @@ export async function POST(request) {
         PORTFOLIO_REPORT_TYPES.BAJAJ_COMBINED,
         PORTFOLIO_REPORT_TYPES.ANGEL_ONE_DP_STATEMENT,
         PORTFOLIO_REPORT_TYPES.ULIP_PORTFOLIO,
-        PORTFOLIO_REPORT_TYPES.GROWVEST_STANDARD
+        PORTFOLIO_REPORT_TYPES.GROWVEST_STANDARD,
+        PORTFOLIO_REPORT_TYPES.GROWVEST_TRADING
       ];
       const isReadyImport = readyReportTypes.includes(detected.reportType)
         && detected.adapterStatus === PORTFOLIO_ADAPTER_STATUS.READY;

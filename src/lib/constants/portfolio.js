@@ -7,6 +7,7 @@ export const PORTFOLIO_SOURCES = {
   ANGEL_ONE: "angel_one",
   ULIP: "ulip",
   GROWVEST_STANDARD: "growvest_standard",
+  GROWVEST_TRADING: "growvest_trading",
   MANUAL: "manual"
 };
 
@@ -39,6 +40,7 @@ export const PORTFOLIO_SOURCE_LABELS = {
   [PORTFOLIO_SOURCES.ANGEL_ONE]: "Angel One",
   [PORTFOLIO_SOURCES.ULIP]: "ULIP",
   [PORTFOLIO_SOURCES.GROWVEST_STANDARD]: "GrowVest Standard",
+  [PORTFOLIO_SOURCES.GROWVEST_TRADING]: "GrowVest Trading",
   [PORTFOLIO_SOURCES.MANUAL]: "Manual"
 };
 
@@ -53,6 +55,7 @@ export const PORTFOLIO_REPORT_TYPES = {
   ANGEL_ONE_DP_STATEMENT: "angel_one_dp_statement",
   ULIP_PORTFOLIO: "ulip_portfolio",
   GROWVEST_STANDARD: "growvest_standard",
+  GROWVEST_TRADING: "growvest_trading",
   UNKNOWN: "unknown"
 };
 
@@ -66,7 +69,22 @@ export const PORTFOLIO_REPORT_LABELS = {
   [PORTFOLIO_REPORT_TYPES.ANGEL_ONE_DP_STATEMENT]: "DP Transaction Cum Holding (PDF/XLS/XLSX/CSV)",
   [PORTFOLIO_REPORT_TYPES.ULIP_PORTFOLIO]: "ULIP Portfolio",
   [PORTFOLIO_REPORT_TYPES.GROWVEST_STANDARD]: "GrowVest Standard Import",
+  [PORTFOLIO_REPORT_TYPES.GROWVEST_TRADING]: "Daily Trading / F&O",
   [PORTFOLIO_REPORT_TYPES.UNKNOWN]: "Unrecognised Report"
+};
+
+export const TRADING_INSTRUMENT_TYPES = {
+  EQUITY_INTRADAY: "equity_intraday",
+  FUTURE: "future",
+  OPTION_CALL: "option_call",
+  OPTION_PUT: "option_put"
+};
+
+export const TRADING_INSTRUMENT_LABELS = {
+  [TRADING_INSTRUMENT_TYPES.EQUITY_INTRADAY]: "Equity Intraday",
+  [TRADING_INSTRUMENT_TYPES.FUTURE]: "Future",
+  [TRADING_INSTRUMENT_TYPES.OPTION_CALL]: "Option Call",
+  [TRADING_INSTRUMENT_TYPES.OPTION_PUT]: "Option Put"
 };
 
 export const PORTFOLIO_ADAPTER_STATUS = {

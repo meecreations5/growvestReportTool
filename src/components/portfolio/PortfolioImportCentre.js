@@ -179,7 +179,7 @@ function FileCard({ item, investors, mapping, onMappingChange, onOpenGenericMapp
               <div className="rounded-lg bg-amber-50 p-2.5"><p className="text-[9px] font-bold uppercase tracking-wide text-amber-600">Cost Pending</p><p className="mt-1 font-bold text-amber-950">{item.summary.costBasisPendingCount || 0}</p></div>
               <div className="rounded-lg bg-emerald-50 p-2.5"><p className="text-[9px] font-bold uppercase tracking-wide text-emerald-600">Closing Value</p><p className="mt-1 font-bold text-emerald-950">{formatCurrency(item.summary.currentValue)}</p></div>
             </div>
-          ) : item.reportType === PORTFOLIO_REPORT_TYPES.BAJAJ_INTRADAY ? (
+          ) : [PORTFOLIO_REPORT_TYPES.BAJAJ_INTRADAY, PORTFOLIO_REPORT_TYPES.GROWVEST_TRADING].includes(item.reportType) ? (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:min-w-[440px]">
               <div className="rounded-lg bg-slate-50 p-2.5"><p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Trades</p><p className="mt-1 font-bold text-slate-900">{item.summary.tradeCount || item.summary.transactionCount || 0}</p></div>
               <div className="rounded-lg bg-slate-50 p-2.5"><p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Turnover</p><p className="mt-1 font-bold text-slate-900">{formatCurrency(item.summary.turnover)}</p></div>

@@ -176,6 +176,38 @@ const BAJAJ_INTRADAY_ALIASES = {
   notes: ["Notes", "Remark", "Remarks"]
 };
 
+const GROWVEST_TRADING_ALIASES = {
+  investorName: ["Investor Name", "Client Name", "Investor"],
+  pan: ["PAN", "PAN No", "PAN Number"],
+  clientCode: ["Client Code", "Client ID", "UCC", "Trading Code"],
+  tradeDate: ["Trade Date", "Trading Date", "Date"],
+  broker: ["Broker", "Broker Name", "Provider"],
+  segment: ["Segment", "Market Segment"],
+  instrumentType: ["Instrument Type", "Trade Instrument", "Instrument"],
+  exchange: ["Exchange", "Exch"],
+  underlying: ["Underlying", "Underlying Symbol"],
+  symbol: ["Contract / Symbol", "Contract", "Symbol", "Trading Symbol"],
+  expiryDate: ["Expiry Date", "Expiry"],
+  positionSide: ["Position Side", "Side", "Direction", "Long/Short"],
+  quantity: ["Quantity", "Qty", "Trade Quantity", "Total Quantity"],
+  lotSize: ["Lot Size", "Contract Lot Size"],
+  entryPrice: ["Entry Price", "Entry Rate", "Buy Price", "Buy Rate"],
+  exitPrice: ["Exit Price", "Exit Rate", "Sell Price", "Sell Rate"],
+  brokerage: ["Brokerage", "Brokerage Charges"],
+  stt: ["STT", "Securities Transaction Tax"],
+  exchangeCharges: ["Exchange Charges", "Transaction Charges", "Txn Charges"],
+  gst: ["GST", "IGST", "CGST/SGST"],
+  stampDuty: ["Stamp Duty", "Stamp Charges"],
+  otherCharges: ["Other Charges", "Other", "SEBI Charges", "Misc Charges"],
+  totalCharges: ["Total Charges", "Total Tax & Charges", "Total Taxes & Charges"],
+  grossPnl: ["Gross P&L", "Gross PNL"],
+  netPnl: ["Net P&L", "Net PNL"],
+  orderId: ["Order ID", "Order No", "Order Number"],
+  tradeId: ["Trade ID", "Trade No", "Trade Number"],
+  status: ["Status", "Trade Status"],
+  notes: ["Notes", "Remark", "Remarks"]
+};
+
 const ANGEL_ONE_DP_ALIASES = {
   date: ["Date", "Transaction Date", "Txn Date"],
   scriptName: ["SCRIPT NAME", "Script Name", "Scrip Name", "Security Name", "Instrument"],
@@ -1266,6 +1298,171 @@ function isSellSide(value = "") {
   return text === "s" || text === "sell" || text.includes("sell");
 }
 
+function normaliseTradingInstrumentType(value = "") {
+  const text = normaliseHeader(value).replace(/[^a-z0-9]+/g, " ").trim();
+  if (/equity.*intraday|intraday.*equity|^intraday$|^equity$/.test(text)) return "equity_intraday";
+  if (/future|futures|fut/.test(text)) return "future";
+  if (/option.*call|call.*option|^ce$|call/.test(text)) return "option_call";
+  if (/option.*put|put.*option|^pe$|put/.test(text)) return "option_put";
+  return "";
+}
+
+function normalisePositionSide(value = "") {
+  const text = normaliseHeader(value);
+  if (text === "long" || text === "buy" || text === "b") return "long";
+  if (text === "short" || text === "sell" || text === "s") return "short";
+  return "";
+}
+
+function parseGrowVestTrading(matrix = []) {
+  const table = findStructuredTable(
+    matrix,
+    GROWVEST_TRADING_ALIASES,
+    ["tradeDate", "investorName", "clientCode", "instrumentType", "symbol", "positionSide", "quantity", "entryPrice", "exitPrice"],
+    7
+  );
+  if (!table || !mappedField(table.map, "tradeDate") || !mappedField(table.map, "instrumentType") || !mappedField(table.map, "symbol")
+    || !mappedField(table.map, "positionSide") || !mappedField(table.map, "quantity") || !mappedField(table.map, "entryPrice") || !mappedField(table.map, "exitPrice")) {
+    throw new Error("GrowVest Daily Trading template was detected, but required trading columns are missing.");
+  }
+
+  const identity = { names: new Set(), pans: new Set(), clientCodes: new Set() };
+  const trades = [];
+  const warnings = [];
+  let brokerName = "";
+  let blankRun = 0;
+  for (let rowIndex = table.headerIndex + 1; rowIndex < matrix.length; rowIndex += 1) {
+    const row = matrix[rowIndex] || [];
+    const tradeDate = sourceDate(mappedValue(row, table.map, "tradeDate"));
+    const symbol = cleanIdentifier(mappedValue(row, table.map, "symbol"));
+    if (!tradeDate && !symbol) {
+      blankRun += 1;
+      if (blankRun >= 8 && trades.length) break;
+      continue;
+    }
+    blankRun = 0;
+    if (!tradeDate || !symbol) continue;
+    collectBajajIdentity(identity, row, table.map);
+    const statusRaw = cleanIdentifier(mappedValue(row, table.map, "status")) || "CLOSED";
+    if (!/^closed$/i.test(statusRaw)) {
+      warnings.push(`Row ${rowIndex + 1}: only CLOSED trades are supported in the Daily Trading v1 importer.`);
+      continue;
+    }
+    const instrumentType = normaliseTradingInstrumentType(mappedValue(row, table.map, "instrumentType"));
+    const positionSide = normalisePositionSide(mappedValue(row, table.map, "positionSide"));
+    const quantity = Math.abs(sourceNumber(mappedValue(row, table.map, "quantity")));
+    const lotSize = Math.abs(sourceNumber(mappedValue(row, table.map, "lotSize")));
+    const entryPrice = sourceNumber(mappedValue(row, table.map, "entryPrice"));
+    const exitPrice = sourceNumber(mappedValue(row, table.map, "exitPrice"));
+    if (!instrumentType || !positionSide || quantity <= 0 || entryPrice <= 0 || exitPrice <= 0) {
+      warnings.push(`Row ${rowIndex + 1}: Instrument Type, Position Side, Quantity, Entry Price and Exit Price are required.`);
+      continue;
+    }
+    const provider = cleanIdentifier(mappedValue(row, table.map, "broker")) || "Broker";
+    if (!brokerName) brokerName = provider;
+    if (brokerName !== provider) warnings.push("This workbook contains more than one broker. Split one broker per file for clean broker-account tracking.");
+    const brokerage = sourceNumber(mappedValue(row, table.map, "brokerage"));
+    const stt = sourceNumber(mappedValue(row, table.map, "stt"));
+    const exchangeCharges = sourceNumber(mappedValue(row, table.map, "exchangeCharges"));
+    const gst = sourceNumber(mappedValue(row, table.map, "gst"));
+    const stampDuty = sourceNumber(mappedValue(row, table.map, "stampDuty"));
+    const otherCharges = sourceNumber(mappedValue(row, table.map, "otherCharges"));
+    const componentCharges = brokerage + stt + exchangeCharges + gst + stampDuty + otherCharges;
+    const suppliedCharges = sourceNumber(mappedValue(row, table.map, "totalCharges"));
+    const totalCharges = suppliedCharges || componentCharges;
+    const calculatedGross = (positionSide === "short" ? entryPrice - exitPrice : exitPrice - entryPrice) * quantity;
+    const suppliedGross = sourceNumber(mappedValue(row, table.map, "grossPnl"));
+    const grossPnl = suppliedGross || calculatedGross;
+    const suppliedNet = sourceNumber(mappedValue(row, table.map, "netPnl"));
+    const netPnl = suppliedNet || grossPnl - totalCharges;
+    const buyRate = positionSide === "short" ? exitPrice : entryPrice;
+    const sellRate = positionSide === "short" ? entryPrice : exitPrice;
+    const lots = lotSize > 0 ? quantity / lotSize : 0;
+    const orderId = cleanIdentifier(mappedValue(row, table.map, "orderId"));
+    const tradeId = cleanIdentifier(mappedValue(row, table.map, "tradeId"));
+    trades.push({
+      sourceRow: rowIndex + 1,
+      source: PORTFOLIO_SOURCES.GROWVEST_TRADING,
+      provider,
+      tradeType: instrumentType,
+      instrumentType,
+      segment: cleanIdentifier(mappedValue(row, table.map, "segment")) || (instrumentType === "equity_intraday" ? "EQ" : "F&O"),
+      tradeDate,
+      stockName: symbol,
+      instrumentName: symbol,
+      underlying: cleanIdentifier(mappedValue(row, table.map, "underlying")),
+      symbol,
+      expiryDate: sourceDate(mappedValue(row, table.map, "expiryDate")),
+      exchange: cleanIdentifier(mappedValue(row, table.map, "exchange")).toUpperCase() || (instrumentType === "equity_intraday" ? "NSE" : "NFO"),
+      positionSide,
+      quantity: Number(quantity.toFixed(6)),
+      lotSize: Number(lotSize.toFixed(6)),
+      lots: Number(lots.toFixed(4)),
+      entryPrice: Number(entryPrice.toFixed(6)),
+      exitPrice: Number(exitPrice.toFixed(6)),
+      buyQuantity: Number(quantity.toFixed(6)),
+      sellQuantity: Number(quantity.toFixed(6)),
+      buyRate: Number(buyRate.toFixed(6)),
+      sellRate: Number(sellRate.toFixed(6)),
+      turnover: Number(((entryPrice + exitPrice) * quantity).toFixed(2)),
+      grossPnl: Number(grossPnl.toFixed(2)),
+      brokerage: Number(brokerage.toFixed(2)),
+      stt: Number(stt.toFixed(2)),
+      exchangeCharges: Number(exchangeCharges.toFixed(2)),
+      gst: Number(gst.toFixed(2)),
+      stampDuty: Number(stampDuty.toFixed(2)),
+      otherCharges: Number(otherCharges.toFixed(2)),
+      totalCharges: Number(totalCharges.toFixed(2)),
+      netPnl: Number(netPnl.toFixed(2)),
+      externalOrderId: orderId,
+      externalTradeId: tradeId || orderId,
+      status: "closed",
+      notes: cleanIdentifier(mappedValue(row, table.map, "notes"))
+    });
+  }
+  if (!trades.length) throw new Error(warnings[0] || "No valid CLOSED trades were found in the GrowVest Daily Trading file.");
+
+  if (identity.names.size > 1 || identity.pans.size > 1 || identity.clientCodes.size > 1) {
+    throw new Error("Daily Trading workbook contains more than one investor identity. Upload one investor per file.");
+  }
+  const externalClientName = [...identity.names][0] || "";
+  const dates = trades.map((item) => item.tradeDate).filter(Boolean).sort();
+  const summary = trades.reduce((total, item) => {
+    total.grossPnl += Number(item.grossPnl || 0);
+    total.totalCharges += Number(item.totalCharges || 0);
+    total.netPnl += Number(item.netPnl || 0);
+    total.turnover += Number(item.turnover || 0);
+    if (item.instrumentType === "future") total.futureCount += 1;
+    if (["option_call", "option_put"].includes(item.instrumentType)) total.optionCount += 1;
+    if (item.instrumentType === "equity_intraday") total.equityIntradayCount += 1;
+    return total;
+  }, { grossPnl: 0, totalCharges: 0, netPnl: 0, turnover: 0, futureCount: 0, optionCount: 0, equityIntradayCount: 0 });
+  return {
+    externalClientName,
+    normalizedExternalClientName: normaliseExternalName(externalClientName),
+    externalPan: [...identity.pans][0] || "",
+    externalClientCode: [...identity.clientCodes][0] || "",
+    holdings: [],
+    transactions: [],
+    trades,
+    warnings: [...new Set(warnings)],
+    blockingError: warnings.length ? (warnings.some((item) => item.includes("more than one broker")) ? "Split multi-broker trading into one workbook per broker before importing." : "Resolve the Daily Trading row warnings before importing. GrowVest will not silently omit invalid or open trades.") : "",
+    reportPeriodStart: dates[0] || "",
+    reportPeriodEnd: dates.at(-1) || "",
+    brokerAccount: {
+      broker: brokerName || trades[0]?.provider || "Broker",
+      accountType: "trading",
+      accountReference: [...identity.clientCodes][0] || [...identity.pans][0] || normaliseExternalName(externalClientName),
+      reportDate: dates.at(-1) || ""
+    },
+    summary: {
+      totalInvested: 0, currentValue: 0, gainLoss: 0, positionCount: 0, transactionCount: trades.length, tradeCount: trades.length,
+      grossPnl: Number(summary.grossPnl.toFixed(2)), totalCharges: Number(summary.totalCharges.toFixed(2)), netPnl: Number(summary.netPnl.toFixed(2)), turnover: Number(summary.turnover.toFixed(2)),
+      futureCount: summary.futureCount, optionCount: summary.optionCount, equityIntradayCount: summary.equityIntradayCount
+    }
+  };
+}
+
 function parseBajajIntraday(matrix = []) {
   const sidewiseCandidate = findStructuredTable(
     matrix,
@@ -2110,6 +2307,24 @@ function detectMatrixReport(matrix = [], sheetName = "") {
 
   const terms = matrixTerms(matrix);
   const sheet = normaliseHeader(sheetName);
+  const growVestTradingCandidate = findStructuredTable(
+    matrix,
+    GROWVEST_TRADING_ALIASES,
+    ["tradeDate", "investorName", "clientCode", "instrumentType", "symbol", "positionSide", "quantity", "entryPrice", "exitPrice"],
+    7
+  );
+  const growVestTradingSignature = sheet === "daily trading" || sheet === "trading" || sheet.includes("daily trading")
+    || hasTerms(terms, ["instrument type", "position side", "entry price", "exit price", "lot size", "trade date"], 5);
+  if (growVestTradingCandidate && growVestTradingSignature) {
+    return {
+      source: PORTFOLIO_SOURCES.GROWVEST_TRADING,
+      reportType: PORTFOLIO_REPORT_TYPES.GROWVEST_TRADING,
+      adapterStatus: PORTFOLIO_ADAPTER_STATUS.READY,
+      confidence: sheet.includes("daily trading") ? 1 : 0.98,
+      sheetName
+    };
+  }
+
   const bajajBrand = sheet.includes("bajaj") || [...terms].some((term) => term.includes("bajaj broking") || term.includes("bajaj financial securities") || term === "bajaj");
 
   if (hasTerms(terms, ["scheme name", "folio no", "net investment", "current value", "xirr"], 4)
@@ -2880,6 +3095,18 @@ export async function detectPortfolioImportFile(file) {
         if (detection.reportType === PORTFOLIO_REPORT_TYPES.ANGEL_ONE_DP_STATEMENT) {
           const parsed = parseAngelOneDpMatrix(sheet.matrix, sheet.sheetName);
           return { ...base, ...detection, ...parsed, adapterStatus: PORTFOLIO_ADAPTER_STATUS.READY, error: "" };
+        }
+        if (detection.reportType === PORTFOLIO_REPORT_TYPES.GROWVEST_TRADING
+          && detection.adapterStatus === PORTFOLIO_ADAPTER_STATUS.READY) {
+          const parsed = parseGrowVestTrading(sheet.matrix);
+          const blockingError = parsed.blockingError || "";
+          return {
+            ...base,
+            ...detection,
+            ...parsed,
+            adapterStatus: blockingError ? PORTFOLIO_ADAPTER_STATUS.DETECTED_NOT_ENABLED : PORTFOLIO_ADAPTER_STATUS.READY,
+            error: blockingError
+          };
         }
         if (detection.reportType === PORTFOLIO_REPORT_TYPES.GROWVEST_STANDARD
           && detection.adapterStatus === PORTFOLIO_ADAPTER_STATUS.READY) {

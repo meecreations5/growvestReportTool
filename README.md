@@ -1047,3 +1047,19 @@ Opening Portfolio Verification now treats the investor's first verified holdings
 Secure PDF renderer version is `2.4.4`; installed Investor PWA caches use `v0.34.16-pdf-stability1`. The locked v0.34.14 GrowVest Signature layout, palette and cover direction are unchanged.
 
 See `docs/PDF_ENCODING_OPENING_VERIFICATION_STABILITY_v0.34.16.md`, `docs/PDF_ENCODING_OPENING_VERIFICATION_STABILITY_CODE_MANIFEST_v0.34.16.md` and `RELEASE_VALIDATION_v0.34.16.md`.
+
+## v0.34.25 — Daily Trading / F&O Excel Import
+
+GrowVest now includes a standard Daily Trading Excel workflow for closed **Equity Intraday, Futures, Call Options and Put Options** trades. The importer supports LONG/SHORT positions, turnover, detailed charges, gross/net realised P&L, broker account mapping, and monthly trading summaries. Trading remains reporting-only and is not included in long-term investment portfolio value or Bucket List corpus.
+
+Templates are available in the app at:
+- `/templates/GrowVest_Daily_Trading_FO_Template_v0.34.25.xlsx`
+- `/templates/GrowVest_Daily_Trading_FO_Filled_Sample_v0.34.25.xlsx`
+
+## v0.34.26 — Simple Manual Investment Folio & Import-Date Rule
+
+The simplified **Manual Investments** Excel workflow now explicitly treats the Excel `Valuation Date` column as optional/ignored for now. GrowVest uses the file import date as the effective Manual valuation/freshness date.
+
+The existing Manual position identity includes the **Folio / Account / Policy No.**, so the same investment with a **new folio number is saved as a new investment**, while the same investment + same folio updates the existing holding. If a newly detected holding has no Investment Date, the import date is saved as its Investment/Purchase Date; existing holdings preserve their prior date when the workbook leaves it blank.
+
+See `docs/MANUAL_INVESTMENT_FOLIO_DATE_RULES_v0.34.26.md`, `docs/MANUAL_INVESTMENT_FOLIO_DATE_RULES_CODE_MANIFEST_v0.34.26.md` and `RELEASE_VALIDATION_v0.34.26.md`.

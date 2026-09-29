@@ -403,6 +403,23 @@ function bajajTradeDocumentId(investorId, trade = {}) {
   return `trade_${stableHash([investorId, PORTFOLIO_SOURCES.BAJAJ_BROKING, identity].join("|"), 48)}`;
 }
 
+function tradingTradeDocumentId(investorId, source, trade = {}) {
+  const identity = [
+    trade.externalTradeId ? `external:${String(trade.externalTradeId).trim()}` : "",
+    trade.externalOrderId ? `order:${String(trade.externalOrderId).trim()}` : "",
+    trade.tradeDate || "",
+    String(trade.exchange || "").toUpperCase(),
+    String(trade.instrumentType || trade.tradeType || "").toLowerCase(),
+    normaliseExternalName(trade.symbol || trade.stockName || trade.instrumentName || ""),
+    String(trade.expiryDate || ""),
+    String(trade.positionSide || "").toLowerCase(),
+    Number(trade.quantity || 0).toFixed(6),
+    Number(trade.entryPrice || trade.buyRate || 0).toFixed(6),
+    Number(trade.exitPrice || trade.sellRate || 0).toFixed(6)
+  ].join("|");
+  return `trade_${stableHash([investorId, source, identity].join("|"), 48)}`;
+}
+
 function tradingSummaryForRows(rows = []) {
   const summary = rows.reduce((total, trade) => {
     const quantity = Number(trade.quantity || Math.min(Number(trade.buyQuantity || 0), Number(trade.sellQuantity || 0)) || 0);
@@ -428,6 +445,85 @@ function tradingSummaryForRows(rows = []) {
     netPnl: Number(summary.netPnl.toFixed(2)),
     turnover: Number(summary.turnover.toFixed(2))
   };
+}
+
+async function commitGrowVestTradingFile({ actor, batchId, file, fileRef, investor, investorId, writer }) {
+  if (file.reportType !== PORTFOLIO_REPORT_TYPES.GROWVEST_TRADING) throw new Error("This is not a GrowVest Daily Trading file.");
+  const source = PORTFOLIO_SOURCES.GROWVEST_TRADING;
+  const trades = Array.isArray(file.trades) ? file.trades : [];
+  if (!trades.length) throw new Error("No CLOSED trading rows were available to import.");
+  const mappingEntries = await loadBrokerMappingEntries(file, source);
+  for (const entry of mappingEntries) {
+    if (entry.snapshot.exists && entry.snapshot.data()?.investorId !== investorId) {
+      throw new Error(`This trading ${entry.identityType.replaceAll("_", " ")} is already mapped to another GrowVest investor.`);
+    }
+  }
+  const brokerRecords = await prepareBrokerAccountRecords({ file, investorId, source, dpTransactions: [] });
+  const tradeRefs = trades.map((trade) => adminDb.collection("tradingTransactions").doc(tradingTradeDocumentId(investorId, source, trade)));
+  const tradeSnapshots = tradeRefs.length ? await adminDb.getAll(...tradeRefs) : [];
+  const tradingEntries = trades.map((trade, index) => ({ trade, ref: tradeRefs[index], existingData: tradeSnapshots[index]?.exists ? tradeSnapshots[index].data() : null }));
+  const monthKeys = [...new Set(trades.map((trade) => String(trade.tradeDate || "").slice(0, 7)).filter(Boolean))];
+  const summaryRefs = monthKeys.map((monthKey) => adminDb.collection("tradingMonthlySummaries").doc(`${investorId}_${monthKey}`));
+  const summarySnapshots = summaryRefs.length ? await adminDb.getAll(...summaryRefs) : [];
+  const tradingSummaryEntries = summaryRefs.map((ref, index) => ({ ref, existingData: summarySnapshots[index]?.exists ? summarySnapshots[index].data() : null }));
+  const fingerprintRef = adminDb.collection("portfolioFileFingerprints").doc(file.fileFingerprint);
+  const fingerprintSnapshot = await fingerprintRef.get();
+  const recoveryRef = await createRecoveryJournal({
+    batchId, file, actor, investorId, fingerprintRef, fingerprintSnapshot, holdingEntries: [], exitedPositions: [], transactionEntries: [], mappingEntries, tradingEntries, tradingSummaryEntries,
+    extraEntries: [{ collectionName: "brokerAccounts", ref: brokerRecords.accountRef, existingData: brokerRecords.accountSnapshot?.exists ? brokerRecords.accountSnapshot.data() : null, entityType: "broker_account" }],
+    source
+  });
+  try {
+    const mappingPayload = {
+      source, externalClientName: file.externalClientName || "", normalizedExternalClientName: file.normalizedExternalClientName || "", externalPan: file.externalPan || "", externalClientCode: file.externalClientCode || "",
+      investorId, investorName: investor.fullName || investor.name || "", clientCode: investor.clientCode || "", advisorUid: investor.assignedAdvisorUid || investor.advisorUid || "",
+      status: "verified", verifiedByUid: actor.uid, verifiedByName: actor.fullName || actor.email || "GrowVest User", lastSuccessfulImportAt: FieldValue.serverTimestamp(), lastSuccessfulImportId: batchId, updatedAt: FieldValue.serverTimestamp()
+    };
+    mappingEntries.forEach((entry) => writer.set(entry.ref, { ...mappingPayload, identityType: entry.identityType, verifiedAt: entry.snapshot.exists ? entry.snapshot.data()?.verifiedAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp() }, { merge: true }));
+    writer.set(brokerRecords.accountRef, {
+      ...brokerAccountPayload({ actor, batchId, file, investor, investorId, source, accountId: brokerRecords.accountId, accountReference: brokerRecords.accountReference }),
+      createdAt: brokerRecords.accountSnapshot?.exists ? brokerRecords.accountSnapshot.data()?.createdAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp()
+    }, { merge: true });
+    tradingEntries.forEach(({ trade, ref, existingData }) => {
+      const existing = existingData || {};
+      const quantity = Number(trade.quantity || 0);
+      const totalCharges = Number(trade.totalCharges || 0);
+      const grossPnl = Number(trade.grossPnl || 0);
+      const netPnl = Number(trade.netPnl ?? (grossPnl - totalCharges));
+      writer.set(ref, {
+        investorId, investorName: investor.fullName || investor.name || "", clientCode: investor.clientCode || "", advisorUid: investor.assignedAdvisorUid || investor.advisorUid || "", assignedAdvisorUid: investor.assignedAdvisorUid || investor.advisorUid || "", investorPortalUid: investor.portalUid || investor.investorPortalUid || null,
+        source, provider: trade.provider || file.brokerAccount?.broker || "Broker", brokerAccountId: brokerRecords.accountId, brokerAccountReference: brokerRecords.accountReference,
+        tradeType: trade.tradeType || trade.instrumentType || "trading", instrumentType: trade.instrumentType || trade.tradeType || "trading", segment: trade.segment || "", tradeDate: trade.tradeDate || "",
+        stockName: trade.stockName || trade.symbol || "", instrumentName: trade.instrumentName || trade.symbol || "", underlying: trade.underlying || "", symbol: trade.symbol || "", expiryDate: trade.expiryDate || "", exchange: trade.exchange || "", positionSide: trade.positionSide || "",
+        quantity: Number(quantity.toFixed(6)), lotSize: Number(Number(trade.lotSize || 0).toFixed(6)), lots: Number(Number(trade.lots || 0).toFixed(4)), entryPrice: Number(Number(trade.entryPrice || 0).toFixed(6)), exitPrice: Number(Number(trade.exitPrice || 0).toFixed(6)),
+        buyQuantity: Number(Number(trade.buyQuantity || quantity).toFixed(6)), sellQuantity: Number(Number(trade.sellQuantity || quantity).toFixed(6)), buyRate: Number(Number(trade.buyRate || 0).toFixed(6)), sellRate: Number(Number(trade.sellRate || 0).toFixed(6)),
+        grossPnl: Number(grossPnl.toFixed(2)), brokerage: Number(Number(trade.brokerage || 0).toFixed(2)), stt: Number(Number(trade.stt || 0).toFixed(2)), exchangeCharges: Number(Number(trade.exchangeCharges || 0).toFixed(2)), gst: Number(Number(trade.gst || 0).toFixed(2)), stampDuty: Number(Number(trade.stampDuty || 0).toFixed(2)), otherCharges: Number(Number(trade.otherCharges || 0).toFixed(2)), totalCharges: Number(totalCharges.toFixed(2)), netPnl: Number(netPnl.toFixed(2)), turnover: Number(Number(trade.turnover || ((Number(trade.entryPrice || 0) + Number(trade.exitPrice || 0)) * quantity)).toFixed(2)),
+        result: netPnl > 0 ? "profit" : netPnl < 0 ? "loss" : "breakeven", status: "closed", externalOrderId: trade.externalOrderId || "", externalTradeId: trade.externalTradeId || "", notes: trade.notes || existing.notes || "",
+        sourceImportId: batchId, sourceImportFileId: file.id, sourceFileName: file.fileName || "", sourceRow: trade.sourceRow || null, createdByUid: existing.createdByUid || actor.uid, createdByName: existing.createdByName || actor.fullName || actor.email || "GrowVest User", createdAt: existing.createdAt || FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+    });
+    writer.set(fingerprintRef, { source, batchId, fileId: file.id, investorId, importedAt: FieldValue.serverTimestamp(), importedByUid: actor.uid }, { merge: true });
+    writer.update(fileRef, { matchedInvestorId: investorId, matchedInvestorName: investor.fullName || investor.name || "", matchedClientCode: investor.clientCode || "", matchStatus: PORTFOLIO_MATCH_STATUS.VERIFIED, status: "imported", brokerAccountId: brokerRecords.accountId, importedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+    await writer.flush();
+
+    if (monthKeys.length) {
+      const allTradeSnapshot = await adminDb.collection("tradingTransactions").where("investorId", "==", investorId).get();
+      const allClosedTrades = allTradeSnapshot.docs.map((item) => item.data()).filter((item) => String(item.status || "").toLowerCase() === "closed");
+      for (const monthKey of monthKeys) {
+        const monthTrades = allClosedTrades.filter((item) => String(item.tradeDate || "").startsWith(monthKey));
+        const monthSummary = tradingSummaryForRows(monthTrades);
+        writer.set(adminDb.collection("tradingMonthlySummaries").doc(`${investorId}_${monthKey}`), {
+          investorId, investorName: investor.fullName || investor.name || "", advisorUid: investor.assignedAdvisorUid || investor.advisorUid || "", assignedAdvisorUid: investor.assignedAdvisorUid || investor.advisorUid || "", investorPortalUid: investor.portalUid || investor.investorPortalUid || null, monthKey, source: "mixed_trading", provider: "Trading Activity", ...monthSummary, sourceImportId: batchId, sourceImportFileId: file.id, updatedAt: FieldValue.serverTimestamp()
+        }, { merge: true });
+      }
+      await writer.flush();
+    }
+    await recoveryRef.update({ status: "committed", committedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+    return { fileId: file.id, fileName: file.fileName, status: "imported", investorId, investorName: investor.fullName || investor.name || "", tradeCount: trades.length, transactionCount: trades.length, tradingNetPnl: Number(file.summary?.netPnl || 0), turnover: Number(file.summary?.turnover || 0) };
+  } catch (error) {
+    await recoveryRef.set({ status: "commit_failed", reversible: true, failureReason: error?.message || "Daily Trading import failed", failedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true }).catch(() => {});
+    throw error;
+  }
 }
 
 async function commitBajajFile({ actor, batchId, file, fileRef, investor, investorId, writer }) {
@@ -717,9 +813,9 @@ async function commitBajajFile({ actor, batchId, file, fileRef, investor, invest
 
   if (monthKeys.length) {
     const allTradeSnapshot = await adminDb.collection("tradingTransactions").where("investorId", "==", investorId).get();
-    const allBajajTrades = allTradeSnapshot.docs.map((item) => item.data()).filter((item) => item.source === PORTFOLIO_SOURCES.BAJAJ_BROKING && item.status !== "cancelled");
+    const allClosedTrades = allTradeSnapshot.docs.map((item) => item.data()).filter((item) => String(item.status || "").toLowerCase() === "closed");
     monthKeys.forEach((monthKey) => {
-      const monthTrades = allBajajTrades.filter((item) => String(item.tradeDate || "").startsWith(monthKey));
+      const monthTrades = allClosedTrades.filter((item) => String(item.tradeDate || "").startsWith(monthKey));
       const summary = tradingSummaryForRows(monthTrades);
       writer.set(adminDb.collection("tradingMonthlySummaries").doc(`${investorId}_${monthKey}`), {
         investorId,
@@ -728,8 +824,8 @@ async function commitBajajFile({ actor, batchId, file, fileRef, investor, invest
         assignedAdvisorUid: investor.assignedAdvisorUid || investor.advisorUid || "",
         investorPortalUid: investor.portalUid || investor.investorPortalUid || null,
         monthKey,
-        source: PORTFOLIO_SOURCES.BAJAJ_BROKING,
-        provider: "Bajaj Broking",
+        source: "mixed_trading",
+        provider: "Trading Activity",
         ...summary,
         sourceImportId: batchId,
         sourceImportFileId: file.id,
@@ -1857,6 +1953,12 @@ export async function POST(request) {
 
       try {
         const investor = await getAccessibleInvestor(actor, investorId);
+        if (file.source === PORTFOLIO_SOURCES.GROWVEST_TRADING) {
+          const tradingResult = await commitGrowVestTradingFile({ actor, batchId, file, fileRef, investor, investorId, writer });
+          affectedInvestors.set(investorId, investor);
+          results.push(tradingResult);
+          continue;
+        }
         if (file.source === PORTFOLIO_SOURCES.BAJAJ_BROKING) {
           const bajajResult = await commitBajajFile({ actor, batchId, file, fileRef, investor, investorId, writer });
           affectedInvestors.set(investorId, investor);

@@ -209,7 +209,8 @@ async function parseFile(file) {
       totalInvested: Number(totalInvested.toFixed(2)),
       currentRate,
       currentValue: Number(currentValue.toFixed(2)),
-      valuationDate: excelDate(cell(row, columns, "valuationDate")) || indiaDateKey(),
+      valuationDateInput: excelDate(cell(row, columns, "valuationDate")),
+      valuationDate: "",
       scheduledMonthlySip,
       monthlySip: ["paused", "stopped", "na"].includes(sipStatus) ? 0 : scheduledMonthlySip,
       sipStatus,
@@ -242,6 +243,7 @@ export async function POST(request, { params }) {
     const mode = clean(formData.get("mode") || "merge").toLowerCase() === "replace" ? "replace" : "merge";
     const file = formData.get("file");
     const parsed = await parseFile(file);
+    const importDate = indiaDateKey();
 
     const goals = investorGoals(investor);
     const previewRows = parsed.rows.map((row) => {
@@ -305,6 +307,15 @@ export async function POST(request, { params }) {
         holdingByKey.set(holdingLookupKey(row.instrumentName, ""), row);
       }
       const existing = existingMap.get(positionId);
+      const isNewInvestment = !existing;
+      // Folio/account number is part of positionDocumentId. Therefore the same
+      // instrument with a new folio is a new investment; the same folio updates
+      // the existing investment. If a newly detected row has no Investment Date,
+      // save the file import date as the investment/purchase date.
+      const effectiveInvestmentDate = row.investmentDate
+        || existing?.investmentDate
+        || existing?.purchaseDate
+        || (isNewInvestment ? importDate : "");
       const goal = row.goalId ? goals.find((item) => String(item.id || item.goalId) === String(row.goalId)) : null;
       const goalAllocations = normalisePortfolioGoalAllocations(goal
         ? [{ goalId: goal.id || goal.goalId, goalName: goal.name || goal.goalName || "Goal", percentage: 100 }]
@@ -343,8 +354,8 @@ export async function POST(request, { params }) {
         exchange: row.exchange,
         folioNo: row.folioNo,
         investmentMode: row.investmentMode,
-        investmentDate: row.investmentDate,
-        purchaseDate: row.investmentDate,
+        investmentDate: effectiveInvestmentDate,
+        purchaseDate: effectiveInvestmentDate,
         totalInvested: Number(totalInvested.toFixed(2)),
         investedAmount: Number(totalInvested.toFixed(2)),
         quantity: row.productType === PORTFOLIO_PRODUCT_TYPES.STOCK_DELIVERY ? row.quantity : Number(existing?.quantity || 0),
@@ -353,8 +364,14 @@ export async function POST(request, { params }) {
         averagePurchaseNav: row.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? Number(averageBuyRate.toFixed(6)) : Number(existing?.averagePurchaseNav || 0),
         currentRate: row.currentRate,
         currentNav: row.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? row.currentRate : Number(existing?.currentNav || 0),
-        navDate: row.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? row.valuationDate : (existing?.navDate || ""),
-        valuationDate: row.valuationDate,
+        // Valuation Date in the simplified Manual Excel is optional/ignored for
+        // now. The import date is the effective source freshness date.
+        navDate: row.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? importDate : (existing?.navDate || ""),
+        valuationDate: importDate,
+        valuationDateBasis: "manual_import_date",
+        manualImportDate: importDate,
+        firstSeenDate: existing?.firstSeenDate || importDate,
+        investmentAddedDate: existing?.investmentAddedDate || importDate,
         currentValue: row.currentValue,
         gainLoss: Number(gainLoss.toFixed(2)),
         returnPercentage: Number(returnPercentage.toFixed(2)),

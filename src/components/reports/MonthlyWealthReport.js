@@ -492,7 +492,7 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
       </SectionCard>
 
       {tradingSummary && Number(tradingSummary.totalTrades || 0) > 0 ? <SectionCard id="report-trading" style={sectionStyle("holdings", 1)} className="scroll-mt-32 p-5 sm:p-6">
-        <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center"><div><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">Stock Intraday Trading</p><h2 className="mt-1 text-lg font-black text-slate-950">Monthly Trading Summary</h2><p className="mt-1 text-sm text-slate-400">Shown separately from the long-term investment portfolio and goal corpus.</p></div><span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">{tradingSummary.monthKey || report.reportMonthKey}</span></div>
+        <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center"><div><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">Trading Activity</p><h2 className="mt-1 text-lg font-black text-slate-950">Monthly Trading Summary</h2><p className="mt-1 text-sm text-slate-400">Shown separately from the long-term investment portfolio and goal corpus.</p></div><span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">{tradingSummary.monthKey || report.reportMonthKey}</span></div>
         <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[
             ["Total Trades", Number(tradingSummary.totalTrades || 0), `${Number(tradingSummary.winningTrades || 0)} winning · ${Number(tradingSummary.losingTrades || 0)} losing`],

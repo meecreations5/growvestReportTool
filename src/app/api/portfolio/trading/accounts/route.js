@@ -81,7 +81,7 @@ export async function GET(request) {
       const investor = investorById.get(account.investorId) || {};
       const holdings = brokerPositions.filter((item) => item.brokerAccountId === account.id);
       const movements = (dpByAccount.get(account.id) || []).sort((a, b) => String(b.transactionDate || "").localeCompare(String(a.transactionDate || "")));
-      const accountTrades = (tradesByAccount.get(account.id) || []).filter((item) => String(item.status || "") !== "cancelled");
+      const accountTrades = (tradesByAccount.get(account.id) || []).filter((item) => String(item.status || "").toLowerCase() === "closed");
       const currentMonthTrades = accountTrades.filter((item) => String(item.tradeDate || "").startsWith(monthKey));
       const latest = latestSnapshotByAccount.get(account.id) || null;
       const holdingValue = Number(holdings.reduce((sum, item) => sum + Number(item.currentValue || 0), 0).toFixed(2));
@@ -115,9 +115,13 @@ export async function GET(request) {
           reportedBalance: Number(item.reportedBalance || 0),
           description: item.description || ""
         })),
-        intradayTradeCountMonth: currentMonthTrades.length,
+        intradayTradeCountMonth: currentMonthTrades.filter((item) => ["intraday", "equity_intraday"].includes(String(item.instrumentType || item.tradeType || "").toLowerCase())).length,
         intradayNetPnlMonth,
         intradayChargesMonth,
+        tradeCountMonth: currentMonthTrades.length,
+        tradingNetPnlMonth: intradayNetPnlMonth,
+        futuresTradeCountMonth: currentMonthTrades.filter((item) => String(item.instrumentType || item.tradeType || "").toLowerCase() === "future").length,
+        optionsTradeCountMonth: currentMonthTrades.filter((item) => ["option_call", "option_put"].includes(String(item.instrumentType || item.tradeType || "").toLowerCase())).length,
         latestSnapshot: latest ? {
           valuationDate: latest.valuationDate || latest.snapshotDate || "",
           holdingValue: Number(latest.holdingValue || 0),
@@ -127,7 +131,7 @@ export async function GET(request) {
       };
     }).sort((left, right) => left.investorName.localeCompare(right.investorName) || left.provider.localeCompare(right.provider));
 
-    const accessibleTrades = trades.filter((item) => String(item.status || "") !== "cancelled");
+    const accessibleTrades = trades.filter((item) => String(item.status || "").toLowerCase() === "closed");
     const monthTrades = accessibleTrades.filter((item) => String(item.tradeDate || "").startsWith(monthKey));
     const summary = {
       accountCount: rows.length,
@@ -137,8 +141,12 @@ export async function GET(request) {
       deliveryPositionCount: rows.reduce((sum, item) => sum + item.positionCount, 0),
       costBasisPendingCount: rows.reduce((sum, item) => sum + item.costBasisPendingCount, 0),
       dpTransactionCount: rows.reduce((sum, item) => sum + item.dpTransactionCount, 0),
-      intradayTradeCountMonth: monthTrades.length,
+      intradayTradeCountMonth: monthTrades.filter((item) => ["intraday", "equity_intraday"].includes(String(item.instrumentType || item.tradeType || "").toLowerCase())).length,
       intradayNetPnlMonth: Number(monthTrades.reduce((sum, item) => sum + Number(item.netPnl || 0), 0).toFixed(2)),
+      tradeCountMonth: monthTrades.length,
+      tradingNetPnlMonth: Number(monthTrades.reduce((sum, item) => sum + Number(item.netPnl || 0), 0).toFixed(2)),
+      futuresTradeCountMonth: monthTrades.filter((item) => String(item.instrumentType || item.tradeType || "").toLowerCase() === "future").length,
+      optionsTradeCountMonth: monthTrades.filter((item) => ["option_call", "option_put"].includes(String(item.instrumentType || item.tradeType || "").toLowerCase())).length,
       monthKey
     };
 

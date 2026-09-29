@@ -4,6 +4,7 @@ import { adminDb, verifyStaffRequest,
 } from "@/lib/server/firebaseAdmin";
 import { getAccessibleInvestor, indiaDateKey } from "@/lib/server/portfolioServer";
 import { stableHash } from "@/lib/server/portfolioImportParser";
+import { PORTFOLIO_SOURCES } from "@/lib/constants/portfolio";
 
 export const runtime = "nodejs";
 
@@ -49,9 +50,10 @@ export async function POST(request) {
       advisorUid: investor.assignedAdvisorUid || investor.advisorUid || "",
       assignedAdvisorUid: investor.assignedAdvisorUid || investor.advisorUid || "",
       investorPortalUid: investor.portalUid || investor.investorPortalUid || null,
-      source: "bajaj_broking",
-      provider: clean(payload.provider) || "Bajaj Broking",
-      tradeType: "intraday",
+      source: PORTFOLIO_SOURCES.GROWVEST_TRADING,
+      provider: clean(payload.provider) || "Manual Trading",
+      tradeType: "equity_intraday",
+      instrumentType: "equity_intraday",
       tradeDate,
       stockName,
       instrumentName: stockName,
@@ -80,7 +82,7 @@ export async function POST(request) {
 
     const monthKey = tradeDate.slice(0, 7);
     const monthSnapshot = await adminDb.collection("tradingTransactions").where("investorId", "==", investorId).get();
-    const monthTrades = monthSnapshot.docs.map((item) => item.data()).filter((item) => String(item.tradeDate || "").startsWith(monthKey));
+    const monthTrades = monthSnapshot.docs.map((item) => item.data()).filter((item) => String(item.tradeDate || "").startsWith(monthKey) && String(item.status || "").toLowerCase() === "closed");
     const summary = monthTrades.reduce((total, trade) => {
       total.totalTrades += 1;
       total.grossPnl += Number(trade.grossPnl || 0);
@@ -99,8 +101,8 @@ export async function POST(request) {
       advisorUid: investor.assignedAdvisorUid || investor.advisorUid || "",
       investorPortalUid: investor.portalUid || investor.investorPortalUid || null,
       monthKey,
-      source: "bajaj_broking",
-      provider: "Bajaj Broking",
+      source: "mixed_trading",
+      provider: "Trading Activity",
       tradingDays: summary.tradingDays.size,
       totalTrades: summary.totalTrades,
       winningTrades: summary.winningTrades,

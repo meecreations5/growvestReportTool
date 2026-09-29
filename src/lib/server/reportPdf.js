@@ -917,8 +917,8 @@ function addHoldingsPages(doc, fonts, report, template, theme) {
 function addTradingSummaryPage(doc, fonts, report, template, theme) {
   const trading = report.tradingSummary || null;
   if (!trading || Number(trading.totalTrades || 0) <= 0) return;
-  const page = addPage(doc, fonts, report, template, theme, "Stock Intraday Trading");
-  page.drawText("Monthly intraday performance is reported separately from the long-term investment portfolio and goal corpus.", { x: PDF_MARGIN, y: 713, size: 8, font: fonts.regular, color: MUTED });
+  const page = addPage(doc, fonts, report, template, theme, "Trading Activity");
+  page.drawText("Monthly trading performance is reported separately from the long-term investment portfolio and goal corpus.", { x: PDF_MARGIN, y: 713, size: 8, font: fonts.regular, color: MUTED });
   const stats = [
     ["TOTAL TRADES", String(Number(trading.totalTrades || 0)), `${Number(trading.winningTrades || 0)} winning | ${Number(trading.losingTrades || 0)} losing`],
     ["GROSS P&L", compactMoney(trading.grossPnl || 0), "Before charges"],
@@ -937,7 +937,7 @@ function addTradingSummaryPage(doc, fonts, report, template, theme) {
   });
   drawPanel(page, { x: PDF_MARGIN, y: 330, width: CONTENT_WIDTH, height: 150, fill: WHITE, border: theme.primary });
   page.drawText("TRADING TREATMENT", { x: PDF_MARGIN + 16, y: 448, size: 7.5, font: fonts.bold, color: theme.primary });
-  drawTextBlock(page, "Intraday realised profit or loss remains part of trading activity. It contributes to long-term wealth or a financial goal only when GrowVest records an actual transfer or investment allocation.", { x: PDF_MARGIN + 16, y: 416, width: CONTENT_WIDTH - 32, font: fonts.regular, size: 9, color: MUTED, lineHeight: 13, maxLines: 5 });
+  drawTextBlock(page, "Realised trading profit or loss remains part of trading activity. It contributes to long-term wealth or a financial goal only when GrowVest records an actual transfer or investment allocation.", { x: PDF_MARGIN + 16, y: 416, width: CONTENT_WIDTH - 32, font: fonts.regular, size: 9, color: MUTED, lineHeight: 13, maxLines: 5 });
 }
 
 function addTransactionsPages(doc, fonts, report, template, theme) {
