@@ -28,6 +28,7 @@ import {
 } from "@/lib/constants/report";
 import { sanitizeForFirestore } from "@/services/assessmentService";
 import { buildReportReconciliation } from "@/lib/reportReconciliation";
+import { isMonthlyPeriodAfterOpening } from "@/lib/reportPeriodRules";
 import { syncMonthlyReportActions } from "@/services/actionService";
 import { GENERAL_WEALTH_BUCKET_NAME, normalisePortfolioGoalAllocations, portfolioBucketLabel } from "@/lib/portfolioGoalAllocation";
 import {
@@ -772,21 +773,8 @@ export async function saveMonthlyReport(payload, currentUser, { reportId = null,
     if (!openingReport && !hasLegacyPublishedReview) {
       throw new Error("The first investor-facing GrowVest report must be an Opening Wealth Review. Create and publish the Opening Wealth Review before starting Monthly Wealth Reviews.");
     }
-    if (openingReport) {
-      const openingPublished = Boolean(
-        openingReport.investorVisible === true
-        && (
-          openingReport.activePublishedVersionId
-          || Number(openingReport.publishedVersion || 0) > 0
-          || openingReport.publicationStatus === "published"
-        )
-      );
-      if (!openingPublished) {
-        throw new Error("Publish the Opening Wealth Review before creating a Monthly Wealth Review for this investor.");
-      }
-      if (openingReport.reportMonthKey && normalised.reportMonthKey <= openingReport.reportMonthKey) {
-        throw new Error(`The Opening Wealth Review already establishes this investor's baseline in ${getMonthLabel(openingReport.reportMonth)} ${openingReport.reportYear}. Monthly Wealth Reviews must start from the following month.`);
-      }
+    if (openingReport && !isMonthlyPeriodAfterOpening(openingReport, normalised.reportMonthKey, normalised.statementDate)) {
+      throw new Error(`The Opening Wealth Review establishes this investor's baseline on ${openingReport.statementDate || openingReport.reportMonthKey || "the opening snapshot"}. Choose a Monthly Wealth Review cutoff after that baseline.`);
     }
   }
 

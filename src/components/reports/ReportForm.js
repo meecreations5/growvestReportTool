@@ -57,6 +57,7 @@ import {
 } from "@/lib/constants/report";
 import { monthlyReportSchema, validateCompletedReport } from "@/lib/validation/reportSchema";
 import { buildReportReconciliation } from "@/lib/reportReconciliation";
+import { isMonthlyPeriodAfterOpening } from "@/lib/reportPeriodRules";
 import { getReportTemplate, subscribeReportTemplates } from "@/services/reportTemplateService";
 import {
   DEFAULT_REPORT_TEMPLATE_ID,
@@ -198,6 +199,7 @@ export default function ReportForm({ reportId = null }) {
   const [workflowActions, setWorkflowActions] = useState([]);
   const [duplicateReport, setDuplicateReport] = useState(null);
   const [openingPeriodConflict, setOpeningPeriodConflict] = useState(null);
+  const [openingPublicationPending, setOpeningPublicationPending] = useState(null);
   const [periodLookupLoading, setPeriodLookupLoading] = useState(false);
   const [periodContextResolvedFor, setPeriodContextResolvedFor] = useState("");
   const [saveState, setSaveState] = useState(reportId ? "saved" : "idle");
@@ -702,6 +704,7 @@ export default function ReportForm({ reportId = null }) {
         setWorkflowActions([]);
         setDuplicateReport(null);
         setOpeningPeriodConflict(null);
+        setOpeningPublicationPending(null);
         setPeriodContextResolvedFor("");
         return;
       }
@@ -734,16 +737,24 @@ export default function ReportForm({ reportId = null }) {
           return;
         }
         if (shouldCreateOpeningReview && selectedInvestor) {
-          const currentPeriod = getCurrentReportPeriod();
+          // Keep the staff-selected business period. When a report is prepared on
+          // 1-5 October for September, first-report detection must not silently
+          // jump the draft to October. Portfolio hydration will replace this
+          // provisional cutoff with the actual verified Opening snapshot date.
+          const selectedPeriod = {
+            month: Number(form.reportMonth),
+            year: Number(form.reportYear),
+            statementDate: getReportPeriodCutoffDate(form.reportYear, form.reportMonth)
+          };
           openingTypeResolvedRef.current = form.investorId;
           appliedPortfolioSnapshotRef.current = "";
           carriedActionsFromReportRef.current = "";
           corpusTouchedRef.current = false;
           setPortfolioSource(null);
           setForm((current) => withReportTemplateDefaults({
-            ...createReportFromInvestor(selectedInvestor, currentPeriod.month, currentPeriod.year, {
+            ...createReportFromInvestor(selectedInvestor, selectedPeriod.month, selectedPeriod.year, {
               reportType: REPORT_TYPE.OPENING,
-              statementDate: currentPeriod.statementDate
+              statementDate: selectedPeriod.statementDate
             }),
             templateId: current.templateId,
             templateVersion: current.templateVersion,
@@ -772,10 +783,23 @@ export default function ReportForm({ reportId = null }) {
           });
         }
         setDuplicateReport(duplicate && duplicate.id !== workingReportId ? duplicate : null);
+        const openingPublished = Boolean(
+          openingReport?.investorVisible === true
+          && (
+            openingReport?.activePublishedVersionId
+            || Number(openingReport?.publishedVersion || 0) > 0
+            || openingReport?.publicationStatus === "published"
+          )
+        );
+        setOpeningPublicationPending(
+          form.reportType === REPORT_TYPE.MONTHLY && openingReport && !openingPublished
+            ? openingReport
+            : null
+        );
         setOpeningPeriodConflict(
           form.reportType === REPORT_TYPE.MONTHLY
-            && openingReport?.reportMonthKey
-            && monthKey <= openingReport.reportMonthKey
+            && openingReport
+            && !isMonthlyPeriodAfterOpening(openingReport, monthKey, form.statementDate)
             ? openingReport
             : null
         );
@@ -787,6 +811,7 @@ export default function ReportForm({ reportId = null }) {
           setWorkflowActions([]);
           setDuplicateReport(null);
           setOpeningPeriodConflict(null);
+          setOpeningPublicationPending(null);
           setPeriodContextResolvedFor("");
         }
       } finally {
@@ -1433,6 +1458,7 @@ export default function ReportForm({ reportId = null }) {
                   previousReport={previousReport}
                   duplicateReport={duplicateReport}
                   openingPeriodConflict={openingPeriodConflict}
+                  openingPublicationPending={openingPublicationPending}
                   lookupLoading={periodLookupLoading}
                   copying={copying}
                   onUpdatePeriod={updatePeriod}

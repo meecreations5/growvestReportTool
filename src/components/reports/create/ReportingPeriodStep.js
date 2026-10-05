@@ -28,6 +28,7 @@ export default function ReportingPeriodStep({
   previousReport,
   duplicateReport,
   openingPeriodConflict,
+  openingPublicationPending,
   lookupLoading,
   copying,
   onUpdatePeriod,
@@ -58,8 +59,21 @@ export default function ReportingPeriodStep({
           <div className="flex items-start gap-3">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-100 text-amber-700"><AlertTriangle size={17} /></span>
             <div>
-              <p className="text-sm font-semibold text-amber-950">Opening baseline already established in {getMonthLabel(openingPeriodConflict.reportMonth)} {openingPeriodConflict.reportYear}</p>
-              <p className="mt-1 text-sm leading-6 text-amber-800">Monthly Wealth Reviews start from the following month. Select a later reporting month once that period is ready for review.</p>
+              <p className="text-sm font-semibold text-amber-950">Monthly cutoff must be after the Opening baseline</p>
+              <p className="mt-1 text-sm leading-6 text-amber-800">The Opening Wealth Review baseline is {openingPeriodConflict.statementDate || `${getMonthLabel(openingPeriodConflict.reportMonth)} ${openingPeriodConflict.reportYear}`}. A Monthly Wealth Review may use the same calendar month when its month-end cutoff is later than the Opening snapshot; otherwise choose the following month.</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {openingPublicationPending ? (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <div className="flex items-start gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white text-blue-700 ring-1 ring-blue-100"><FileText size={17} /></span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-blue-950">Opening Wealth Review is not published yet</p>
+              <p className="mt-1 text-sm leading-6 text-blue-800">You can prepare, complete and generate this Monthly Wealth Review now. Investor delivery remains locked until the Opening Wealth Review is published.</p>
+              <Link href={`/reports/${openingPublicationPending.id}/edit`} className="mt-3 inline-flex min-h-10 items-center rounded-lg bg-blue-700 px-3 text-sm font-semibold text-white">Open Opening Wealth Review</Link>
             </div>
           </div>
         </div>

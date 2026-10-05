@@ -5,6 +5,7 @@ import {
   getSystemReportTemplate
 } from "@/lib/constants/reportTemplates";
 import { businessDateKey, businessDateParts } from "@/lib/utils/date";
+import { previousCompletedMonthPeriod } from "@/lib/reportPeriodRules";
 import {
   resolveHoldingChangeVerification,
   resolveReconciliationVerification
@@ -114,8 +115,7 @@ export function getCanonicalReportId(investorId, reportType, reportMonthKey, sta
 
 export function getDefaultReportPeriod(referenceDate = new Date()) {
   const reference = businessDateParts(referenceDate);
-  const previous = new Date(Date.UTC(reference.year, reference.month - 2, 1));
-  return { month: previous.getUTCMonth() + 1, year: previous.getUTCFullYear() };
+  return previousCompletedMonthPeriod(reference.year, reference.month);
 }
 
 export function getCurrentReportPeriod(referenceDate = new Date()) {
