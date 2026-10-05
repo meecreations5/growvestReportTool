@@ -7,6 +7,12 @@ import {
 } from "@/lib/server/firebaseAdmin";
 import { dedupeActionWithdrawalTransactions } from "@/lib/portfolioCashFlow";
 import { normalisePortfolioGoalAllocations, portfolioAllocationStatus } from "@/lib/portfolioGoalAllocation";
+import {
+  PORTFOLIO_RECONCILIATION_STATUS,
+  PORTFOLIO_RECONCILIATION_THRESHOLDS,
+  PORTFOLIO_SOURCE_LABELS
+} from "@/lib/constants/portfolio";
+import { buildPortfolioSourceFreshness, manualPortfolioRefreshDate } from "@/lib/server/portfolioFreshness";
 
 export const runtime = "nodejs";
 
@@ -58,7 +64,12 @@ async function findPostCutoffCaptureSnapshot(snapshots, cutoffDate) {
   for (const candidate of candidates) {
     const positions = await loadSnapshotPositions(candidate.id);
     const datedValues = [
-      ...(candidate.sourceFreshness || []).map((item) => String(item.valuationDate || "").slice(0, 10)),
+      // Manual PMS sourceFreshness uses the workbook import date from v0.34.27.
+      // Do not treat that operational refresh date as the financial value date
+      // when deciding whether a post-cutoff capture can be back-dated.
+      ...(candidate.sourceFreshness || [])
+        .filter((item) => item.freshnessBasis !== "manual_import")
+        .map((item) => String(item.valuationDate || "").slice(0, 10)),
       ...positions.map(portfolioValueDate)
     ].filter(Boolean);
 
@@ -88,6 +99,113 @@ async function findPostCutoffCaptureSnapshot(snapshots, cutoffDate) {
     },
     positions: selected.positions
   };
+}
+
+
+function freshnessIssueRows(sourceFreshness = []) {
+  const missing = sourceFreshness.filter((item) => item.freshnessStatus === "missing");
+  const stale = sourceFreshness.filter((item) => ["stale", "critical"].includes(item.freshnessStatus));
+  const aging = sourceFreshness.filter((item) => item.freshnessStatus === "aging");
+  const issues = [];
+  if (missing.length) {
+    issues.push({
+      code: "missing_source_date",
+      severity: "warn",
+      title: "Source valuation date missing",
+      description: `${missing.length} portfolio source${missing.length === 1 ? " has" : "s have"} no usable source refresh date.`,
+      count: missing.length
+    });
+  }
+  if (stale.length) {
+    const oldest = Math.max(...stale.map((item) => Number(item.ageDays || 0)));
+    issues.push({
+      code: "stale_source",
+      severity: oldest > PORTFOLIO_RECONCILIATION_THRESHOLDS.CRITICAL_STALE_DAYS ? "block" : "warn",
+      title: "Portfolio source is stale",
+      description: `${stale.length} source${stale.length === 1 ? " is" : "s are"} older than ${PORTFOLIO_RECONCILIATION_THRESHOLDS.STALE_DAYS} days. Oldest source is ${oldest} days old.`,
+      count: stale.length,
+      oldestAgeDays: oldest
+    });
+  } else if (aging.length) {
+    issues.push({
+      code: "aging_source",
+      severity: "info",
+      title: "Source freshness attention",
+      description: `${aging.length} source${aging.length === 1 ? " is" : "s are"} more than ${PORTFOLIO_RECONCILIATION_THRESHOLDS.FRESH_DAYS} days old.`,
+      count: aging.length
+    });
+  }
+  return issues;
+}
+
+function patchSnapshotFreshness(snapshot = {}, positions = [], referenceDate = "") {
+  if (!snapshot || !positions.length) return snapshot;
+  const sourceFreshness = buildPortfolioSourceFreshness(positions, referenceDate, PORTFOLIO_RECONCILIATION_THRESHOLDS).map((item) => ({
+    ...item,
+    sourceLabel: item.source === "manual" && item.freshnessBasis === "manual_import" ? "Manual Portfolio" : (PORTFOLIO_SOURCE_LABELS[item.source] || item.sourceLabel || item.source)
+  }));
+  const previousIntelligence = snapshot.intelligence || {};
+  const retainedIssues = (Array.isArray(previousIntelligence.issues) ? previousIntelligence.issues : [])
+    .filter((item) => !["missing_source_date", "stale_source", "aging_source"].includes(String(item?.code || "")));
+  const freshnessIssues = freshnessIssueRows(sourceFreshness);
+  const issues = [...retainedIssues, ...freshnessIssues];
+  const hasBlockingOther = retainedIssues.some((item) => ["block", "error", "critical", "fatal"].includes(String(item?.severity || "").toLowerCase()));
+  const hasWarningOther = retainedIssues.some((item) => ["warn", "warning", "review", "needs_review"].includes(String(item?.severity || "").toLowerCase()));
+  const hasMissing = sourceFreshness.some((item) => item.freshnessStatus === "missing");
+  const hasStale = sourceFreshness.some((item) => ["stale", "critical"].includes(item.freshnessStatus));
+  let status = String(previousIntelligence.status || snapshot.reconciliationStatus || PORTFOLIO_RECONCILIATION_STATUS.VERIFIED);
+  if (hasBlockingOther) {
+    if (![PORTFOLIO_RECONCILIATION_STATUS.MISMATCH, PORTFOLIO_RECONCILIATION_STATUS.OWNERSHIP_CONFLICT].includes(status)) status = PORTFOLIO_RECONCILIATION_STATUS.MISMATCH;
+  } else if (hasMissing) status = PORTFOLIO_RECONCILIATION_STATUS.MISSING_SOURCE;
+  else if (hasStale) status = PORTFOLIO_RECONCILIATION_STATUS.STALE;
+  else if (hasWarningOther) status = PORTFOLIO_RECONCILIATION_STATUS.NEEDS_REVIEW;
+  else if ([PORTFOLIO_RECONCILIATION_STATUS.MISSING_SOURCE, PORTFOLIO_RECONCILIATION_STATUS.STALE].includes(status)) status = PORTFOLIO_RECONCILIATION_STATUS.VERIFIED;
+
+  return {
+    ...snapshot,
+    sourceFreshness,
+    reconciliationStatus: status,
+    intelligence: {
+      ...previousIntelligence,
+      status,
+      sourceFreshness,
+      issues,
+      counts: {
+        ...(previousIntelligence.counts || {}),
+        sourceCount: sourceFreshness.length,
+        staleSources: sourceFreshness.filter((item) => ["stale", "critical"].includes(item.freshnessStatus)).length,
+        missingSourceDates: sourceFreshness.filter((item) => item.freshnessStatus === "missing").length
+      }
+    }
+  };
+}
+
+function overlayManualFreshness(snapshotPositions = [], livePositions = [], manualAccountSnapshots = [], cutoffDate = "") {
+  const liveById = new Map(livePositions.map((item) => [String(item.id || item.positionId || ""), item]));
+  const latestPmsSnapshotDate = manualAccountSnapshots
+    .map((item) => safeDateKey(item.snapshotDate || item.manualImportDate || ""))
+    .filter((date) => date && (!cutoffDate || date <= cutoffDate))
+    .sort()
+    .at(-1) || "";
+
+  return snapshotPositions.map((position) => {
+    if (String(position.source || "") !== "manual") return position;
+    const live = liveById.get(String(position.positionId || "")) || null;
+    const manualManaged = position.manualPortfolioManaged === true || live?.manualPortfolioManaged === true;
+    if (!manualManaged) return position;
+    const liveRefreshDate = live ? manualPortfolioRefreshDate(live) : "";
+    const allowedLiveDate = liveRefreshDate && (!cutoffDate || liveRefreshDate <= cutoffDate) ? liveRefreshDate : "";
+    const refreshDate = allowedLiveDate || manualPortfolioRefreshDate(position) || latestPmsSnapshotDate;
+    if (!refreshDate) return position;
+    return {
+      ...position,
+      manualPortfolioManaged: true,
+      manualImportDate: refreshDate,
+      manualSourceRefreshDate: refreshDate,
+      manualBulkImportId: position.manualBulkImportId || live?.manualBulkImportId || "",
+      freshnessDateBasis: "manual_workbook_import"
+    };
+  });
 }
 
 function dateSortValue(value) {
@@ -159,6 +277,24 @@ export async function GET(request) {
     }
 
     if (!closingPositions) closingPositions = await loadSnapshotPositions(snapshot.id);
+
+    // Manual Portfolio Management/PMS is a staff-maintained source. Its
+    // freshness is the dated workbook import/account snapshot, not whether
+    // every holding row happened to carry a NAV/valuation date. Overlay the
+    // source-refresh metadata for legacy snapshots before report verification
+    // so a recently maintained PMS portfolio does not show a false missing or
+    // stale-source warning. Financial valuation dates remain untouched.
+    if (closingPositions.some((item) => String(item.source || "") === "manual")) {
+      const [liveManualResult, manualAccountSnapshotResult] = await Promise.all([
+        adminDb.collection("portfolioPositions").where("investorId", "==", investorId).get(),
+        adminDb.collection("manualPortfolioAccountSnapshots").where("investorId", "==", investorId).get()
+      ]);
+      const livePositions = rows(liveManualResult);
+      const manualAccountSnapshots = rows(manualAccountSnapshotResult);
+      const freshnessReferenceDate = safeDateKey(snapshot.snapshotDate || asOfDate) || asOfDate;
+      closingPositions = overlayManualFreshness(closingPositions, livePositions, manualAccountSnapshots, freshnessReferenceDate);
+      snapshot = patchSnapshotFreshness(snapshot, closingPositions, freshnessReferenceDate);
+    }
 
     const monthKey = asOfDate.slice(0, 7);
     const monthStart = `${monthKey}-01`;

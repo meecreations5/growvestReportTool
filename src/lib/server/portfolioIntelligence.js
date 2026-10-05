@@ -9,8 +9,8 @@ import {
   normalisePortfolioGoalAllocations,
   primaryPortfolioBucket
 } from "@/lib/portfolioGoalAllocation";
+import { buildPortfolioSourceFreshness } from "@/lib/server/portfolioFreshness";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const QUANTITY_EPSILON = 0.000001;
 
 function number(value) {
@@ -21,20 +21,6 @@ function number(value) {
 function round(value, digits = 2) {
   const factor = 10 ** digits;
   return Math.round((number(value) + Number.EPSILON) * factor) / factor;
-}
-
-function dateMillis(value = "") {
-  const text = String(value || "").slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return 0;
-  const parsed = new Date(`${text}T00:00:00+05:30`).getTime();
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-function ageDays(referenceDate = "", valuationDate = "") {
-  const reference = dateMillis(referenceDate);
-  const valuation = dateMillis(valuationDate);
-  if (!reference || !valuation) return null;
-  return Math.max(0, Math.floor((reference - valuation) / DAY_MS));
 }
 
 function activePosition(position = {}) {
@@ -100,49 +86,11 @@ function assetClass(position = {}) {
   return position.assetClass || "Other";
 }
 
-function sourceDate(position = {}) {
-  return position.navDate || position.valuationDate || position.priceDate || "";
-}
-
 function sourceFreshness(positions = [], referenceDate = "") {
-  const bySource = new Map();
-  positions.forEach((position) => {
-    const source = String(position.source || "manual");
-    const current = bySource.get(source) || {
-      source,
-      sourceLabel: PORTFOLIO_SOURCE_LABELS[source] || position.provider || source,
-      valuationDate: "",
-      oldestValuationDate: "",
-      missingDateCount: 0,
-      positionCount: 0,
-      currentValue: 0
-    };
-    current.positionCount += 1;
-    current.currentValue += number(position.currentValue);
-    const date = sourceDate(position);
-    if (!date) current.missingDateCount += 1;
-    if (date && (!current.valuationDate || String(date) > String(current.valuationDate))) current.valuationDate = date;
-    if (date && (!current.oldestValuationDate || String(date) < String(current.oldestValuationDate))) current.oldestValuationDate = date;
-    bySource.set(source, current);
-  });
-
-  return [...bySource.values()].map((item) => {
-    const latestAgeDays = ageDays(referenceDate, item.valuationDate);
-    const oldestAgeDays = ageDays(referenceDate, item.oldestValuationDate || item.valuationDate);
-    let freshnessStatus = "fresh";
-    if (item.missingDateCount > 0 || oldestAgeDays === null) freshnessStatus = "missing";
-    else if (oldestAgeDays > PORTFOLIO_RECONCILIATION_THRESHOLDS.CRITICAL_STALE_DAYS) freshnessStatus = "critical";
-    else if (oldestAgeDays > PORTFOLIO_RECONCILIATION_THRESHOLDS.STALE_DAYS) freshnessStatus = "stale";
-    else if (oldestAgeDays > PORTFOLIO_RECONCILIATION_THRESHOLDS.FRESH_DAYS) freshnessStatus = "aging";
-    return {
-      ...item,
-      currentValue: round(item.currentValue),
-      ageDays: oldestAgeDays,
-      latestAgeDays,
-      oldestAgeDays,
-      freshnessStatus
-    };
-  });
+  return buildPortfolioSourceFreshness(positions, referenceDate, PORTFOLIO_RECONCILIATION_THRESHOLDS).map((item) => ({
+    ...item,
+    sourceLabel: item.source === "manual" && item.freshnessBasis === "manual_import" ? "Manual Portfolio" : (PORTFOLIO_SOURCE_LABELS[item.source] || item.sourceLabel || item.source)
+  }));
 }
 
 function transactionFlow(transaction = {}) {

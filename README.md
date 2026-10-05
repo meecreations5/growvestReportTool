@@ -1063,3 +1063,9 @@ The simplified **Manual Investments** Excel workflow now explicitly treats the E
 The existing Manual position identity includes the **Folio / Account / Policy No.**, so the same investment with a **new folio number is saved as a new investment**, while the same investment + same folio updates the existing holding. If a newly detected holding has no Investment Date, the import date is saved as its Investment/Purchase Date; existing holdings preserve their prior date when the workbook leaves it blank.
 
 See `docs/MANUAL_INVESTMENT_FOLIO_DATE_RULES_v0.34.26.md`, `docs/MANUAL_INVESTMENT_FOLIO_DATE_RULES_CODE_MANIFEST_v0.34.26.md` and `RELEASE_VALIDATION_v0.34.26.md`.
+
+## v0.34.27 — Manual PMS Report Freshness
+
+Manual Portfolio Management/PMS report verification now uses the dated Manual workbook import/account snapshot as the source-freshness event instead of requiring every holding row to carry a fresh NAV/valuation date. This removes false `Source valuation date missing` and false stale-source warnings for recently maintained Manual PMS portfolios. Genuine old Manual PMS updates remain subject to the existing 7-day review and 31-day block controls. Legacy snapshots can recover Manual import freshness from `manualBulkImportId` and Manual account snapshots without altering historical portfolio values.
+
+See `docs/MANUAL_PMS_REPORT_FRESHNESS_v0.34.27.md`, `docs/MANUAL_PMS_REPORT_FRESHNESS_CODE_MANIFEST_v0.34.27.md` and `RELEASE_VALIDATION_v0.34.27.md`.

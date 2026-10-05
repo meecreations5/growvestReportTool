@@ -816,6 +816,7 @@ async function refreshAccountSummaries(investor, actor, batchId) {
 }
 
 export async function commitManualPortfolioWorkbook({ actor, file, mode, parsed, resolution }) {
+  const importDate = indiaDateKey();
   const batchId = `manual_pms_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const results = [];
   const now = FieldValue.serverTimestamp();
@@ -848,6 +849,7 @@ export async function commitManualPortfolioWorkbook({ actor, file, mode, parsed,
         openingDate: account.openingDate, status: account.status || "active", baseCurrency: account.baseCurrency || "INR", benchmark: account.benchmark,
         discretionary: Boolean(account.discretionary), notes: account.notes, source: PORTFOLIO_SOURCES.MANUAL, manualPortfolioManaged: true,
         manualImportFileName: parsed.fileName, manualImportMode: mode, manualBulkImportId: batchId,
+        manualImportDate: importDate, manualSourceRefreshDate: importDate, freshnessDateBasis: "manual_workbook_import",
         createdAt: now, updatedAt: now, updatedByUid: actor.uid, updatedByName: actor.fullName || actor.email || "GrowVest User"
       }, { merge: true });
     }
@@ -899,7 +901,8 @@ export async function commitManualPortfolioWorkbook({ actor, file, mode, parsed,
         goalAllocations, allocationStatus: portfolioAllocationStatus(goalAllocations), defaultBucketApplied: goalAllocations.some((item) => !item.goalId), notes: row.notes, status: row.status || "active",
         manualPortfolioManaged: true, manualPortfolioAccountId: row.accountId, manualPortfolioAccountCode: row.accountCode, manualHoldingKey: row.holdingKey,
         manualImportFileName: parsed.fileName, manualImportMode: mode, manualBulkImportId: batchId,
-        createdAt: now, updatedAt: now, updatedByUid: actor.uid, updatedByName: actor.fullName || actor.email || "GrowVest User"
+        manualImportDate: importDate, manualSourceRefreshDate: importDate, freshnessDateBasis: "manual_workbook_import",
+        createdAt: previous.createdAt || now, updatedAt: now, updatedByUid: actor.uid, updatedByName: actor.fullName || actor.email || "GrowVest User"
       }, { merge: true });
       existingPositionIds.has(row.positionId) ? updatedHoldings += 1 : createdHoldings += 1;
     }
@@ -1000,7 +1003,7 @@ export async function commitManualPortfolioWorkbook({ actor, file, mode, parsed,
         investorPortalUid: investor.portalUid || investor.investorPortalUid || null,
         accountId: account?.accountId || accountDocumentId(investorId, accountSummary.accountCode), accountCode: accountSummary.accountCode, accountName: account?.accountName || accountSummary.accountCode,
         strategy: account?.strategy || "", provider: account?.provider || "Manual", snapshotDate: accountSnapshotDate, metrics: accountMetrics,
-        source: PORTFOLIO_SOURCES.MANUAL, manualPortfolioManaged: true, manualBulkImportId: batchId, capturedAt: FieldValue.serverTimestamp(), capturedByUid: actor.uid, capturedByName: actor.fullName || actor.email || "GrowVest User"
+        source: PORTFOLIO_SOURCES.MANUAL, manualPortfolioManaged: true, manualBulkImportId: batchId, manualImportDate: importDate, manualSourceRefreshDate: importDate, freshnessDateBasis: "manual_workbook_import", capturedAt: FieldValue.serverTimestamp(), capturedByUid: actor.uid, capturedByName: actor.fullName || actor.email || "GrowVest User"
       });
     }
     await accountSnapshotWriter.close();

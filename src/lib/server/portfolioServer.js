@@ -7,6 +7,7 @@ import {
 } from "@/lib/constants/portfolio";
 import { stableHash } from "@/lib/server/portfolioImportParser";
 import { buildPortfolioIntelligence } from "@/lib/server/portfolioIntelligence";
+import { buildPortfolioSourceFreshness } from "@/lib/server/portfolioFreshness";
 import {
   GENERAL_WEALTH_BUCKET_ID,
   GENERAL_WEALTH_BUCKET_NAME,
@@ -43,18 +44,8 @@ export async function getAccessibleInvestor(actor, investorId) {
   return investor;
 }
 
-function sourceFreshness(positions = []) {
-  const map = new Map();
-  positions.forEach((position) => {
-    const key = position.source || "manual";
-    const current = map.get(key) || { source: key, valuationDate: "", positionCount: 0, currentValue: 0 };
-    current.positionCount += 1;
-    current.currentValue += Number(position.currentValue || 0);
-    const date = position.navDate || position.valuationDate || position.priceDate || "";
-    if (date && (!current.valuationDate || date > current.valuationDate)) current.valuationDate = date;
-    map.set(key, current);
-  });
-  return [...map.values()].map((item) => ({ ...item, currentValue: Number(item.currentValue.toFixed(2)) }));
+function sourceFreshness(positions = [], referenceDate = indiaDateKey()) {
+  return buildPortfolioSourceFreshness(positions, referenceDate);
 }
 
 async function previousSnapshotContext(investorId, snapshotDate) {
@@ -279,7 +270,7 @@ export async function createPortfolioSnapshot(investorId, actor, { snapshotDate 
       currentValue: Number(item.currentValue.toFixed(2)),
       monthlyContribution: Number(item.monthlyContribution.toFixed(2))
     })),
-    sourceFreshness: intelligence.sourceFreshness?.length ? intelligence.sourceFreshness : sourceFreshness(positions),
+    sourceFreshness: intelligence.sourceFreshness?.length ? intelligence.sourceFreshness : sourceFreshness(positions, snapshotDate),
     reconciliationStatus: intelligence.status,
     intelligence,
     createdAt: existing.exists ? existing.data()?.createdAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),
@@ -337,6 +328,12 @@ export async function createPortfolioSnapshot(investorId, actor, { snapshotDate 
       currentNav: Number(position.currentNav || 0),
       navDate: position.navDate || "",
       valuationDate: position.valuationDate || position.navDate || position.priceDate || "",
+      valuationDateBasis: position.valuationDateBasis || "",
+      manualPortfolioManaged: position.manualPortfolioManaged === true,
+      manualInvestmentTemplate: position.manualInvestmentTemplate === true,
+      manualImportDate: position.manualImportDate || "",
+      manualSourceRefreshDate: position.manualSourceRefreshDate || position.sourceRefreshDate || "",
+      manualBulkImportId: position.manualBulkImportId || "",
       previousNav: Number(position.previousNav || 0),
       previousNavDate: position.previousNavDate || "",
       previousCurrentValue: Number(position.previousCurrentValue || 0),
