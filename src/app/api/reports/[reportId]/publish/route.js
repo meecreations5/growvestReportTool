@@ -11,6 +11,7 @@ import { createAndUploadReportPdf, publishedSnapshotData } from "@/lib/server/re
 import { sendReportDelivery } from "@/lib/server/reportDelivery";
 import { REPORT_TYPE, getReportTypeLabel, getReportVersionId } from "@/lib/constants/report";
 import { buildReportReconciliation } from "@/lib/reportReconciliation";
+import { isMonthlyPeriodAfterOpening } from "@/lib/reportPeriodRules";
 
 export const runtime = "nodejs";
 
@@ -127,8 +128,8 @@ export async function POST(request, { params }) {
           if (!isPublishedReview(openingReport)) {
             throw requestError("Publish the Opening Wealth Review before publishing a Monthly Wealth Review for this investor.", 422);
           }
-          if (openingReport.reportMonthKey && String(report.reportMonthKey || "") <= String(openingReport.reportMonthKey)) {
-            throw requestError(`The Opening Wealth Review already establishes this investor's baseline in ${openingReport.reportMonthKey}. Monthly Wealth Reviews must start from the following month.`, 422);
+          if (!isMonthlyPeriodAfterOpening(openingReport, String(report.reportMonthKey || ""), report.statementDate || "")) {
+            throw requestError(`The Opening Wealth Review establishes this investor's baseline on ${openingReport.statementDate || openingReport.reportMonthKey || "the opening snapshot"}. The Monthly Wealth Review cutoff must be later than that baseline.`, 422);
           }
         }
       }

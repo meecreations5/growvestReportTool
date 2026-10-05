@@ -1069,3 +1069,11 @@ See `docs/MANUAL_INVESTMENT_FOLIO_DATE_RULES_v0.34.26.md`, `docs/MANUAL_INVESTME
 Manual Portfolio Management/PMS report verification now uses the dated Manual workbook import/account snapshot as the source-freshness event instead of requiring every holding row to carry a fresh NAV/valuation date. This removes false `Source valuation date missing` and false stale-source warnings for recently maintained Manual PMS portfolios. Genuine old Manual PMS updates remain subject to the existing 7-day review and 31-day block controls. Legacy snapshots can recover Manual import freshness from `manualBulkImportId` and Manual account snapshots without altering historical portfolio values.
 
 See `docs/MANUAL_PMS_REPORT_FRESHNESS_v0.34.27.md`, `docs/MANUAL_PMS_REPORT_FRESHNESS_CODE_MANIFEST_v0.34.27.md` and `RELEASE_VALIDATION_v0.34.27.md`.
+
+## v0.34.28 — September-on-October Reporting Period & Opening Flow Fix
+
+Monthly Wealth Reviews now follow the business reporting period rather than the date the staff member opens the report. On 5 October 2026 the default reporting period is September 2026. First-report detection no longer silently moves a September request into October.
+
+An Opening Wealth Review from earlier in the same month can now be followed by that month-end Monthly Wealth Review when the Monthly cutoff is strictly later than the Opening baseline (for example, Opening 11 Sep -> Monthly 30 Sep). For that first same-month Monthly Review, the report source uses the verified Opening snapshot as the performance baseline. An unpublished Opening review no longer blocks internal Monthly preparation/completion/PDF generation; it only blocks investor publication/delivery until the Opening is published.
+
+See `docs/REPORT_PERIOD_OPENING_FLOW_v0.34.28.md`, `docs/REPORT_PERIOD_OPENING_FLOW_CODE_MANIFEST_v0.34.28.md` and `RELEASE_VALIDATION_v0.34.28.md`.

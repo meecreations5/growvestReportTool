@@ -13,6 +13,7 @@ import {
   PORTFOLIO_SOURCE_LABELS
 } from "@/lib/constants/portfolio";
 import { buildPortfolioSourceFreshness, manualPortfolioRefreshDate } from "@/lib/server/portfolioFreshness";
+import { sameMonthOpeningBaselineDate } from "@/lib/reportPeriodRules";
 
 export const runtime = "nodejs";
 
@@ -224,6 +225,13 @@ function serialise(value) {
   return value;
 }
 
+async function loadOpeningWealthReview(investorId) {
+  const canonical = await adminDb.collection("monthlyReports").doc(`${investorId}_opening`).get();
+  if (canonical.exists) return { id: canonical.id, ...canonical.data() };
+  const history = await adminDb.collection("monthlyReports").where("investorId", "==", investorId).get();
+  return rows(history).find((item) => item.reportType === "opening") || null;
+}
+
 export async function GET(request) {
   try {
     const actor = await verifyStaffRequest(request);
@@ -251,6 +259,7 @@ export async function GET(request) {
       .where("investorId", "==", investorId)
       .get();
     const snapshots = rows(snapshotsResult);
+    const openingWealthReview = await loadOpeningWealthReview(investorId);
 
     let snapshot = latestVerifiedSnapshot(
       snapshots,
@@ -310,6 +319,30 @@ export async function GET(request) {
       openingSnapshot = graceOpening?.snapshot || null;
       openingPositions = graceOpening?.positions || null;
     }
+
+    // When the investor's Opening Wealth Review was established earlier in the
+    // same month, that verified snapshot is the correct performance baseline for
+    // the first Monthly Wealth Review. Example: Opening 11 Sep -> Monthly 30 Sep.
+    const sameMonthOpeningDate = sameMonthOpeningBaselineDate(openingWealthReview, asOfDate);
+    if (sameMonthOpeningDate) {
+      const openingSnapshotId = String(
+        openingWealthReview?.openingBaseline?.sourceSnapshotId
+          || openingWealthReview?.sourcePortfolioSnapshotId
+          || ""
+      );
+      const openingReportSnapshot = snapshots.find((item) =>
+        item.verificationStatus === "verified"
+          && (openingSnapshotId ? item.id === openingSnapshotId : String(item.snapshotDate || "") <= sameMonthOpeningDate)
+      ) || latestVerifiedSnapshot(
+        snapshots,
+        (item) => String(item.snapshotDate || "") <= sameMonthOpeningDate
+      );
+      if (openingReportSnapshot) {
+        openingSnapshot = openingReportSnapshot;
+        openingPositions = await loadSnapshotPositions(openingReportSnapshot.id);
+      }
+    }
+
     if (openingSnapshot?.id && !openingPositions) openingPositions = await loadSnapshotPositions(openingSnapshot.id);
     if (!openingPositions) openingPositions = [];
 
