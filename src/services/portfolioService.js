@@ -271,17 +271,26 @@ export function subscribePortfolioImports(currentUser, callback, onError) {
   );
 }
 
-export async function previewPortfolioImport(files = []) {
+export async function previewPortfolioImport(files = [], options = {}) {
   const formData = new FormData();
   files.forEach((file) => formData.append("files", file));
+  if (options?.batchId) formData.append("batchId", String(options.batchId));
+  if (Number.isFinite(Number(options?.uploadOffset))) formData.append("uploadOffset", String(Number(options.uploadOffset)));
+  formData.append("finalizeBatch", options?.finalizeBatch === false ? "false" : "true");
   return authenticatedFetch("/api/portfolio/imports/preview", { method: "POST", body: formData });
 }
 
-export async function commitPortfolioImport(batchId, mappings = []) {
+export async function commitPortfolioImport(batchId, mappings = [], options = {}) {
+  const fileIds = Array.isArray(options?.fileIds) ? options.fileIds.filter(Boolean) : [];
   return authenticatedFetch("/api/portfolio/imports/fundbazaar/commit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ batchId, mappings })
+    body: JSON.stringify({
+      batchId,
+      mappings,
+      ...(fileIds.length ? { fileIds } : {}),
+      finalizeBatch: options?.finalizeBatch !== false
+    })
   });
 }
 
