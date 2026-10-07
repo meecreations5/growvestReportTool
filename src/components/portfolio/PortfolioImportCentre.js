@@ -387,13 +387,15 @@ export default function PortfolioImportCentre() {
       {error ? <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div> : null}
 
       {result ? (
-        <Card className="border-emerald-200 bg-emerald-50/40 p-5 sm:p-6">
+        <Card className={`${Number(result.issueCount || 0) ? "border-amber-200 bg-amber-50/50" : "border-emerald-200 bg-emerald-50/40"} p-5 sm:p-6`}>
           <div className="flex items-start gap-3">
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-emerald-100 text-emerald-700"><CheckCircle2 size={21} /></span>
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700">Daily update completed</p>
+            <span className={`grid h-11 w-11 place-items-center rounded-xl ${Number(result.issueCount || 0) ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>{Number(result.issueCount || 0) ? <AlertTriangle size={21} /> : <CheckCircle2 size={21} />}</span>
+            <div className="min-w-0 flex-1">
+              <p className={`text-[11px] font-bold uppercase tracking-[0.14em] ${Number(result.issueCount || 0) ? "text-amber-700" : "text-emerald-700"}`}>{Number(result.issueCount || 0) ? "Daily update completed with attention" : "Daily update completed"}</p>
               <h2 className="mt-1 font-heading text-2xl font-bold text-slate-950">{result.importedCount || 0} portfolio report(s) applied</h2>
               <p className="mt-1 text-sm text-slate-600">Updated portfolio value {formatCurrency(result.totalCurrentValue)} · {(result.results || []).reduce((sum, item) => sum + Number(item.newPositionCount || 0), 0)} new holding(s) · {(result.results || []).reduce((sum, item) => sum + Number(item.exitedPositionCount || 0), 0)} exited holding(s) · {(result.results || []).reduce((sum, item) => sum + Number(item.tradeCount || 0), 0)} intraday trade(s) · {result.issueCount || 0} issue(s).</p>
+              {(result.results || []).filter((item) => item.status === "failed").length ? <div className="mt-3 grid gap-1.5">{(result.results || []).filter((item) => item.status === "failed").map((item) => <p key={item.fileId} className="rounded-lg border border-red-200 bg-white/70 px-3 py-2 text-xs font-semibold text-red-700">{item.fileName || "Portfolio file"}: {item.error || "Import failed"}</p>)}</div> : null}
+              {(result.warnings || []).length ? <div className="mt-3 grid gap-1.5">{result.warnings.map((item, index) => <p key={`${item.code || "warning"}-${index}`} className="rounded-lg border border-amber-200 bg-white/70 px-3 py-2 text-xs font-semibold text-amber-800">{item.investorName ? `${item.investorName}: ` : ""}{item.message || "A derived portfolio view needs to be refreshed."}</p>)}</div> : null}
             </div>
           </div>
         </Card>

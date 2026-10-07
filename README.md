@@ -1077,3 +1077,9 @@ Monthly Wealth Reviews now follow the business reporting period rather than the 
 An Opening Wealth Review from earlier in the same month can now be followed by that month-end Monthly Wealth Review when the Monthly cutoff is strictly later than the Opening baseline (for example, Opening 11 Sep -> Monthly 30 Sep). For that first same-month Monthly Review, the report source uses the verified Opening snapshot as the performance baseline. An unpublished Opening review no longer blocks internal Monthly preparation/completion/PDF generation; it only blocks investor publication/delivery until the Opening is published.
 
 See `docs/REPORT_PERIOD_OPENING_FLOW_v0.34.28.md`, `docs/REPORT_PERIOD_OPENING_FLOW_CODE_MANIFEST_v0.34.28.md` and `RELEASE_VALIDATION_v0.34.28.md`.
+
+## v0.34.29 — Fundbazaar Daily Portfolio Import Stability
+
+Daily Fundbazaar commits now isolate the primary portfolio write from derived snapshot/coverage refresh work and expose the exact failure stage instead of an opaque `500 Internal Server Error`. File-level failures are shown by filename in Daily Portfolio Update; successful holding imports are no longer presented as failed merely because a secondary snapshot/coverage refresh needs attention. Fundbazaar matching, valuation and folio identity rules are unchanged.
+
+See `docs/FUNDBAZAAR_DAILY_IMPORT_STABILITY_v0.34.29.md`, `docs/FUNDBAZAAR_DAILY_IMPORT_STABILITY_CODE_MANIFEST_v0.34.29.md` and `RELEASE_VALIDATION_v0.34.29.md`.
