@@ -160,20 +160,36 @@ export async function POST(request) {
     const actor = await verifyStaffRequest(request);
     const formData = await request.formData();
     const files = formData.getAll("files").filter((item) => item && typeof item.arrayBuffer === "function");
+    const requestedBatchId = String(formData.get("batchId") || "").trim();
+    const uploadOffset = Math.max(0, Number.parseInt(String(formData.get("uploadOffset") || "0"), 10) || 0);
+    const finalizeBatch = String(formData.get("finalizeBatch") || "true").toLowerCase() !== "false";
     if (!files.length) return Response.json({ error: "Select at least one portfolio report." }, { status: 400 });
-    if (files.length > PORTFOLIO_MAX_FILES_PER_BATCH) return Response.json({ error: `Upload up to ${PORTFOLIO_MAX_FILES_PER_BATCH} files in one batch.` }, { status: 400 });
+    if (files.length > PORTFOLIO_MAX_FILES_PER_BATCH || uploadOffset + files.length > PORTFOLIO_MAX_FILES_PER_BATCH) return Response.json({ error: `Upload up to ${PORTFOLIO_MAX_FILES_PER_BATCH} files in one batch.` }, { status: 400 });
     const oversized = files.find((file) => Number(file.size || 0) > PORTFOLIO_MAX_FILE_SIZE);
     if (oversized) return Response.json({ error: `${oversized.name} is larger than 8 MB.` }, { status: 400 });
 
     const investors = await accessibleInvestors(actor);
-    const batchRef = adminDb.collection("portfolioImports").doc();
+    const batchRef = requestedBatchId ? adminDb.collection("portfolioImports").doc(requestedBatchId) : adminDb.collection("portfolioImports").doc();
+    let existingBatch = null;
+    if (requestedBatchId) {
+      const batchSnapshot = await batchRef.get();
+      if (!batchSnapshot.exists) return Response.json({ error: "Portfolio preview batch was not found. Analyse the files again." }, { status: 404 });
+      existingBatch = batchSnapshot.data();
+      if (existingBatch.advisorUid !== actor.uid && !["super_admin", "admin"].includes(actor.role)) {
+        return Response.json({ error: "You are not authorised to continue this portfolio preview batch." }, { status: 403 });
+      }
+      if (existingBatch.status === PORTFOLIO_IMPORT_STATUS.COMPLETED) {
+        return Response.json({ error: "This portfolio batch has already been completed." }, { status: 409 });
+      }
+    }
     const fileResults = [];
     const fileIds = [];
     const writer = adminDb.bulkWriter();
 
     for (let index = 0; index < files.length; index += 1) {
       const file = files[index];
-      const fileRef = adminDb.collection("portfolioImportFiles").doc(`${batchRef.id}_${String(index + 1).padStart(3, "0")}`);
+      const globalIndex = uploadOffset + index;
+      const fileRef = adminDb.collection("portfolioImportFiles").doc(`${batchRef.id}_${String(globalIndex + 1).padStart(3, "0")}`);
       fileIds.push(fileRef.id);
 
       let detected = await detectPortfolioImportFile(file);
@@ -229,7 +245,7 @@ export async function POST(request) {
             : "unsupported";
         const fileRecord = {
           batchId: batchRef.id,
-          uploadIndex: index,
+          uploadIndex: globalIndex,
           source: detected.source,
           reportType: detected.reportType,
           adapterStatus: detected.adapterStatus,
@@ -260,7 +276,7 @@ export async function POST(request) {
           updatedAt: FieldValue.serverTimestamp()
         };
         writer.set(fileRef, fileRecord);
-        fileResults.push(publicFileResult(fileRef, detected, { uploadIndex: index, matchStatus: status, error: fileRecord.parseError, suggestions: issueSuggestions }));
+        fileResults.push(publicFileResult(fileRef, detected, { uploadIndex: globalIndex, matchStatus: status, error: fileRecord.parseError, suggestions: issueSuggestions }));
         continue;
       }
 
@@ -330,7 +346,7 @@ export async function POST(request) {
 
       const fileRecord = {
         batchId: batchRef.id,
-        uploadIndex: index,
+        uploadIndex: globalIndex,
         source: detected.source,
         reportType: detected.reportType,
         adapterStatus: detected.adapterStatus,
@@ -373,7 +389,7 @@ export async function POST(request) {
         updatedAt: FieldValue.serverTimestamp()
       };
       writer.set(fileRef, fileRecord);
-      fileResults.push(publicFileResult(fileRef, detected, { uploadIndex: index, matchStatus, matchedInvestorId, matchedInvestorName, matchedClientCode, suggestions, duplicateOfImportId: fileRecord.duplicateOfImportId }));
+      fileResults.push(publicFileResult(fileRef, detected, { uploadIndex: globalIndex, matchStatus, matchedInvestorId, matchedInvestorName, matchedClientCode, suggestions, duplicateOfImportId: fileRecord.duplicateOfImportId }));
     }
 
     const counts = fileResults.reduce((total, item) => {
@@ -389,25 +405,48 @@ export async function POST(request) {
     const readyCount = fileResults.filter((item) => item.adapterStatus === PORTFOLIO_ADAPTER_STATUS.READY && ![PORTFOLIO_MATCH_STATUS.DUPLICATE, PORTFOLIO_MATCH_STATUS.CONFLICT].includes(item.matchStatus)).length;
     const issueCount = fileResults.length - readyCount - Number(counts[PORTFOLIO_MATCH_STATUS.DUPLICATE] || 0);
 
+    const cumulativeFileIds = [...(Array.isArray(existingBatch?.fileIds) ? existingBatch.fileIds : []), ...fileIds]
+      .filter((value, index, rows) => rows.indexOf(value) === index);
+    const cumulativeCounts = { ...(existingBatch?.previewCounts || {}) };
+    Object.entries(counts).forEach(([key, value]) => { cumulativeCounts[key] = Number(cumulativeCounts[key] || 0) + Number(value || 0); });
+    const cumulativeSourceCounts = { ...(existingBatch?.sourceCounts || {}) };
+    Object.entries(sourceCounts).forEach(([key, value]) => { cumulativeSourceCounts[key] = Number(cumulativeSourceCounts[key] || 0) + Number(value || 0); });
+    const cumulativeReadyCount = Number(existingBatch?.readyCount || 0) + readyCount;
+    const cumulativeIssueCount = Number(existingBatch?.previewIssueCount || 0) + issueCount;
+
     writer.set(batchRef, {
-      source: Object.keys(sourceCounts).length > 1 ? PORTFOLIO_SOURCES.MIXED : Object.keys(sourceCounts)[0] || PORTFOLIO_SOURCES.MANUAL,
+      source: Object.keys(cumulativeSourceCounts).length > 1 ? PORTFOLIO_SOURCES.MIXED : Object.keys(cumulativeSourceCounts)[0] || PORTFOLIO_SOURCES.MANUAL,
       importMode: "unified_daily",
-      status: PORTFOLIO_IMPORT_STATUS.AWAITING_REVIEW,
-      advisorUid: actor.uid,
-      createdByUid: actor.uid,
-      createdByName: actor.fullName || actor.email || "GrowVest User",
-      fileCount: files.length,
-      fileIds,
-      previewCounts: counts,
-      sourceCounts,
-      readyCount,
-      previewIssueCount: issueCount,
-      createdAt: FieldValue.serverTimestamp(),
+      status: finalizeBatch ? PORTFOLIO_IMPORT_STATUS.AWAITING_REVIEW : PORTFOLIO_IMPORT_STATUS.PROCESSING,
+      advisorUid: existingBatch?.advisorUid || actor.uid,
+      createdByUid: existingBatch?.createdByUid || actor.uid,
+      createdByName: existingBatch?.createdByName || actor.fullName || actor.email || "GrowVest User",
+      fileCount: cumulativeFileIds.length,
+      fileIds: cumulativeFileIds,
+      previewCounts: cumulativeCounts,
+      sourceCounts: cumulativeSourceCounts,
+      readyCount: cumulativeReadyCount,
+      previewIssueCount: cumulativeIssueCount,
+      previewChunkCount: Number(existingBatch?.previewChunkCount || 0) + 1,
+      previewFinalized: finalizeBatch,
+      ...(existingBatch?.createdAt ? {} : { createdAt: FieldValue.serverTimestamp() }),
       updatedAt: FieldValue.serverTimestamp()
-    });
+    }, { merge: true });
     await writer.close();
 
-    return Response.json({ batchId: batchRef.id, files: fileResults, counts, sourceCounts, readyCount, issueCount, investorCount: investors.length });
+    return Response.json({
+      batchId: batchRef.id,
+      files: fileResults,
+      counts,
+      sourceCounts,
+      readyCount,
+      issueCount,
+      investorCount: investors.length,
+      batchReadyCount: cumulativeReadyCount,
+      batchIssueCount: cumulativeIssueCount,
+      batchFileCount: cumulativeFileIds.length,
+      pending: !finalizeBatch
+    });
   } catch (error) {
     console.error("Unified portfolio preview failed", error);
     return Response.json({ error: error?.message || "Unable to analyse portfolio reports." }, { status: appRequestErrorStatus(error, 500) });

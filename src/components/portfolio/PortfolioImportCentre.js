@@ -253,6 +253,8 @@ export default function PortfolioImportCentre() {
   const [viewMode, setViewMode] = useState("all");
   const [coverageRefreshKey, setCoverageRefreshKey] = useState(0);
   const [historyNotice, setHistoryNotice] = useState("");
+  const [previewProgress, setPreviewProgress] = useState(null);
+  const [commitProgress, setCommitProgress] = useState(null);
 
   useEffect(() => {
     if (!profile?.id) return undefined;
@@ -298,8 +300,30 @@ export default function PortfolioImportCentre() {
     setBusy("preview");
     setError("");
     setResult(null);
+    setPreviewProgress({ current: 0, total: files.length, fileName: "" });
     try {
-      const next = await previewPortfolioImport(files);
+      // Analyse one physical file per request. Fundbazaar exports can be several
+      // MB each, so sending all morning files in one multipart request can exceed
+      // the serverless request/body/time limits before the importer even starts.
+      let batchId = "";
+      const combined = { files: [], counts: {}, sourceCounts: {}, readyCount: 0, issueCount: 0, investorCount: 0 };
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        setPreviewProgress({ current: index + 1, total: files.length, fileName: file.name || "Portfolio report" });
+        const chunk = await previewPortfolioImport([file], {
+          batchId,
+          uploadOffset: index,
+          finalizeBatch: index === files.length - 1
+        });
+        batchId = chunk.batchId || batchId;
+        combined.files.push(...(chunk.files || []));
+        Object.entries(chunk.counts || {}).forEach(([key, value]) => { combined.counts[key] = Number(combined.counts[key] || 0) + Number(value || 0); });
+        Object.entries(chunk.sourceCounts || {}).forEach(([key, value]) => { combined.sourceCounts[key] = Number(combined.sourceCounts[key] || 0) + Number(value || 0); });
+        combined.readyCount += Number(chunk.readyCount || 0);
+        combined.issueCount += Number(chunk.issueCount || 0);
+        combined.investorCount = Math.max(combined.investorCount, Number(chunk.investorCount || 0));
+      }
+      const next = { batchId, ...combined };
       setPreview(next);
       setCoverageRefreshKey((current) => current + 1);
       const defaults = {};
@@ -312,6 +336,7 @@ export default function PortfolioImportCentre() {
     } catch (nextError) {
       setError(nextError.message || "Unable to analyse portfolio reports.");
     } finally {
+      setPreviewProgress(null);
       setBusy("");
     }
   }
@@ -349,13 +374,55 @@ export default function PortfolioImportCentre() {
     if (!preview?.batchId || !readyFiles.length) return;
     setBusy("commit");
     setError("");
+    setResult(null);
+    setCommitProgress({ current: 0, total: readyFiles.length, fileName: "" });
+    const aggregated = {
+      batchId: preview.batchId,
+      status: "processing",
+      results: [],
+      snapshots: [],
+      missing: [],
+      warnings: [],
+      importedCount: 0,
+      issueCount: 0,
+      totalCurrentValue: 0,
+      coverage: null
+    };
     try {
-      const decisions = readyFiles.map((item) => ({
-        fileId: item.fileId,
-        investorId: item.matchStatus === PORTFOLIO_MATCH_STATUS.VERIFIED ? item.matchedInvestorId : mappings[item.fileId]
-      }));
-      const nextResult = await commitPortfolioImport(preview.batchId, decisions);
-      setResult(nextResult);
+      // Commit one analysed report per request. This keeps a large morning bulk
+      // upload from exhausting a single serverless request and isolates a bad
+      // Firestore write to the affected report instead of poisoning the whole batch.
+      for (let index = 0; index < readyFiles.length; index += 1) {
+        const item = readyFiles[index];
+        const decision = {
+          fileId: item.fileId,
+          investorId: item.matchStatus === PORTFOLIO_MATCH_STATUS.VERIFIED ? item.matchedInvestorId : mappings[item.fileId]
+        };
+        const finalizeBatch = index === readyFiles.length - 1;
+        setCommitProgress({ current: index + 1, total: readyFiles.length, fileName: item.fileName || "Portfolio report" });
+        const chunk = await commitPortfolioImport(preview.batchId, [decision], { fileIds: [item.fileId], finalizeBatch });
+        aggregated.status = chunk.status || aggregated.status;
+        aggregated.results.push(...(chunk.results || []));
+        aggregated.snapshots.push(...(chunk.snapshots || []));
+        aggregated.warnings.push(...(chunk.warnings || []));
+        if (finalizeBatch) {
+          aggregated.importedCount = Number(chunk.importedCount || 0);
+          aggregated.issueCount = Number(chunk.issueCount || 0);
+          aggregated.totalCurrentValue = Number(chunk.totalCurrentValue || 0);
+          aggregated.coverage = chunk.coverage || null;
+          aggregated.missing = chunk.missing || [];
+        }
+      }
+      // Remove duplicate derived warnings that can be repeated when several
+      // reports for the same investor are committed sequentially.
+      const warningKeys = new Set();
+      aggregated.warnings = aggregated.warnings.filter((item) => {
+        const key = `${item?.code || "warning"}|${item?.investorId || ""}|${item?.message || ""}`;
+        if (warningKeys.has(key)) return false;
+        warningKeys.add(key);
+        return true;
+      });
+      setResult(aggregated);
       setCoverageRefreshKey((current) => current + 1);
       setFiles([]);
       setPreview(null);
@@ -365,6 +432,7 @@ export default function PortfolioImportCentre() {
     } catch (nextError) {
       setError(nextError.message || "Unable to update portfolios.");
     } finally {
+      setCommitProgress(null);
       setBusy("");
     }
   }
@@ -448,7 +516,7 @@ export default function PortfolioImportCentre() {
 
           {files.length && !preview ? (
             <div className="mt-4 flex justify-end">
-              <Button type="button" onClick={handlePreview} disabled={busy === "preview"}>{busy === "preview" ? <Loader2 className="animate-spin" size={17} /> : <RefreshCcw size={17} />} Analyse Files</Button>
+              <Button type="button" onClick={handlePreview} disabled={busy === "preview"}>{busy === "preview" ? <Loader2 className="animate-spin" size={17} /> : <RefreshCcw size={17} />} {busy === "preview" && previewProgress ? `Analysing ${previewProgress.current}/${previewProgress.total}` : "Analyse Files"}</Button>
             </div>
           ) : null}
 
@@ -485,11 +553,11 @@ export default function PortfolioImportCentre() {
               <div className="sticky bottom-3 z-10 flex flex-col justify-between gap-3 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur sm:flex-row sm:items-center">
                 <div>
                   <p className="text-sm font-bold text-slate-900">{readyFiles.length} report(s) ready to update</p>
-                  <p className="mt-1 text-xs text-slate-500">{unresolved.length ? `${unresolved.length} investor mapping(s) still need confirmation.` : issueFiles.length ? "Files still needing mapping stay untouched; ready Fundbazaar, Bajaj, Angel One, ULIP and GrowVest Standard reports can be processed safely." : "All eligible files are verified."}</p>
+                  <p className="mt-1 text-xs text-slate-500">{busy === "commit" && commitProgress ? `Processing ${commitProgress.fileName} · ${commitProgress.current} of ${commitProgress.total}. Keep this page open until the batch is complete.` : unresolved.length ? `${unresolved.length} investor mapping(s) still need confirmation.` : issueFiles.length ? "Files still needing mapping stay untouched; ready Fundbazaar, Bajaj, Angel One, ULIP and GrowVest Standard reports can be processed safely." : "All eligible files are verified."}</p>
                 </div>
                 <div className="flex gap-2">
                   <Button type="button" variant="secondary" onClick={() => { setPreview(null); setMappings({}); setViewMode("all"); }}>Back</Button>
-                  <Button type="button" onClick={handleCommit} disabled={!readyFiles.length || busy === "commit"}>{busy === "commit" ? <Loader2 className="animate-spin" size={17} /> : <UploadCloud size={17} />} Update Ready Portfolios</Button>
+                  <Button type="button" onClick={handleCommit} disabled={!readyFiles.length || busy === "commit"}>{busy === "commit" ? <Loader2 className="animate-spin" size={17} /> : <UploadCloud size={17} />} {busy === "commit" && commitProgress ? `Updating ${commitProgress.current}/${commitProgress.total}` : "Update Ready Portfolios"}</Button>
                 </div>
               </div>
             </div>

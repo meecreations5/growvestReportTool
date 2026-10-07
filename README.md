@@ -1083,3 +1083,9 @@ See `docs/REPORT_PERIOD_OPENING_FLOW_v0.34.28.md`, `docs/REPORT_PERIOD_OPENING_F
 Daily Fundbazaar commits now isolate the primary portfolio write from derived snapshot/coverage refresh work and expose the exact failure stage instead of an opaque `500 Internal Server Error`. File-level failures are shown by filename in Daily Portfolio Update; successful holding imports are no longer presented as failed merely because a secondary snapshot/coverage refresh needs attention. Fundbazaar matching, valuation and folio identity rules are unchanged.
 
 See `docs/FUNDBAZAAR_DAILY_IMPORT_STABILITY_v0.34.29.md`, `docs/FUNDBAZAAR_DAILY_IMPORT_STABILITY_CODE_MANIFEST_v0.34.29.md` and `RELEASE_VALIDATION_v0.34.29.md`.
+
+## v0.34.30 — Daily Portfolio Multi-File Stability
+
+Daily Portfolio Update now keeps the bulk staff experience while internally analysing and committing each selected report in a separate request. This prevents multiple Fundbazaar files from sharing one oversized/long-running request, isolates each Firestore BulkWriter, and recomputes the final batch totals only after the last report is processed.
+
+See `docs/DAILY_PORTFOLIO_MULTI_FILE_STABILITY_v0.34.30.md` and `RELEASE_VALIDATION_v0.34.30.md`.

@@ -1937,11 +1937,21 @@ export async function POST(request) {
     }
 
     const decisions = new Map((payload?.mappings || []).map((item) => [item.fileId, item]));
-    const fileIds = Array.isArray(batch.fileIds) ? batch.fileIds : [];
-    const fileSnapshots = fileIds.length
-      ? await adminDb.getAll(...fileIds.map((id) => adminDb.collection("portfolioImportFiles").doc(id)))
+    const batchFileIds = Array.isArray(batch.fileIds) ? batch.fileIds : [];
+    const requestedFileIds = [...new Set((Array.isArray(payload?.fileIds) ? payload.fileIds : []).map((value) => String(value || "").trim()).filter(Boolean))];
+    const finalizeBatch = payload?.finalizeBatch !== false;
+    const unknownRequestedFileIds = requestedFileIds.filter((id) => !batchFileIds.includes(id));
+    if (unknownRequestedFileIds.length) {
+      return Response.json({ error: "One or more requested portfolio files do not belong to this import batch." }, { status: 400 });
+    }
+    const allFileSnapshots = batchFileIds.length
+      ? await adminDb.getAll(...batchFileIds.map((id) => adminDb.collection("portfolioImportFiles").doc(id)))
       : [];
-    const hasFundbazaarFiles = fileSnapshots.some((snapshot) => snapshot.exists && snapshot.data()?.source === PORTFOLIO_SOURCES.FUNDBAZAAR);
+    const requestedFileIdSet = new Set(requestedFileIds);
+    const fileSnapshots = requestedFileIds.length
+      ? allFileSnapshots.filter((snapshot) => requestedFileIdSet.has(snapshot.id))
+      : allFileSnapshots;
+    const hasFundbazaarFiles = allFileSnapshots.some((snapshot) => snapshot.exists && snapshot.data()?.source === PORTFOLIO_SOURCES.FUNDBAZAAR);
 
     commitStage = "batch_start";
     await batchRef.update({ status: PORTFOLIO_IMPORT_STATUS.PROCESSING, processingStartedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
@@ -1949,7 +1959,6 @@ export async function POST(request) {
     const results = [];
     const affectedInvestors = new Map();
     const postCommitWarnings = [];
-    const writer = adminDb.bulkWriter();
 
     for (const fileSnapshot of fileSnapshots) {
       if (!fileSnapshot.exists) continue;
@@ -1970,39 +1979,51 @@ export async function POST(request) {
       let investorId = file.matchStatus === PORTFOLIO_MATCH_STATUS.VERIFIED ? file.matchedInvestorId : String(decision.investorId || file.matchedInvestorId || "");
       let recoveryRef = null;
       if (!investorId) {
-        writer.update(fileRef, { status: "review_required", updatedAt: FieldValue.serverTimestamp() });
+        await fileRef.set({ status: "review_required", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
         results.push({ fileId: file.id, fileName: file.fileName, status: "review_required", error: "Investor mapping is required." });
         continue;
       }
 
+      let writer = null;
       try {
         const investor = await getAccessibleInvestor(actor, investorId);
+        writer = adminDb.bulkWriter();
         if (file.source === PORTFOLIO_SOURCES.GROWVEST_TRADING) {
           const tradingResult = await commitGrowVestTradingFile({ actor, batchId, file, fileRef, investor, investorId, writer });
+          await writer.close();
+          writer = null;
           affectedInvestors.set(investorId, investor);
           results.push(tradingResult);
           continue;
         }
         if (file.source === PORTFOLIO_SOURCES.BAJAJ_BROKING) {
           const bajajResult = await commitBajajFile({ actor, batchId, file, fileRef, investor, investorId, writer });
+          await writer.close();
+          writer = null;
           affectedInvestors.set(investorId, investor);
           results.push(bajajResult);
           continue;
         }
         if (file.source === PORTFOLIO_SOURCES.ANGEL_ONE) {
           const angelResult = await commitAngelOneFile({ actor, batchId, file, fileRef, investor, investorId, writer });
+          await writer.close();
+          writer = null;
           affectedInvestors.set(investorId, investor);
           results.push(angelResult);
           continue;
         }
         if (file.source === PORTFOLIO_SOURCES.ULIP) {
           const ulipResult = await commitUlipFile({ actor, batchId, file, fileRef, investor, investorId, writer });
+          await writer.close();
+          writer = null;
           affectedInvestors.set(investorId, investor);
           results.push(ulipResult);
           continue;
         }
         if (file.source === PORTFOLIO_SOURCES.GROWVEST_STANDARD) {
           const genericResult = await commitGenericFile({ actor, batchId, file, fileRef, investor, investorId, writer });
+          await writer.close();
+          writer = null;
           affectedInvestors.set(investorId, investor);
           results.push(genericResult);
           continue;
@@ -2341,9 +2362,10 @@ export async function POST(request) {
           updatedAt: FieldValue.serverTimestamp()
         });
 
-        // Flush each file so a second Fundbazaar report for the same investor in
-        // the same batch can reconcile against the holdings/transactions just written.
-        await writer.flush();
+        // Complete this file with its own BulkWriter so a failed write cannot
+        // poison the writer used by the next report in a multi-file upload.
+        await writer.close();
+        writer = null;
         if (recoveryRef) {
           await recoveryRef.update({
             status: "committed",
@@ -2369,6 +2391,12 @@ export async function POST(request) {
           currentValue: Number(file.summary?.currentValue || 0)
         });
       } catch (error) {
+        if (writer) {
+          await writer.close().catch((writerError) => {
+            console.error("Portfolio file writer close failed", { batchId, fileId: file.id, error: writerError?.message || String(writerError) });
+          });
+          writer = null;
+        }
         const fileError = safeText(error?.message, "Import failed");
         console.error("Portfolio file commit failed", { batchId, fileId: file.id, fileName: file.fileName || "", source: file.source || "", reportType: file.reportType || "", error: fileError });
         if (recoveryRef) {
@@ -2379,9 +2407,8 @@ export async function POST(request) {
             updatedAt: FieldValue.serverTimestamp()
           }, { merge: true }).catch(() => {});
         }
-        // Mark the failed file outside the shared BulkWriter. If a Firestore write in
-        // this file caused the bulk flush to fail, reusing that writer for the error
-        // marker can turn a recoverable file error into a route-level HTTP 500.
+        // Mark the failed file outside its isolated BulkWriter. A failed report
+        // must not turn the remaining files in the morning bulk upload into 500s.
         await fileRef.set({ status: "failed", importError: fileError, updatedAt: FieldValue.serverTimestamp() }, { merge: true }).catch((statusError) => {
           console.error("Unable to persist portfolio file failure status", { batchId, fileId: file.id, error: statusError?.message || String(statusError) });
         });
@@ -2389,8 +2416,7 @@ export async function POST(request) {
       }
     }
 
-    commitStage = "bulk_writer_finalize";
-    await writer.close();
+    commitStage = "chunk_postprocess";
 
     // Portfolio holdings are the primary daily update. Snapshot and coverage are
     // important derived views, but a secondary refresh problem must not roll the
@@ -2414,6 +2440,45 @@ export async function POST(request) {
       }
     }
 
+    const priorCommitWarnings = Array.isArray(batch.commitWarnings) ? batch.commitWarnings : [];
+    const warningMap = new Map();
+    [...priorCommitWarnings, ...postCommitWarnings].forEach((item) => {
+      const key = `${item?.code || "warning"}|${item?.investorId || ""}|${item?.message || ""}`;
+      if (!warningMap.has(key)) warningMap.set(key, item);
+    });
+    const accumulatedWarnings = [...warningMap.values()].slice(-100);
+
+    // During a browser-side multi-file upload each file is committed in its own
+    // request. Expensive batch-wide coverage is deliberately deferred until the
+    // final file so 20-100 daily files do not repeatedly rebuild the same view.
+    if (!finalizeBatch) {
+      const chunkImportedCount = results.filter((item) => item.status === "imported").length;
+      const chunkIssueCount = results.filter((item) => !["imported", "duplicate"].includes(item.status)).length + postCommitWarnings.length;
+      const chunkCurrentValue = results.filter((item) => item.status === "imported").reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
+      commitStage = "batch_progress";
+      await batchRef.set({
+        status: PORTFOLIO_IMPORT_STATUS.PROCESSING,
+        commitWarnings: accumulatedWarnings,
+        lastChunkImportedCount: chunkImportedCount,
+        lastChunkIssueCount: chunkIssueCount,
+        lastChunkCompletedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+      return Response.json({
+        batchId,
+        status: PORTFOLIO_IMPORT_STATUS.PROCESSING,
+        results,
+        snapshots,
+        missing: [],
+        coverage: null,
+        importedCount: chunkImportedCount,
+        issueCount: chunkIssueCount,
+        warnings: postCommitWarnings,
+        totalCurrentValue: Number(chunkCurrentValue.toFixed(2)),
+        pending: true
+      });
+    }
+
     commitStage = "daily_coverage_refresh";
     let dailyCoverage = null;
     if (hasFundbazaarFiles) {
@@ -2422,9 +2487,13 @@ export async function POST(request) {
       } catch (coverageError) {
         const message = safeText(coverageError?.message, "Daily Fundbazaar coverage refresh failed.");
         console.error("Daily Fundbazaar coverage refresh failed after import", { batchId, error: message });
-        postCommitWarnings.push(compactWarning("coverage_refresh_failed", message));
+        const warning = compactWarning("coverage_refresh_failed", message);
+        postCommitWarnings.push(warning);
+        const key = `${warning.code}|${warning.investorId || ""}|${warning.message || ""}`;
+        if (!warningMap.has(key)) warningMap.set(key, warning);
       }
     }
+    const finalWarnings = [...warningMap.values()].slice(-100);
     const missing = hasFundbazaarFiles && dailyCoverage ? dailyCoverage.rows
       .filter((item) => item.status === "missing")
       .map((item) => ({
@@ -2436,11 +2505,25 @@ export async function POST(request) {
         staleDays: item.staleDays
       })) : [];
 
-    const importedCount = results.filter((item) => item.status === "imported").length;
-    const fileIssueCount = results.filter((item) => !["imported", "duplicate"].includes(item.status)).length;
-    const issueCount = fileIssueCount + postCommitWarnings.length;
+    // Reload every file after the sequential chunks have finished. Batch totals
+    // must describe the whole morning upload, not only the final HTTP request.
+    commitStage = "batch_aggregate";
+    const finalFileSnapshots = batchFileIds.length
+      ? await adminDb.getAll(...batchFileIds.map((id) => adminDb.collection("portfolioImportFiles").doc(id)))
+      : [];
+    const finalFiles = finalFileSnapshots.filter((snapshot) => snapshot.exists).map((snapshot) => ({ id: snapshot.id, ...snapshot.data() }));
+    const importedFiles = finalFiles.filter((item) => item.status === "imported");
+    const duplicateFiles = finalFiles.filter((item) => item.matchStatus === PORTFOLIO_MATCH_STATUS.DUPLICATE || item.status === "duplicate");
+    const finalFileIssueCount = finalFiles.filter((item) => {
+      if (item.status === "imported") return false;
+      if (item.matchStatus === PORTFOLIO_MATCH_STATUS.DUPLICATE || item.status === "duplicate") return false;
+      return true;
+    }).length;
+    const importedCount = importedFiles.length;
+    const issueCount = finalFileIssueCount + finalWarnings.length;
     const status = importedCount > 0 && issueCount === 0 ? PORTFOLIO_IMPORT_STATUS.COMPLETED : importedCount > 0 ? PORTFOLIO_IMPORT_STATUS.PARTIAL : PORTFOLIO_IMPORT_STATUS.FAILED;
-    const totalCurrentValue = results.filter((item) => item.status === "imported").reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
+    const totalCurrentValue = importedFiles.reduce((sum, item) => sum + Number(item.summary?.currentValue || 0), 0);
+    const importedInvestorIds = new Set(importedFiles.map((item) => String(item.matchedInvestorId || "")).filter(Boolean));
 
     const coverageBatchFields = hasFundbazaarFiles
       ? (dailyCoverage ? {
@@ -2469,9 +2552,10 @@ export async function POST(request) {
       status,
       importedCount,
       issueCount,
-      duplicateCount: results.filter((item) => item.status === "duplicate").length,
-      investorCount: affectedInvestors.size,
+      duplicateCount: duplicateFiles.length,
+      investorCount: importedInvestorIds.size,
       totalCurrentValue: Number(totalCurrentValue.toFixed(2)),
+      commitWarnings: finalWarnings,
       ...coverageBatchFields,
       completedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp()
@@ -2486,7 +2570,7 @@ export async function POST(request) {
         assignedAdvisorUid: actor.uid,
         action: "daily_portfolio_import_completed",
         title: "Daily portfolio import completed",
-        description: `${importedCount} report(s) imported for ${affectedInvestors.size} investor(s).`,
+        description: `${importedCount} report(s) imported for ${importedInvestorIds.size} investor(s).`,
         metadata: {
           batchId,
           importedCount,
@@ -2519,7 +2603,7 @@ export async function POST(request) {
       coverage: hasFundbazaarFiles ? dailyCoverage : null,
       importedCount,
       issueCount,
-      warnings: postCommitWarnings,
+      warnings: finalWarnings,
       totalCurrentValue: Number(totalCurrentValue.toFixed(2))
     });
   } catch (error) {
