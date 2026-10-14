@@ -35,6 +35,7 @@ import { Field, inputClassName } from "@/components/ui/Field";
 import { formatCurrency, formatDate } from "@/lib/utils/format";
 import { businessDateKey } from "@/lib/utils/date";
 import { filterTrendByRange } from "@/lib/utils/investorExperience";
+import { buildMonthlyPortfolioProgress, monthProgressLabel } from "@/lib/portfolioMonthlyProgress";
 import {
   MUTUAL_FUND_INVESTMENT_MODES,
   PORTFOLIO_PRODUCT_LABELS,
@@ -192,8 +193,10 @@ function mobileAllocationColor(label = "", index = 0) {
   return fallback[index % fallback.length];
 }
 
-function MobilePortfolioAppView({ summary, positions, investmentBreakdown, snapshots, snapshot, movement, monthComparison, goalHealth, intelligence, tradingSummary, error }) {
-  const rawTrend = [...(snapshots || [])].reverse().map((item) => ({ date: item.snapshotDate, label: String(item.snapshotDate || "").slice(5), value: Number(item.summary?.currentValue || 0) }));
+function MobilePortfolioAppView({ summary, positions, investmentBreakdown, snapshots, snapshot, movement, monthComparison, monthlyProgress = [], goalHealth, intelligence, tradingSummary, error }) {
+  const rawTrend = monthlyProgress.length
+    ? [...monthlyProgress].reverse().map((item) => ({ date: item.closingDate, label: monthProgressLabel(item.monthKey), value: Number(item.closingValue || 0) }))
+    : [...(snapshots || [])].reverse().map((item) => ({ date: item.snapshotDate, label: String(item.snapshotDate || "").slice(5), value: Number(item.summary?.currentValue || 0) }));
   const [range, setRange] = useState("1Y");
   const trend = filterTrendByRange(rawTrend, range);
   const allocationMap = new Map();
@@ -215,7 +218,7 @@ function MobilePortfolioAppView({ summary, positions, investmentBreakdown, snaps
   const rangeStart = trend[0]?.date || "";
   const rangeEnd = trend[trend.length - 1]?.date || "";
   const rangeDescription = trend.length > 1
-    ? `${range} · ${trend.length} verified points · ${mobileTrendDateLabel(rangeStart)} to ${mobileTrendDateLabel(rangeEnd)}`
+    ? `${range} · ${trend.length} month-end/MTD points · ${mobileTrendDateLabel(rangeStart)} to ${mobileTrendDateLabel(rangeEnd)}`
     : `${range} · Limited verified history`;
 
   return (
@@ -240,6 +243,13 @@ function MobilePortfolioAppView({ summary, positions, investmentBreakdown, snaps
         </div>
         {trendLabels.length ? <div className="mt-1 flex items-center justify-between text-[10px] text-[#6B7280]">{trendLabels.map((item, index) => <span key={`${item.date || item.label}-${index}`}>{mobileTrendDateLabel(item.date)}</span>)}</div> : null}
         <div className="mt-2 flex items-center justify-between gap-3 text-[10px] text-[#6B7280]"><span>{rangeDescription}</span><span>{snapshot?.snapshotDate ? `Verified ${formatDate(snapshot.snapshotDate)}` : "Latest"}</span></div>
+
+        {monthlyProgress.length ? <div className="mt-4 overflow-hidden rounded-[16px] border border-slate-200 bg-white">
+          {monthlyProgress.slice(0, 4).map((item, index) => <div key={item.monthKey} className={`px-3 py-2.5 ${index ? "border-t border-slate-100" : ""}`}>
+            <div className="flex items-center justify-between gap-3"><div><p className="text-[11px] font-bold text-[#0B0B0F]">{monthProgressLabel(item.monthKey)}{item.isCurrentMonth ? " · MTD" : ""}</p><p className="mt-0.5 text-[9px] text-[#6B7280]">Snapshot {formatDate(item.closingDate)}</p></div><p className="gv-private-value text-[12px] font-bold text-[#0B0B0F]">{formatCurrency(item.closingValue)}</p></div>
+            <div className="mt-1.5 flex items-center justify-between text-[9.5px]"><span className="text-[#6B7280]">Net contribution <strong className="gv-private-value text-[#0B0B0F]">{formatCurrency(item.netContribution)}</strong></span><span className={`gv-private-value font-bold ${Number(item.investmentGain || 0) >= 0 ? "text-[#1F4ED8]" : "text-[#E53935]"}`}>{item.investmentGain === null ? "Return pending" : `${Number(item.investmentGain) >= 0 ? "+" : ""}${formatCurrency(item.investmentGain)}`}</span></div>
+          </div>)}
+        </div> : null}
 
         <div className="mt-4 grid grid-cols-2 gap-2.5">
           <div className="rounded-[16px] bg-[#F4F6F9] p-3.5"><p className="text-[11px] text-[#6B7280]">{gainPartial ? "Known Invested Amount" : "Amount Invested"}</p><p className="gv-private-value mt-1 font-heading text-[1.05rem] font-bold text-[#0B0B0F]">{formatCurrency(summary.invested)}</p>{gainPartial ? <p className="mt-0.5 text-[10px] font-semibold text-[#6B7280]">{summary.pendingCostBasisCount} cost basis pending</p> : null}</div>
@@ -571,6 +581,12 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
   }, [positions, ulipPolicies]);
 
   const investmentBreakdown = useMemo(() => summarisePortfolioByInvestmentType(positions, ulipPolicies), [positions, ulipPolicies]);
+  const monthlyProgress = useMemo(() => buildMonthlyPortfolioProgress(snapshots, transactions), [snapshots, transactions]);
+  const latestValuationDate = useMemo(() => positions
+    .map((item) => sourceDate(item))
+    .filter(Boolean)
+    .sort()
+    .at(-1) || snapshot?.snapshotDate || "", [positions, snapshot?.snapshotDate]);
 
   const goals = useMemo(() => goalRows(effectiveInvestor), [effectiveInvestor]);
   const availableSources = useMemo(() => [...new Set(positions.map((item) => item.source || "manual"))].sort(), [positions]);
@@ -760,16 +776,27 @@ export default function InvestorPortfolioPanel({ investor, editable = false, por
 
   return (
     <>
-      {portal ? <MobilePortfolioAppView summary={summary} positions={positions} investmentBreakdown={investmentBreakdown} snapshots={snapshots} snapshot={snapshot} movement={movement} monthComparison={monthComparison} goalHealth={goalHealth} intelligence={intelligence} tradingSummary={tradingSummary} error={error} /> : null}
+      {portal ? <MobilePortfolioAppView summary={summary} positions={positions} investmentBreakdown={investmentBreakdown} snapshots={snapshots} snapshot={snapshot} movement={movement} monthComparison={monthComparison} monthlyProgress={monthlyProgress} goalHealth={goalHealth} intelligence={intelligence} tradingSummary={tradingSummary} error={error} /> : null}
       <div className={`${portal ? "hidden md:grid" : "grid"} gap-5`}>
       {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <Stat label="Current Portfolio" value={formatCurrency(summary.current)} helper={snapshot?.snapshotDate ? `Verified ${formatDate(snapshot.snapshotDate)}` : "Latest available"} icon={WalletCards} tone="blue" />
+        <Stat label="Current Portfolio" value={formatCurrency(summary.current)} helper={latestValuationDate ? `Verified ${formatDate(latestValuationDate)}` : "Latest available"} icon={WalletCards} tone="blue" />
         <Stat label={summary.gainPartial ? "Known Invested" : "Total Invested"} value={formatCurrency(summary.invested)} helper={summary.gainPartial ? `${summary.pendingCostBasisCount} holding${summary.pendingCostBasisCount === 1 ? "" : "s"} awaiting cost basis` : `${positions.length} active holding${positions.length === 1 ? "" : "s"}`} icon={BadgeIndianRupee} tone="slate" />
         <Stat label={summary.gainPartial ? "Gain / Loss (Known Cost)" : "Gain / Loss"} value={formatCurrency(summary.gain)} helper={summary.invested ? `${percent(summary.gainPercent)}${summary.gainPartial ? " · partial until all cost basis is available" : ""}` : "—"} icon={summary.gain >= 0 ? TrendingUp : TrendingDown} tone={summary.gain >= 0 ? "green" : "red"} />
         <Stat label="Monthly SIP" value={formatCurrency(summary.monthlySip)} helper="Active mutual fund contribution" icon={RefreshCcw} tone="green" />
       </div>
+
+      {monthlyProgress.length ? <Card className="overflow-hidden">
+        <div className="flex flex-col justify-between gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-end sm:p-6">
+          <div><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">Portfolio Progress</p><h2 className="mt-1 font-heading text-2xl font-bold text-slate-950">Month-by-month wealth movement</h2><p className="mt-1 text-sm text-slate-500">Closing portfolio value is kept separate from money added or withdrawn, so investment movement is not overstated by fresh contributions.</p></div>
+          <div className="text-left sm:text-right"><p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Latest verified value</p><p className="mt-1 font-heading text-xl font-bold text-slate-950">{formatCurrency(monthlyProgress[0]?.closingValue)}</p><p className="mt-1 text-xs text-slate-500">{monthlyProgress[0]?.isCurrentMonth ? `${monthProgressLabel(monthlyProgress[0].monthKey)} MTD` : monthProgressLabel(monthlyProgress[0]?.monthKey)}</p></div>
+        </div>
+        <div className="border-b border-slate-100 p-5 sm:p-6"><MobileLineChart points={[...monthlyProgress].reverse().map((item) => ({ date: item.closingDate, label: monthProgressLabel(item.monthKey), value: item.closingValue }))} height={150} showDots /></div>
+        <div className="overflow-x-auto"><table className="min-w-[980px] w-full text-left text-sm"><thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400"><tr><th className="px-5 py-3 sm:px-6">Month</th><th className="px-4 py-3 text-right">Opening</th><th className="px-4 py-3 text-right">Investment Added</th><th className="px-4 py-3 text-right">Withdrawals</th><th className="px-4 py-3 text-right">Net Contribution</th><th className="px-4 py-3 text-right">Investment Gain/Loss</th><th className="px-5 py-3 text-right sm:px-6">Closing</th></tr></thead><tbody className="divide-y divide-slate-100">
+          {monthlyProgress.slice(0, 12).map((item) => <tr key={item.monthKey} className="bg-white"><td className="px-5 py-3.5 sm:px-6"><p className="font-bold text-slate-950">{monthProgressLabel(item.monthKey)}{item.isCurrentMonth ? <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold text-blue-700">MTD</span> : null}</p><p className="mt-0.5 text-[10px] text-slate-400">Snapshot {formatDate(item.closingDate)}</p></td><td className="gv-private-value px-4 py-3.5 text-right font-semibold text-slate-700">{item.openingValue === null ? "—" : formatCurrency(item.openingValue)}</td><td className="gv-private-value px-4 py-3.5 text-right font-semibold text-emerald-700">{formatCurrency(item.newMoney)}</td><td className="gv-private-value px-4 py-3.5 text-right font-semibold text-amber-700">{formatCurrency(item.withdrawals)}</td><td className="gv-private-value px-4 py-3.5 text-right font-semibold text-slate-700">{formatCurrency(item.netContribution)}</td><td className={`gv-private-value px-4 py-3.5 text-right font-bold ${item.investmentGain === null ? "text-slate-400" : Number(item.investmentGain) >= 0 ? "text-emerald-700" : "text-red-700"}`}>{item.investmentGain === null ? "—" : <>{Number(item.investmentGain) >= 0 ? "+" : ""}{formatCurrency(item.investmentGain)}{item.monthlyReturn !== null ? <span className="block text-[9px] font-semibold">{Number(item.monthlyReturn) >= 0 ? "+" : ""}{Number(item.monthlyReturn).toFixed(2)}%</span> : null}</>}</td><td className="gv-private-value px-5 py-3.5 text-right font-bold text-slate-950 sm:px-6">{formatCurrency(item.closingValue)}</td></tr>)}
+        </tbody></table></div>
+      </Card> : null}
 
       {investmentBreakdown.length || Number(tradingSummary.turnover || 0) > 0 ? <Card className="overflow-hidden">
         <div className="flex flex-col justify-between gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:p-6">

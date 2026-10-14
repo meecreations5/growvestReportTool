@@ -5,6 +5,7 @@ import { actionActorName, actionEventPayload, actionNotification, cleanActionTex
 import { createPortfolioSnapshot, indiaDateKey } from "@/lib/server/portfolioServer";
 import { stableHash } from "@/lib/server/portfolioImportParser";
 import { GENERAL_WEALTH_BUCKET_ID, isGeneralWealthAllocation, normalisePortfolioGoalAllocations } from "@/lib/portfolioGoalAllocation";
+import { isPmsWithdrawalProduct, isStructuredWithdrawalProduct, supportsWithdrawalSipInstruction, withdrawalProductLabel } from "@/lib/withdrawalPortfolio";
 
 export const runtime = "nodejs";
 
@@ -174,7 +175,7 @@ export async function POST(request, { params }) {
     if (!action.withdrawalPortfolioApplied) {
       const inputs = completionInputMap(payload.items);
       const plannedItems = Array.isArray(action.withdrawalItems) ? action.withdrawalItems : [];
-      if (!plannedItems.length) return Response.json({ error: "No withdrawal funds are stored on this request." }, { status: 422 });
+      if (!plannedItems.length) return Response.json({ error: "No withdrawal investments are stored on this request." }, { status: 422 });
 
       await adminDb.runTransaction(async (transaction) => {
         const actionSnapshot = await transaction.get(actionRef);
@@ -195,15 +196,17 @@ export async function POST(request, { params }) {
 
         plannedItems.forEach((planned, index) => {
           const positionSnapshot = positionSnapshots[index];
-          if (!positionSnapshot.exists) throw new Error(`${planned.instrumentName || "A selected fund"} is no longer available in Portfolio Master.`);
+          if (!positionSnapshot.exists) throw new Error(`${planned.instrumentName || "A selected investment"} is no longer available in Portfolio Master.`);
           const position = { id: positionSnapshot.id, ...positionSnapshot.data() };
-          if (position.investorId !== currentAction.investorId) throw new Error("A selected fund does not belong to this investor.");
-          if (String(position.productType || "") !== "mutual_fund") throw new Error("Automatic withdrawal completion is supported only for Mutual Fund positions.");
-          if (["inactive", "exited"].includes(String(position.status || "").toLowerCase())) throw new Error(`${planned.instrumentName || "A selected fund"} is already exited.`);
+          if (position.investorId !== currentAction.investorId) throw new Error("A selected investment does not belong to this investor.");
+          if (!isStructuredWithdrawalProduct(position)) throw new Error("Automatic withdrawal completion supports Mutual Fund and PMS positions.");
+          if (["inactive", "exited"].includes(String(position.status || "").toLowerCase())) throw new Error(`${planned.instrumentName || "A selected investment"} is already exited.`);
 
           const input = inputs.get(position.id) || {};
           const mode = String(planned.withdrawalMode || "partial") === "full" ? "full" : "partial";
-          const sipInstruction = ["continue", "pause", "stop"].includes(String(planned.sipInstruction || "")) ? String(planned.sipInstruction) : "continue";
+          const supportsSip = supportsWithdrawalSipInstruction(position);
+          const isPms = isPmsWithdrawalProduct(position);
+          const sipInstruction = supportsSip && ["continue", "pause", "stop"].includes(String(planned.sipInstruction || "")) ? String(planned.sipInstruction) : (supportsSip ? "continue" : "not_applicable");
           const currentUnits = Math.max(0, Number(position.totalUnits ?? position.quantity ?? position.units ?? 0));
           const currentValue = Math.max(0, Number(position.currentValue || 0));
           const currentInvested = Math.max(0, Number(position.totalInvested ?? position.investedAmount ?? 0));
@@ -211,28 +214,35 @@ export async function POST(request, { params }) {
           const currentAllocations = normalisePortfolioGoalAllocations(position.goalAllocations);
           const withdrawalBucketId = currentAction.withdrawalBucketId || currentAction.relatedGoalId || GENERAL_WEALTH_BUCKET_ID;
           const bucketAllocation = currentAllocations.find((allocation) => matchesWithdrawalBucket(allocation, withdrawalBucketId));
-          if (!bucketAllocation) throw new Error(`${planned.instrumentName || "A selected fund"} is no longer mapped to the withdrawal Bucket List.`);
+          if (!bucketAllocation) throw new Error(`${planned.instrumentName || "A selected investment"} is no longer mapped to the withdrawal Bucket List.`);
           const bucketPercentage = Math.max(0, Number(bucketAllocation.percentage || 0));
-          if (mode === "full" && bucketPercentage < 99.999) throw new Error(`Complete withdrawal of ${planned.instrumentName || "the selected fund"} requires the holding to be 100% mapped to the selected Bucket List.`);
+          if (mode === "full" && bucketPercentage < 99.999) throw new Error(`Complete withdrawal of ${planned.instrumentName || "the selected investment"} requires the holding to be 100% mapped to the selected Bucket List.`);
           let actualUnits = mode === "full" ? currentUnits : positive(input.actualUnits || planned.requestedUnits);
           let actualAmount = mode === "full" ? positive(input.actualAmount) || currentValue : positive(input.actualAmount || planned.requestedAmount);
-          if (mode === "partial" && !(actualAmount > 0 || actualUnits > 0)) throw new Error(`Enter the actual amount or units for ${planned.instrumentName || "the selected fund"}.`);
-          if (!(actualUnits > 0) && nav > 0 && actualAmount > 0) actualUnits = actualAmount / nav;
+          if (mode === "partial" && !(actualAmount > 0 || actualUnits > 0)) throw new Error(`Enter the actual amount or units for ${planned.instrumentName || "the selected investment"}.`);
+          if (!(actualUnits > 0) && nav > 0 && actualAmount > 0 && currentUnits > 0) actualUnits = actualAmount / nav;
           if (!(actualAmount > 0) && nav > 0 && actualUnits > 0) actualAmount = actualUnits * nav;
           if (mode === "full") actualUnits = currentUnits;
-          if (currentUnits > 0 && actualUnits > currentUnits + 0.0001) throw new Error(`Actual units for ${planned.instrumentName || "the selected fund"} exceed the available units.`);
-          if (currentValue > 0 && actualAmount > currentValue + Math.max(1, currentValue * 0.02) && mode !== "full") throw new Error(`Actual withdrawal amount for ${planned.instrumentName || "the selected fund"} exceeds its current value.`);
+          if (currentUnits > 0 && actualUnits > currentUnits + 0.0001) throw new Error(`Actual units for ${planned.instrumentName || "the selected investment"} exceed the available units.`);
+          if (currentValue > 0 && actualAmount > currentValue + Math.max(1, currentValue * 0.02) && mode !== "full") throw new Error(`Actual withdrawal amount for ${planned.instrumentName || "the selected investment"} exceeds its current value.`);
 
           const remainingUnits = mode === "full" ? 0 : Math.max(0, currentUnits - actualUnits);
-          const remainingValue = mode === "full" ? 0 : Math.max(0, nav > 0 && currentUnits > 0 ? remainingUnits * nav : currentValue - actualAmount);
+          const remainingValue = mode === "full"
+            ? 0
+            : Math.max(0, isPms && !(currentUnits > 0 && actualUnits > 0) ? currentValue - actualAmount : (nav > 0 && currentUnits > 0 ? remainingUnits * nav : currentValue - actualAmount));
           const remainingRatio = currentUnits > 0 ? remainingUnits / currentUnits : (currentValue > 0 ? remainingValue / currentValue : 0);
           const remainingInvested = Math.max(0, currentInvested * Math.max(0, Math.min(1, remainingRatio)));
           const nextGoalAllocations = mode === "full"
             ? currentAllocations
             : allocationsAfterBucketWithdrawal(currentAllocations, withdrawalBucketId, currentValue, remainingValue);
-          const previousSip = Math.max(0, Number(position.monthlySip || 0));
-          const nextSip = sipInstruction === "continue" ? previousSip : 0;
+          const previousSip = supportsSip ? Math.max(0, Number(position.monthlySip || 0)) : 0;
+          const nextSip = supportsSip && sipInstruction === "continue" ? previousSip : 0;
           const nextStatus = remainingUnits > 0 || remainingValue > 0 || nextSip > 0 ? "active" : "exited";
+          const sipFields = supportsSip ? {
+            monthlySip: roundMoney(nextSip),
+            sipStatus: sipInstruction === "pause" ? "paused" : sipInstruction === "stop" ? "stopped" : "active",
+            pausedMonthlySipAmount: sipInstruction === "pause" ? roundMoney(previousSip) : FieldValue.delete()
+          } : {};
           const gainLoss = remainingValue - remainingInvested;
           const returnPercentage = remainingInvested > 0 ? gainLoss / remainingInvested * 100 : 0;
 
@@ -244,10 +254,8 @@ export async function POST(request, { params }) {
             investedAmount: roundMoney(remainingInvested),
             gainLoss: roundMoney(gainLoss),
             returnPercentage: Number(returnPercentage.toFixed(4)),
-            monthlySip: roundMoney(nextSip),
             goalAllocations: nextGoalAllocations,
-            sipStatus: sipInstruction === "pause" ? "paused" : sipInstruction === "stop" ? "stopped" : "active",
-            pausedMonthlySipAmount: sipInstruction === "pause" ? roundMoney(previousSip) : FieldValue.delete(),
+            ...sipFields,
             status: nextStatus,
             lastWithdrawalActionId: actionId,
             lastWithdrawalDate: executionDate,
@@ -267,10 +275,11 @@ export async function POST(request, { params }) {
             provider: position.provider || position.source || "",
             productType: position.productType || "mutual_fund",
             positionId: position.id,
-            instrumentName: position.instrumentName || position.schemeName || planned.instrumentName || "Mutual Fund",
+            instrumentName: position.instrumentName || position.schemeName || planned.instrumentName || withdrawalProductLabel(position),
             schemeName: position.schemeName || position.instrumentName || "",
             isin: position.isin || "",
             folioNo: position.folioNo || "",
+            accountReference: position.accountReference || position.portfolioAccountCode || position.manualPortfolioAccountCode || position.accountCode || "",
             transactionDate: executionDate,
             transactionType: mode === "full" ? "Full Redemption" : "Partial Redemption",
             cashFlowType: "withdrawal",
@@ -294,8 +303,11 @@ export async function POST(request, { params }) {
 
           completionItems.push({
             positionId: position.id,
-            instrumentName: position.instrumentName || position.schemeName || planned.instrumentName || "Mutual Fund",
+            instrumentName: position.instrumentName || position.schemeName || planned.instrumentName || withdrawalProductLabel(position),
+            productType: position.productType || planned.productType || "",
+            productLabel: withdrawalProductLabel(position),
             folioNo: position.folioNo || planned.folioNo || "",
+            accountReference: position.accountReference || position.portfolioAccountCode || position.manualPortfolioAccountCode || position.accountCode || planned.accountReference || "",
             withdrawalMode: mode,
             sipInstruction,
             beforeValue: roundMoney(currentValue),

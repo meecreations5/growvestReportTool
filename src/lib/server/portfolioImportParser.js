@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { inflateSync } from "node:zlib";
+import { deriveFundbazaarMonthlySip } from "@/lib/fundbazaarSip";
 import {
   PORTFOLIO_ADAPTER_STATUS,
   PORTFOLIO_PRODUCT_TYPES,
@@ -2200,12 +2201,17 @@ function parseFundbazaarRows(rows = []) {
     }
     if (transaction.investmentMode === "SIP" && (!current.latestSipDate || transaction.transactionDate >= current.latestSipDate)) {
       current.latestSipDate = transaction.transactionDate;
-      current.monthlySip = transaction.purchaseAmount;
     }
     holdingMap.set(key, current);
   });
 
   const holdings = [...holdingMap.values()].map((holding) => {
+    const holdingTransactions = transactions.filter((item) => `${item.isin || item.schemeName}__${item.folioNo || "NO_FOLIO"}` === holding.key);
+    const sipTransactions = holdingTransactions.filter((item) => item.investmentMode === "SIP");
+    const sipCycle = deriveFundbazaarMonthlySip(sipTransactions, holding.navDate);
+    holding.monthlySip = sipCycle.amount;
+    holding.sipCycleMonth = sipCycle.monthKey;
+    holding.sipDebitDays = sipCycle.debitDays;
     const modes = holding.modes;
     const hasSip = modes.has("SIP");
     const hasLumpSum = modes.has("Lump Sum") || modes.has("Other");
@@ -2220,7 +2226,11 @@ function parseFundbazaarRows(rows = []) {
       ...clean,
       investmentMode,
       latestSipDate: holding.latestSipDate || "",
-      sipDebitDay: holding.latestSipDate ? Number(String(holding.latestSipDate).slice(8, 10)) || 0 : 0,
+      sipCycleMonth: holding.sipCycleMonth || "",
+      sipDebitDays: Array.isArray(holding.sipDebitDays) ? holding.sipDebitDays : [],
+      sipDebitDay: Array.isArray(holding.sipDebitDays) && holding.sipDebitDays.length
+        ? holding.sipDebitDays[0]
+        : holding.latestSipDate ? Number(String(holding.latestSipDate).slice(8, 10)) || 0 : 0,
       averagePurchaseNav: Number(averagePurchaseNav.toFixed(6)),
       totalInvested: Number(holding.totalInvested.toFixed(2)),
       totalUnits: Number(holding.totalUnits.toFixed(6)),

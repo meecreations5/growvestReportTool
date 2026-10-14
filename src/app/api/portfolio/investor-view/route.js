@@ -6,6 +6,7 @@ import {
   verifyAppRequest
 } from "@/lib/server/firebaseAdmin";
 import { normalisePortfolioGoalAllocations, portfolioAllocationStatus } from "@/lib/portfolioGoalAllocation";
+import { dedupeActionWithdrawalTransactions } from "@/lib/portfolioCashFlow";
 
 export const runtime = "nodejs";
 
@@ -124,7 +125,7 @@ export async function GET(request) {
       })
       .slice(0, 70);
 
-    const transactions = transactionRows
+    const transactions = dedupeActionWithdrawalTransactions(transactionRows)
       .sort((a, b) => {
         const dateCompare = String(b.transactionDate || "").localeCompare(String(a.transactionDate || ""));
         return dateCompare || dateSortValue(b.createdAt) - dateSortValue(a.createdAt);

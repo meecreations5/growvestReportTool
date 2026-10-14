@@ -1,6 +1,6 @@
 {
   "name": "growvest-investor-report-tool",
-  "version": "0.34.30",
+  "version": "0.34.32",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -17,7 +17,9 @@
     "qa:pdf-encoding": "node scripts/qa/report-pdf-encoding-fixture.mjs",
     "qa:opening-verification": "node scripts/qa/report-opening-verification-fixture.mjs",
     "qa:pms-freshness": "node scripts/qa/manual-pms-freshness-fixture.mjs",
-    "qa:report-period": "node --no-warnings scripts/qa/report-period-opening-fixture.mjs"
+    "qa:report-period": "node --no-warnings scripts/qa/report-period-opening-fixture.mjs",
+    "qa:portfolio-progress": "node --no-warnings scripts/qa/portfolio-progress-sip-fixture.mjs",
+    "qa:pms-withdrawal": "node --no-warnings scripts/qa/pms-withdrawal-fixture.mjs"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.3.0",

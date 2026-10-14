@@ -13,6 +13,7 @@ import {
   actionFinancialImpactType
 } from "@/lib/constants/actions";
 import { GENERAL_WEALTH_BUCKET_ID, GENERAL_WEALTH_BUCKET_NAME, isGeneralWealthAllocation, normalisePortfolioGoalAllocations } from "@/lib/portfolioGoalAllocation";
+import { isPmsWithdrawalProduct, isStructuredWithdrawalProduct, supportsWithdrawalSipInstruction, withdrawalProductLabel } from "@/lib/withdrawalPortfolio";
 
 export function cleanActionText(value, max = 2000) {
   return String(value || "").trim().slice(0, max);
@@ -53,7 +54,7 @@ export async function validateStructuredWithdrawalPayload(payload = {}, investor
   if (String(payload.requestType || "") !== STRUCTURED_WITHDRAWAL_REQUEST_TYPE) return payload;
 
   const requestedItems = Array.isArray(payload.withdrawalItems) ? payload.withdrawalItems : [];
-  if (!requestedItems.length) throw new Error("Select at least one Mutual Fund for the withdrawal request.");
+  if (!requestedItems.length) throw new Error("Select at least one Mutual Fund or PMS holding for the withdrawal request.");
 
   const bucketId = cleanActionText(payload.withdrawalBucketId || payload.relatedGoalId || GENERAL_WEALTH_BUCKET_ID, 180) || GENERAL_WEALTH_BUCKET_ID;
   const bucketName = cleanActionText(payload.withdrawalBucketName || payload.relatedGoalName || (bucketId === GENERAL_WEALTH_BUCKET_ID ? GENERAL_WEALTH_BUCKET_NAME : "Bucket List"), 240);
@@ -65,8 +66,8 @@ export async function validateStructuredWithdrawalPayload(payload = {}, investor
     if (!positionId || seen.has(positionId)) throw new Error(`Withdrawal fund ${index + 1} is invalid or duplicated.`);
     seen.add(positionId);
     const position = positions.get(positionId);
-    if (!position || ["inactive", "exited"].includes(String(position.status || "").toLowerCase())) throw new Error(`The selected fund for withdrawal is no longer active in Portfolio Master.`);
-    if (String(position.productType || "") !== "mutual_fund") throw new Error("Structured fund withdrawals currently support Mutual Fund holdings only. Use Trading Account Withdrawal for broker cash withdrawals.");
+    if (!position || ["inactive", "exited"].includes(String(position.status || "").toLowerCase())) throw new Error(`The selected investment for withdrawal is no longer active in Portfolio Master.`);
+    if (!isStructuredWithdrawalProduct(position)) throw new Error("Structured withdrawals support Mutual Fund and PMS holdings. Use Trading Account Withdrawal for broker cash withdrawals.");
 
     const allocations = normalisePortfolioGoalAllocations(position.goalAllocations);
     const bucketAllocation = bucketId === GENERAL_WEALTH_BUCKET_ID
@@ -76,7 +77,9 @@ export async function validateStructuredWithdrawalPayload(payload = {}, investor
     const bucketPercentageAtRequest = Math.max(0, Number(bucketAllocation.percentage || 0));
 
     const withdrawalMode = WITHDRAWAL_MODES.includes(String(item.withdrawalMode || "").toLowerCase()) ? String(item.withdrawalMode).toLowerCase() : "partial";
-    const sipInstruction = WITHDRAWAL_SIP_INSTRUCTIONS.includes(String(item.sipInstruction || "").toLowerCase()) ? String(item.sipInstruction).toLowerCase() : "continue";
+    const sipInstruction = supportsWithdrawalSipInstruction(position)
+      ? (WITHDRAWAL_SIP_INSTRUCTIONS.includes(String(item.sipInstruction || "").toLowerCase()) ? String(item.sipInstruction).toLowerCase() : "continue")
+      : "not_applicable";
     const currentValue = Math.max(0, Number(position.currentValue || 0));
     const currentUnits = Math.max(0, Number(position.totalUnits ?? position.quantity ?? position.units ?? 0));
     const bucketValueAtRequest = currentValue * bucketPercentageAtRequest / 100;
@@ -86,15 +89,18 @@ export async function validateStructuredWithdrawalPayload(payload = {}, investor
     if (withdrawalMode === "full" && bucketPercentageAtRequest < 99.999) {
       throw new Error(`Complete withdrawal of ${position.instrumentName || position.schemeName || "the selected fund"} is available only when the holding is 100% mapped to ${bucketName}. Use a partial withdrawal for this Bucket List or remap the holding first.`);
     }
-    if (withdrawalMode === "partial" && !(requestedAmount > 0 || requestedUnits > 0)) throw new Error(`Enter an amount or units for ${position.instrumentName || position.schemeName || "the selected fund"}.`);
+    if (withdrawalMode === "partial" && !(requestedAmount > 0 || requestedUnits > 0)) throw new Error(`Enter an amount or units for ${position.instrumentName || position.schemeName || "the selected investment"}.`);
     if (withdrawalMode === "partial" && bucketValueAtRequest > 0 && requestedAmount > bucketValueAtRequest + Math.max(1, bucketValueAtRequest * 0.01)) throw new Error(`Requested amount for ${position.instrumentName || position.schemeName || "the selected fund"} exceeds the value mapped to ${bucketName}.`);
     if (withdrawalMode === "partial" && currentUnits > 0 && requestedUnits > bucketUnitsAtRequest + 0.0001) throw new Error(`Requested units for ${position.instrumentName || position.schemeName || "the selected fund"} exceed the units mapped to ${bucketName}.`);
 
     return {
       positionId,
-      instrumentName: cleanActionText(position.instrumentName || position.schemeName || position.fundName || "Mutual Fund", 240),
+      instrumentName: cleanActionText(position.instrumentName || position.schemeName || position.fundName || withdrawalProductLabel(position), 240),
+      productType: cleanActionText(position.productType, 80),
+      productLabel: withdrawalProductLabel(position),
       schemeName: cleanActionText(position.schemeName || position.instrumentName || "", 240),
       folioNo: cleanActionText(position.folioNo, 120),
+      accountReference: cleanActionText(position.accountReference || position.portfolioAccountCode || position.manualPortfolioAccountCode || position.accountCode, 160),
       isin: cleanActionText(position.isin, 120),
       provider: cleanActionText(position.provider || position.source, 120),
       withdrawalMode,
@@ -106,7 +112,8 @@ export async function validateStructuredWithdrawalPayload(payload = {}, investor
       bucketValueAtRequest: Number(bucketValueAtRequest.toFixed(2)),
       bucketUnitsAtRequest: Number(bucketUnitsAtRequest.toFixed(6)),
       currentUnitsAtRequest: Number(currentUnits.toFixed(6)),
-      monthlySipAtRequest: Number(position.monthlySip || 0),
+      monthlySipAtRequest: supportsWithdrawalSipInstruction(position) ? Number(position.monthlySip || 0) : 0,
+      withdrawalValueMode: isPmsWithdrawalProduct(position) ? "amount" : (currentUnits > 0 ? "amount_or_units" : "amount"),
       goalAllocations: allocations
     };
   });
@@ -119,7 +126,7 @@ export async function validateStructuredWithdrawalPayload(payload = {}, investor
     relatedGoalId: bucketId === GENERAL_WEALTH_BUCKET_ID ? "" : bucketId,
     relatedGoalName: bucketId === GENERAL_WEALTH_BUCKET_ID ? GENERAL_WEALTH_BUCKET_NAME : bucketName,
     relatedInvestmentId: normalisedItems.length === 1 ? normalisedItems[0].positionId : "",
-    relatedInvestmentName: normalisedItems.length === 1 ? normalisedItems[0].instrumentName : `${normalisedItems.length} Mutual Funds`,
+    relatedInvestmentName: normalisedItems.length === 1 ? normalisedItems[0].instrumentName : `${normalisedItems.length} Portfolio Investments`,
     requestedAmount: Number(requestedAmount.toFixed(2)),
     withdrawalItems: normalisedItems
   };

@@ -2,10 +2,12 @@
 
 import { formatCurrency, formatDate } from "@/lib/utils/format";
 import { isStructuredWithdrawalAction } from "@/lib/constants/actions";
+import { supportsWithdrawalSipInstruction, withdrawalProductLabel } from "@/lib/withdrawalPortfolio";
 
 function sipLabel(value = "") {
   if (value === "pause") return "Pause SIP";
   if (value === "stop") return "Stop SIP";
+  if (value === "not_applicable") return "";
   return "Continue SIP";
 }
 
@@ -29,13 +31,13 @@ export default function WithdrawalActionSummary({ action, compact = false }) {
           <div key={item.positionId || index} className="rounded-lg bg-white p-3 shadow-sm">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-sm font-bold text-slate-900">{item.instrumentName || "Mutual Fund"}</p>
-                <p className="mt-0.5 text-[11px] font-semibold text-slate-500">{item.withdrawalMode === "full" ? "Complete withdrawal" : "Partial withdrawal"} · {sipLabel(item.sipInstruction)}</p>
+                <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-bold text-slate-900">{item.instrumentName || withdrawalProductLabel(item.productType)}</p><span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{item.productLabel || withdrawalProductLabel(item.productType)}</span></div>
+                <p className="mt-0.5 text-[11px] font-semibold text-slate-500">{item.withdrawalMode === "full" ? "Complete withdrawal" : "Partial withdrawal"}{supportsWithdrawalSipInstruction(item.productType || "mutual_fund") ? ` · ${sipLabel(item.sipInstruction)}` : " · PMS withdrawal"}</p>
               </div>
               <p className="text-sm font-bold text-slate-900">{formatCurrency(completed ? item.actualAmount : item.requestedAmount)}</p>
             </div>
             {Number(item.bucketPercentageAtRequest || 0) > 0 && Number(item.bucketPercentageAtRequest || 0) < 99.999 ? <p className="mt-2 text-[11px] text-amber-700">This fund was split across Bucket Lists. {Number(item.bucketPercentageAtRequest).toFixed(1)}% was mapped to this Bucket List when requested.</p> : null}
-            {completed ? <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-600"><span className="rounded bg-slate-100 px-2 py-1">Before {formatCurrency(item.beforeValue)}</span><span className="rounded bg-slate-100 px-2 py-1">After {formatCurrency(item.afterValue)}</span><span className="rounded bg-slate-100 px-2 py-1">SIP {formatCurrency(item.currentMonthlySip)}/month</span></div> : null}
+            {completed ? <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-600"><span className="rounded bg-slate-100 px-2 py-1">Before {formatCurrency(item.beforeValue)}</span><span className="rounded bg-slate-100 px-2 py-1">After {formatCurrency(item.afterValue)}</span>{supportsWithdrawalSipInstruction(item.productType || "mutual_fund") ? <span className="rounded bg-slate-100 px-2 py-1">SIP {formatCurrency(item.currentMonthlySip)}/month</span> : null}</div> : null}
           </div>
         ))}
       </div>

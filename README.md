@@ -1089,3 +1089,18 @@ See `docs/FUNDBAZAAR_DAILY_IMPORT_STABILITY_v0.34.29.md`, `docs/FUNDBAZAAR_DAILY
 Daily Portfolio Update now keeps the bulk staff experience while internally analysing and committing each selected report in a separate request. This prevents multiple Fundbazaar files from sharing one oversized/long-running request, isolates each Firestore BulkWriter, and recomputes the final batch totals only after the last report is processed.
 
 See `docs/DAILY_PORTFOLIO_MULTI_FILE_STABILITY_v0.34.30.md` and `RELEASE_VALIDATION_v0.34.30.md`.
+
+## v0.34.31 — Portfolio Summary, SIP Reconciliation & Monthly Progress
+
+- Current Portfolio summary now reconciles to the live Portfolio Master and latest live valuation date.
+- Fundbazaar active Monthly SIP now supports multiple recurring SIP instructions in the same scheme/folio; the Nikhil sample reconciles to ₹23,000 rather than ₹21,000.
+- Investor Portfolio adds month-by-month progress with verified closing value, investment added, withdrawals, net contribution, investment gain/loss and MTD status.
+- v0.34.30 sequential bulk Fundbazaar upload behavior is retained.
+
+See `docs/PORTFOLIO_PROGRESS_SIP_RECONCILIATION_v0.34.31.md` and `RELEASE_VALIDATION_v0.34.31.md`.
+
+## v0.34.32 — PMS Withdrawal Support
+
+Investor Profile → **Withdrawals & Planned Cash Needs** now shows PMS holdings mapped to the selected Bucket List or General Wealth, in addition to Mutual Funds. PMS withdrawals support partial/complete amount-based instructions, while Mutual Fund-only SIP Continue/Pause/Stop controls remain hidden for PMS. Confirmed PMS withdrawals update Portfolio Master, create the confirmed cash-flow transaction and rebuild the verified snapshot without overwriting PMS SIP fields.
+
+See `docs/PMS_WITHDRAWAL_SUPPORT_v0.34.32.md` and `RELEASE_VALIDATION_v0.34.32.md`.

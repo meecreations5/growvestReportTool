@@ -537,8 +537,18 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
   const totalGoalCurrent = goals.reduce((sum, goal) => sum + Number(goal.currentAmount || 0), 0);
   const totalInvestments = investments.reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
   const totalLiabilities = liabilities.reduce((sum, item) => sum + Number(item.outstandingAmount || 0), 0);
-  const currentPortfolio = Number(portfolioView?.investor?.latestPortfolioValue ?? investor.latestPortfolioValue ?? 0);
-  const activeMonthlySip = Number(portfolioView?.investor?.latestPortfolioMonthlySip ?? liveGoalProgress?.activeMonthlySip ?? investor.latestPortfolioMonthlySip ?? 0);
+  const livePortfolioPositions = Array.isArray(portfolioView?.positions) ? portfolioView.positions : [];
+  const currentPortfolio = livePortfolioPositions.length
+    ? livePortfolioPositions.reduce((sum, item) => sum + Number(item.currentValue || 0), 0)
+    : Number(portfolioView?.investor?.latestPortfolioValue ?? investor.latestPortfolioValue ?? 0);
+  const latestPortfolioDate = livePortfolioPositions
+    .map((item) => item.navDate || item.valuationDate || item.priceDate || "")
+    .filter(Boolean)
+    .sort()
+    .at(-1) || portfolioView?.snapshots?.[0]?.snapshotDate || portfolioView?.investor?.latestPortfolioSnapshotDate || investor.latestPortfolioSnapshotDate || "";
+  const activeMonthlySip = livePortfolioPositions.length
+    ? livePortfolioPositions.reduce((sum, item) => sum + Number(item.monthlySip || item.monthlyContribution || 0), 0)
+    : Number(portfolioView?.investor?.latestPortfolioMonthlySip ?? liveGoalProgress?.activeMonthlySip ?? investor.latestPortfolioMonthlySip ?? 0);
   const latestGain = Number(latestReport?.summary?.investmentGain || 0);
   const latestNewMoney = Number(latestReport?.summary?.newMoneyAdded || 0);
   const latestWithdrawals = Number(latestReport?.summary?.withdrawals || latestReport?.summary?.amountWithdrawn || 0);
@@ -699,7 +709,7 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
       </section>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-        <SummaryMetric label="Current portfolio" value={formatCurrency(currentPortfolio)} helper={investor.latestPortfolioSnapshotId ? "Latest verified portfolio snapshot" : "No current portfolio snapshot available"} icon={WalletCards} tone="blue" />
+        <SummaryMetric label="Current portfolio" value={formatCurrency(currentPortfolio)} helper={latestPortfolioDate ? `Verified ${formatDate(latestPortfolioDate)}` : "No current portfolio snapshot available"} icon={WalletCards} tone="blue" />
         <SummaryMetric label="Monthly gain / loss" value={formatCurrency(latestGain)} helper={latestReport ? reportMonthText(latestReport) : "Awaiting report data"} icon={latestGain < 0 ? TrendingDown : TrendingUp} tone={latestGain < 0 ? "red" : "green"} />
         <SummaryMetric label="Monthly return" value={formatPercent(latestMonthlyReturn)} helper="Calculated from latest report" icon={Activity} tone={latestMonthlyReturn < 0 ? "red" : "cyan"} trend={latestMonthlyReturn} />
         <SummaryMetric label="YTD return" value={formatPercent(ytdReturn)} helper={latestYear ? `Calendar year ${latestYear}` : "Awaiting report history"} icon={Sparkles} tone={ytdReturn < 0 ? "red" : "green"} trend={ytdReturn} />
@@ -978,7 +988,7 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
           <Card className="p-5 sm:p-6">
             <SectionHeader eyebrow="Single source of truth" title="How withdrawals flow" description="Plan the cash need once in the Investor Profile. Wealth Reviews read the planned/in-process/completed state automatically; the review does not ask the Partner to enter withdrawal figures again." />
             <div className="mt-5 grid gap-3 md:grid-cols-3">
-              <div className="rounded-xl border border-violet-200 bg-violet-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-violet-700">Planned</p><p className="mt-2 text-sm leading-6 text-violet-900">Choose the Bucket List, one or more Mutual Funds, Partial/Complete withdrawal and SIP Continue/Pause/Stop.</p></div>
+              <div className="rounded-xl border border-violet-200 bg-violet-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-violet-700">Planned</p><p className="mt-2 text-sm leading-6 text-violet-900">Choose the Bucket List, one or more Mutual Funds or PMS holdings, and Partial/Complete withdrawal. Mutual Funds also support SIP Continue/Pause/Stop instructions.</p></div>
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-amber-700">In process</p><p className="mt-2 text-sm leading-6 text-amber-900">Advisor executes the redemption. Portfolio figures remain unchanged until actual execution is confirmed.</p></div>
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Completed</p><p className="mt-2 text-sm leading-6 text-emerald-900">GrowVest updates Portfolio Master, SIP status, Bucket List corpus and the Investor-visible action automatically.</p></div>
             </div>
