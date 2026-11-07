@@ -1,0 +1,22 @@
+{
+  "release": "v0.34.35-eligibility-amfi-preview",
+  "base": "GrowVest_v0.34.35_Report_Reconciliation_Complete_Project.zip",
+  "modified_existing_files": [
+    "src/app/api/portfolio/valuation-history/approve-month-end/route.js",
+    "src/components/portfolio/InvestorDatedValuationHistory.js",
+    "src/lib/amfiNavHistory.js",
+    "src/lib/server/amfiOfficialNavEvidence.js"
+  ],
+  "added_tests": [
+    "scripts/qa/monthend-preview-official-nav-fixture.mjs",
+    "scripts/qa/amfi-network-resilience-fixture.mjs"
+  ],
+  "quality_checks": {
+    "release_audit": 577,
+    "historical_monthend": 41,
+    "previous_amfi": 21,
+    "new_preview": 9,
+    "new_network": 5
+  },
+  "risk": "Only auto-verify with AMFI exact ISIN/date/NAV evidence; not a bypass; no live database writes tested"
+}

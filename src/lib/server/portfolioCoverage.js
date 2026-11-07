@@ -121,6 +121,8 @@ async function dailyFileRecords({ start, end }) {
     const data = { id: item.id, ...item.data() };
     if (data.source !== PORTFOLIO_SOURCES.FUNDBAZAAR) return;
     if (data.reportType !== PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_CLIENT_VALUATION) return;
+    // A past NAV file archived today is not today's live portfolio update.
+    if (data.historicalArchiveOnly === true) return;
     records.set(item.id, data);
   });
   return [...records.values()];

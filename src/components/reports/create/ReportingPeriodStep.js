@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Field, inputClassName } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
-import { REPORT_TYPE, getMonthLabel, getReportMonthKey } from "@/lib/constants/report";
+import { REPORT_TYPE, getMonthLabel, getReportMonthKey, getDefaultReportPeriod } from "@/lib/constants/report";
 import { formatCurrency, formatDate } from "@/lib/utils/format";
 
 function financialYearLabel(month, year) {
@@ -38,6 +38,7 @@ export default function ReportingPeriodStep({
 }) {
   const periodLabel = `${getMonthLabel(form.reportMonth)} ${form.reportYear}`;
   const isOpeningReview = form.reportType === REPORT_TYPE.OPENING;
+  const latestMonthlyPeriod = getDefaultReportPeriod();
 
   return (
     <div className="grid gap-6">
@@ -88,12 +89,12 @@ export default function ReportingPeriodStep({
               disabled={periodLocked || isOpeningReview}
               type="month"
               min="2020-01"
-              max={getReportMonthKey(new Date().getFullYear(), new Date().getMonth() + 1)}
+              max={isOpeningReview ? getReportMonthKey(new Date().getFullYear(), new Date().getMonth() + 1) : getReportMonthKey(latestMonthlyPeriod.year, latestMonthlyPeriod.month)}
               className={inputClassName}
               value={getReportMonthKey(form.reportYear, form.reportMonth)}
               onChange={(event) => onUpdatePeriod("reportMonthKey", event.target.value)}
             />
-            <span className="text-[11px] font-semibold text-blue-700">{isOpeningReview ? "Automatically uses the month containing the verified opening snapshot." : "Choose the month this report belongs to. Example: select August 2026 even when preparing it between 1–5 September."}</span>
+            <span className="text-[11px] font-semibold text-blue-700">{isOpeningReview ? "Automatically uses the month containing the verified opening snapshot." : "Choose the month this report belongs to. Example: select October 2026 while preparing it between 1–7 November."}</span>
           </div>
         </Field>
         <Field label="Report year">
@@ -103,7 +104,7 @@ export default function ReportingPeriodStep({
           <input readOnly className={`${inputClassName} bg-slate-50`} value={financialYearLabel(form.reportMonth, form.reportYear)} />
         </Field>
         <Field label={isOpeningReview ? "Opening snapshot date" : "Portfolio cutoff date"} required error={fieldErrors.statementDate}>
-          <div className="grid gap-1.5"><input readOnly type="date" className={`${inputClassName} border-emerald-200 bg-emerald-50/60 text-emerald-900`} value={form.statementDate || ""} /><span className="text-[11px] font-semibold text-emerald-700">{isOpeningReview ? "Automatic: date of the verified opening Portfolio Master snapshot" : "Automatic: month-end for a completed month, or today for the current month"}</span></div>
+          <div className="grid gap-1.5"><input readOnly type="date" className={`${inputClassName} border-emerald-200 bg-emerald-50/60 text-emerald-900`} value={form.statementDate || ""} /><span className="text-[11px] font-semibold text-emerald-700">{isOpeningReview ? "Automatic: date of the verified opening Portfolio Master snapshot" : "Automatic: last calendar day of the selected completed month"}</span></div>
         </Field>
         <Field label="Report title" required error={fieldErrors.title}>
           <input className={inputClassName} value={form.title || ""} onChange={(event) => onTopLevelChange("title", event.target.value)} />
@@ -118,7 +119,7 @@ export default function ReportingPeriodStep({
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white text-blue-700 shadow-sm"><CalendarDays size={18} /></span>
           <div>
             <p className="text-sm font-semibold text-slate-950">{isOpeningReview ? "Opening baseline" : "Reporting period"}</p>
-            <p className="mt-1 text-sm text-slate-500">{isOpeningReview ? `This review establishes the investor's GrowVest baseline as of ${form.statementDate || periodLabel}. Future Monthly Wealth Reviews will compare against verified historical snapshots.` : `This report will cover ${periodLabel}, even if it is prepared between the 1st and 5th of the next month. Portfolio values are taken only up to the automatic cutoff date.`}</p>
+            <p className="mt-1 text-sm text-slate-500">{isOpeningReview ? `This review establishes the investor's GrowVest baseline as of ${form.statementDate || periodLabel}. Future Monthly Wealth Reviews will compare against verified historical snapshots.` : `This report will cover ${periodLabel}, even if it is prepared between the 1st and 7th of the next month. Portfolio values are taken only up to the automatic cutoff date.`}</p>
           </div>
         </div>
         <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm">

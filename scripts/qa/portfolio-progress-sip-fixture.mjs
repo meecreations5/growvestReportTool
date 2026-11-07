@@ -43,4 +43,16 @@ assert.equal(progress[1].openingValue, 30000);
 assert.equal(progress[1].newMoney, 23000);
 assert.equal(progress[1].investmentGain, -10107);
 
+const sameDateRevisionProgress = buildMonthlyPortfolioProgress([
+  { id: "sep", snapshotDate: "2026-09-30", snapshotVersion: 1, summary: { currentValue: 48500 } },
+  { id: "oct", snapshotDate: "2026-10-31", snapshotVersion: 1, summary: { currentValue: 47954 } },
+  { id: "oct", snapshotDate: "2026-10-31", snapshotVersion: 2, summary: { currentValue: 95801 } }
+], [
+  { transactionDate: "2026-10-15", transactionType: "Purchase", cashFlowType: "new_money", amount: 50001 }
+], { currentMonthKey: "2026-11" });
+assert.equal(sameDateRevisionProgress[0].monthKey, "2026-10");
+assert.equal(sameDateRevisionProgress[0].closingValue, 95801);
+assert.equal(sameDateRevisionProgress[0].openingValue, 48500);
+assert.equal(sameDateRevisionProgress[0].investmentGain, -2700);
+
 console.log("portfolio-progress-sip fixture passed");

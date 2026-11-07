@@ -1,0 +1,64 @@
+{
+  "name": "GrowVest v0.34.35 October Source Coverage 409 - focused error-handling/diagnostics fix",
+  "baseline": "GrowVest_v0.34.35_Unified_Monthly_Close_Special_Trading_Complete_Project.zip",
+  "scope": "Does not bypass or auto-approve invalid month-end financial evidence. The latest complete source still requires reconciliation.",
+  "changed": [
+    {
+      "path": "src/lib/portfolioMonthlySourceRecovery.js",
+      "change": "modified",
+      "previous_sha256": "b06acf6ca8f8cb30a7c177a8af820f713ba6e4367723b4aadb92db158de1d9fe",
+      "new_sha256": "956d6219950dedade6ff5bc14a8876545a45b6c183682e8045451056f0fa7880",
+      "previous_bytes": 5442,
+      "new_bytes": 6382
+    },
+    {
+      "path": "src/components/reports/ReportForm.js",
+      "change": "modified",
+      "previous_sha256": "49a1fba11559f8fd8727a72957386003264135cda98a1947d611787ad741fcbd",
+      "new_sha256": "9acf23b9e249bc80186faf3348eabefc7041a0250d293af136632afcb92a8805",
+      "previous_bytes": 139238,
+      "new_bytes": 139542
+    },
+    {
+      "path": "src/services/portfolioService.js",
+      "change": "modified",
+      "previous_sha256": "94238bf935bec9912cc0ea386b5922e4524b3f5943ac6dc9ffc02fe14dc33af1",
+      "new_sha256": "97f7759b2223ecbb1cb744f5ca95ff13daecd260bb1b11a2800dffca5b96e49c",
+      "previous_bytes": 22877,
+      "new_bytes": 23258
+    },
+    {
+      "path": "src/app/api/portfolio/report-source/route.js",
+      "change": "modified",
+      "previous_sha256": "48de0b26102b11ec3ecca12fa749ab169d7e8767bcdc40f12b889ffeffe01d82",
+      "new_sha256": "514ad84cd7372849960f849ab652dd377710523328db40221da30047e1de6530",
+      "previous_bytes": 23654,
+      "new_bytes": 24598
+    },
+    {
+      "path": "src/app/api/portfolio/valuation-history/approve-month-end/route.js",
+      "change": "modified",
+      "previous_sha256": "cee96087e3043b702107fefd70681bfd1ce189f03d267f5d76c0f9b049fdecca",
+      "new_sha256": "4868abe475a5071c51541a43ef4ca03ee409a8b8010f2fe0e6858069089419bc",
+      "previous_bytes": 33182,
+      "new_bytes": 33390
+    },
+    {
+      "path": "scripts/qa/monthly-source-coverage-409-fixture.mjs",
+      "change": "added",
+      "previous_sha256": null,
+      "new_sha256": "deb5e55b2ee0f618f753b06261c4a30bf1c6256e600c60b55fb7cdd0d0fcd25e",
+      "previous_bytes": 0,
+      "new_bytes": 6834
+    }
+  ],
+  "validation": {
+    "release_qa": "577 passed, 0 warnings, 0 failures",
+    "coverage_409_fixture": "9 passed",
+    "monthly_auto_recovery_fixture": "15 passed",
+    "monthly_engine_fixture": "59 passed",
+    "historical_monthend_fixture": "44 passed",
+    "client_reconciliation_fixture": "7 passed",
+    "production_build": "NOT RUN: no node_modules / no live Firebase connectivity"
+  }
+}

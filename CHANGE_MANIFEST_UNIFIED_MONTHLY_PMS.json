@@ -1,0 +1,114 @@
+{
+  "release": "GrowVest Report Tool v0.34.35 Unified Monthly PMS Integration - staging",
+  "baseline": "GrowVest_v0.34.35_Monthly_Close_Complete_Project_Sanitized.zip",
+  "cumulative": true,
+  "includes_previous_october_nav_sip_guard": true,
+  "date_created": "2026-11-06",
+  "code_changed_count": 18,
+  "modified_files": [
+    "scripts/qa/fundbazaar-historical-monthend-approval-fixture.mjs",
+    "scripts/qa/monthly-close-cutoff-fixture.mjs",
+    "scripts/qa/release-audit.mjs",
+    "src/app/api/portfolio/investors/[investorId]/manual-import/route.js",
+    "src/app/api/portfolio/report-source/route.js",
+    "src/app/api/portfolio/valuation-history/approve-month-end/route.js",
+    "src/components/portfolio/InvestorDatedValuationHistory.js",
+    "src/lib/constants/report.js",
+    "src/lib/portfolioHistoricalMonthEnd.js",
+    "src/lib/portfolioMonthlyClose.js",
+    "src/lib/portfolioPeriodCoverage.js",
+    "src/lib/server/manualPortfolioWorkbook.js",
+    "src/lib/server/portfolioReportCashFlowCoverage.js",
+    "src/lib/server/portfolioServer.js",
+    "src/services/portfolioService.js"
+  ],
+  "new_files": [
+    "src/lib/portfolioMonthlyLedger.js",
+    "scripts/qa/manual-pms-monthly-reconciliation-fixture.mjs",
+    "scripts/qa/sip-midmonth-financial-activity-fixture.mjs"
+  ],
+  "files": [
+    {
+      "path": "scripts/qa/fundbazaar-historical-monthend-approval-fixture.mjs",
+      "sha256": "9515b2f86598b6aef76630154efd72b97374d0c0a22a30f7aab451cb685d61b5"
+    },
+    {
+      "path": "scripts/qa/manual-pms-monthly-reconciliation-fixture.mjs",
+      "sha256": "cf49a3ede63b6f92e5233f9dc40d6369342d6d21d451a420eca78319adb4ec4c"
+    },
+    {
+      "path": "scripts/qa/monthly-close-cutoff-fixture.mjs",
+      "sha256": "514b6aefa3602dc5d531001aac013dff575e010ae2df61f313de5b97e3c43da3"
+    },
+    {
+      "path": "scripts/qa/release-audit.mjs",
+      "sha256": "a7172e645516abc34f824aafcfe592d63398f1ca3ebe9e6af1cc8714dbccb9df"
+    },
+    {
+      "path": "scripts/qa/sip-midmonth-financial-activity-fixture.mjs",
+      "sha256": "aab8c8c57667dbd6569841bf15c629529145009de0cebb0bc5650e3d526df068"
+    },
+    {
+      "path": "src/app/api/portfolio/investors/[investorId]/manual-import/route.js",
+      "sha256": "eb04f7e265ec53fad320f126e6d6aee668986294e0420807891d2a5231f4f8c6"
+    },
+    {
+      "path": "src/app/api/portfolio/report-source/route.js",
+      "sha256": "6fdc34cebf229e60c02f9878388a93b5223cbea7d8eed01cbd327bc8e313bf52"
+    },
+    {
+      "path": "src/app/api/portfolio/valuation-history/approve-month-end/route.js",
+      "sha256": "5bf4bee059a564e1ec96637b3ed9ee9221484461aa0db4e9a2f737d00e0ee6f1"
+    },
+    {
+      "path": "src/components/portfolio/InvestorDatedValuationHistory.js",
+      "sha256": "ce0546d039414eac85b9e7936f4130c8ee6220c016df1adccd9de69ec1ce7ca3"
+    },
+    {
+      "path": "src/lib/constants/report.js",
+      "sha256": "9b8b0f400ba12f0f21df34bb8903dd978ba66c81803d8b9fe9e78d21371fe430"
+    },
+    {
+      "path": "src/lib/portfolioHistoricalMonthEnd.js",
+      "sha256": "4003e0541414dc67f27b41008f030afee66ec6a4c1a532beafb6343f980f7dce"
+    },
+    {
+      "path": "src/lib/portfolioMonthlyClose.js",
+      "sha256": "a181c554b16c621bf3a7e2b04fd4d26dcc56b9235fc904d46340c4de12392061"
+    },
+    {
+      "path": "src/lib/portfolioMonthlyLedger.js",
+      "sha256": "f5ecaca906573a35c9c98f210353d39da3d0322c90bdc8ab209b9a40e16463ae"
+    },
+    {
+      "path": "src/lib/portfolioPeriodCoverage.js",
+      "sha256": "f42df5fce4cda95f8c526928c7dbe26d9c9bdf9799cf00684c6c21d12685db62"
+    },
+    {
+      "path": "src/lib/server/manualPortfolioWorkbook.js",
+      "sha256": "9ebf8dd3fdeb101b5ff2a9042781dae26d0e8f096147051985927f234c0a3a9c"
+    },
+    {
+      "path": "src/lib/server/portfolioReportCashFlowCoverage.js",
+      "sha256": "8e48298645f0a55f2cf28ffe3c82c20d4c048fa7bf2dfe768996872e11f0d7e1"
+    },
+    {
+      "path": "src/lib/server/portfolioServer.js",
+      "sha256": "1c2764901f1b1906f06cf9b9cbfa9ca7c16494700f1179e84c9e59efb3f78122"
+    },
+    {
+      "path": "src/services/portfolioService.js",
+      "sha256": "1654b2cf0577653c2edd301e1798d1d70cfc5dd99c6f98740eb383a29111d5fa"
+    }
+  ],
+  "qa": {
+    "release_audit": "577 passed, 0 warnings, 0 failures",
+    "manual_pms_monthly": "38 passed",
+    "month_end_cutoff": "45 passed",
+    "historical_monthend": "41 passed",
+    "sip_midmonth": "17 passed"
+  },
+  "production_build_tested": false,
+  "live_firestore_tested": false,
+  "production_deployed": false
+}

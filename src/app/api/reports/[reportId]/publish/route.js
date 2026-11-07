@@ -8,6 +8,7 @@ import {
   appRequestErrorStatus
 } from "@/lib/server/firebaseAdmin";
 import { createAndUploadReportPdf, publishedSnapshotData } from "@/lib/server/reportServer";
+import { assertReportPortfolioCurrent } from "@/lib/server/reportPortfolioReconciliation";
 import { sendReportDelivery } from "@/lib/server/reportDelivery";
 import { REPORT_TYPE, getReportTypeLabel, getReportVersionId } from "@/lib/constants/report";
 import { buildReportReconciliation } from "@/lib/reportReconciliation";
@@ -191,6 +192,7 @@ export async function POST(request, { params }) {
 
     claimToken = claim.token;
     const report = claim.report;
+    const portfolioReconciliation = await assertReportPortfolioCurrent(report, { actionLabel: "publish or send this Wealth Review" });
     const nextPublishedVersion = claim.nextPublishedVersion;
     const versionId = claim.versionId;
     const versionRef = adminDb.collection("reportVersions").doc(versionId);
@@ -237,6 +239,7 @@ export async function POST(request, { params }) {
       pdfInvalidationReason: null,
       lastPublishFailureReason: null,
       lastPublishFailedAt: null,
+      reportPortfolioReconciliation: portfolioReconciliation,
       updatedAt: new Date()
     }, { merge: true });
 

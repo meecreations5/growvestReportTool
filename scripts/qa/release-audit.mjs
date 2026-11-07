@@ -29,8 +29,8 @@ function walk(directory) {
 
 const packageJson = JSON.parse(read("package.json"));
 const packageLock = JSON.parse(read("package-lock.json"));
-assert(packageJson.version === "0.34.32", "package.json version is 0.34.32");
-assert(packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "package-lock.json root metadata is 0.34.32");
+assert(packageJson.version === "0.34.35", "package.json version is 0.34.35");
+assert(packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "package-lock.json root metadata is 0.34.35");
 
 const forbiddenTopLevel = [".env", ".env.local", ".git", ".next", "node_modules"];
 for (const item of forbiddenTopLevel) {
@@ -182,7 +182,7 @@ assert(manualPortfolioWorkbook.includes("PORTFOLIO_PRODUCT_TYPES.ETF") && read("
 assert(manualPortfolioWorkbook.includes('assetClass: "Cash"') && manualPortfolioWorkbook.includes("currentPortfolioValue") && manualPortfolioWorkbook.includes("xirrPercentage"), "Manual Portfolio Management includes uninvested cash in Portfolio Master and calculates account performance metrics");
 assert(manualPortfolioWorkbook.includes("manualPortfolioAccountSnapshots") && manualPortfolioWorkbook.includes("assetClasses") && manualPortfolioWorkbook.includes("accountSnapshotDate"), "Manual Portfolio Management preserves dated account performance snapshots and asset allocation for month/FY history");
 const portfolioServer = read("src/lib/server/portfolioServer.js");
-assert(portfolioServer.includes("manualPortfolioCashLedger") && portfolioServer.includes('cashFlowType = "new_money"') && portfolioServer.includes('cashFlowType = "withdrawal"') && portfolioServer.includes('cashFlowType = "internal"'), "Portfolio Intelligence uses Manual Cash Ledger contributions/withdrawals without double-counting internal PMS cash movements");
+assert(portfolioServer.includes("loadInvestorPortfolioLedger") && read("src/lib/server/portfolioHistoricalManualLedger.js").includes("manualPortfolioCashLedger") && portfolioServer.includes("buildMonthlyReportingLedger") && read("src/lib/portfolioMonthlyLedger.js").includes("manualPmsCashEntryFlow"), "Portfolio Intelligence uses the common Manual Cash Ledger classification and separates contributions from internal PMS movements");
 assert(read("src/lib/server/portfolioIntelligence.js").includes("transaction.realisedPnl ?? transaction.realizedPnl") && manualPortfolioWorkbook.includes("realisedPnl: row.realizedPnl"), "Manual transaction realised P&L is included consistently in Portfolio Intelligence and account performance");
 assert(investorPortfolioPanel.includes("Manual Portfolio Management") && investorPortfolioPanel.includes("manualAccounts.map") && portfolioService.includes("subscribeManualPortfolioAccounts"), "Investor Portfolio shows Manual Portfolio account value, cash and performance summaries from the workbook ledger");
 assert(manualPortfolioWorkbook.includes("latestReconciliation") && investorPortfolioPanel.includes("Reconciliation ·") && investorPortfolioPanel.includes("statementValue"), "Manual Portfolio account cards show latest statement-vs-system reconciliation status and difference");
@@ -247,13 +247,13 @@ const actionConstants = read("src/lib/constants/actions.js");
 const actionUpdateRoute = read("src/app/api/actions/[actionId]/route.js");
 const reportingPeriodStep = read("src/components/reports/create/ReportingPeriodStep.js");
 const reportPeriodWorkflowDoc = read("docs/REPORTING_PERIOD_PLANNED_ACTUAL_CASH_FLOW_v0.33.2.md");
-assert(reportConstants.includes("getDefaultReportPeriod") && reportingPeriodStep.includes('type="month"') && reportingPeriodStep.includes("Choose the month this report belongs to") && reportingPeriodStep.includes("between the 1st and 5th of the next month") && reportForm.includes('searchParams.get("month")') && reportForm.includes('field === "reportMonthKey"'), "Monthly Report generation defaults to the previous completed month while allowing an explicit month picker and month-aware Create Report links");
+assert(reportConstants.includes("getDefaultReportPeriod") && reportingPeriodStep.includes('type="month"') && reportingPeriodStep.includes("Choose the month this report belongs to") && reportingPeriodStep.includes("between the 1st and 7th of the next month") && reportForm.includes('searchParams.get("month")') && reportForm.includes('field === "reportMonthKey"'), "Monthly Report generation defaults to the previous completed month while allowing an explicit month picker and month-aware Create Report links");
 assert(reportForm.includes("existingDraftNeedsPortfolioHydration") && reportForm.includes("hasMeaningfulPortfolioFacts") && reportForm.includes("corpusTouchedRef.current = hasMeaningfulPortfolioFacts(report)"), "recreated/empty Monthly Report drafts automatically rehydrate Portfolio Master after the saved-report route remount");
 assert(portfolioService.includes('/api/portfolio/report-source?') && portfolioReportSourceRoute.includes("verifyStaffRequest(request)") && portfolioReportSourceRoute.includes("canStaffAccessRecord(actor, investor)"), "Monthly Report Portfolio Master hydration uses an authenticated server route instead of protected browser Firestore queries");
 assert(reportForm.includes('getInvestors()') && !reportForm.includes('subscribeInvestors('), "Monthly Report investor selection uses the authenticated Investor directory API instead of a browser collection query");
-assert(portfolioReportSourceRoute.includes("REPORT_SNAPSHOT_CAPTURE_GRACE_DAYS = 5") && portfolioReportSourceRoute.includes("findPostCutoffCaptureSnapshot") && portfolioReportSourceRoute.includes("capturedSnapshotDate") && portfolioReportSourceRoute.includes("datedValues.some((value) => value > cutoffDate)"), "month-end report regeneration can use a 1-5 day post-cutoff capture only when its dated source values do not cross the reporting cutoff");
+assert(portfolioReportSourceRoute.includes("resolveMonthEndSnapshot") && read("src/lib/server/portfolioMonthEndSelection.js").includes("inspectPostCutoffCapture") && read("src/lib/portfolioMonthlyClose.js").includes('sourceDates.some((value) => value > cutoff)'), "month-end regeneration reviews a 1-7 day post-cutoff capture with source NAV and post-cutoff activity safeguards");
 assert(reportConstants.includes("totalCorpus - openingValue - flowSummary.newMoney + flowSummary.withdrawals") && reportForm.includes("Money Withdrawn This Month") && reportForm.includes("Portfolio Gain / Loss"), "Monthly Report financial movement is automatic and separates external money from investment performance");
-assert(portfolioReportSourceRoute.includes("manualPortfolioCashLedger") && portfolioReportSourceRoute.includes("manual_cash_movement") && portfolioReportSourceRoute.includes("investor_action_confirmation"), "Report source includes confirmed Manual PMS cash flows and explicitly confirmed external action cash movements without relying on planned requests");
+assert(portfolioReportSourceRoute.includes("loadInvestorPortfolioLedger") && portfolioReportSourceRoute.includes("buildMonthlyReportingLedger") && read("src/lib/portfolioMonthlyLedger.js").includes("manual_cash_movement") && read("src/lib/portfolioMonthlyLedger.js").includes("investor_action_confirmation"), "Report source includes current and retained historical Manual PMS cash flows plus confirmed action movements through the shared ledger");
 assert(actionConstants.includes('"Trading Account Deposit"') && actionConstants.includes('"Trading Account Withdrawal"') && actionConstants.includes('STRUCTURED_WITHDRAWAL_REQUEST_TYPE, "Partial Redemption", "Full Redemption", "Trading Account Withdrawal"') && !actionConstants.includes('"SIP Funding / Withdrawal"].includes(type)'), "Trading Account cash movement is explicit while SIP funding discussion is not misclassified as a portfolio withdrawal");
 assert(actionRequestDialog.includes("requestedAccountReference") && actionCentre.includes("manual_cash_movement") && actionUpdateRoute.includes("actualFinancialAmount") && actionUpdateRoute.includes("actualFinancialDate"), "Advisor can confirm actual external cash movement with amount/date/account context only after operational completion");
 assert(reportPeriodWorkflowDoc.includes("Planned Action") && reportPeriodWorkflowDoc.includes("Trading Account Withdrawal") && reportPeriodWorkflowDoc.includes("SIP stopped") && reportPeriodWorkflowDoc.includes("Portfolio Gain / Loss"), "Report-period documentation distinguishes planned actions, SIP changes, redemptions and Trading Account withdrawals");
@@ -374,7 +374,7 @@ assert(investorShell.includes("lg:hidden") && investorShell.includes('aria-label
 assert(investorShell.includes("touch-manipulation") && investorShell.includes("gv-signature-nav-item") && investorShell.includes("min-h-[60px]") && investorShell.includes('text-[#1F4ED8]'), "Current Investor Mobile App navigation uses compact touch targets with a restrained brand-blue active state");
 const investorGlobalStylesV0334 = read("src/app/globals.css");
 assert(investorGlobalStylesV0334.includes("iOS Safari zooms form controls smaller than 16px") && investorGlobalStylesV0334.includes(".gv-investor-viewport select") && investorGlobalStylesV0334.includes("font-size: 16px"), "v0.33.4 Investor Mobile App prevents iOS form-control zoom and improves touch scrolling");
-assert(serviceWorker.includes("growvest-investor-v0.34.32") && serviceWorker.includes("growvest-pages-v0.34.32"), "Investor PWA caches remain versioned so installed apps receive hardened navigation/routes");
+assert(serviceWorker.includes("growvest-investor-v0.34.35") && serviceWorker.includes("growvest-pages-v0.34.35"), "Investor PWA caches remain versioned so installed apps receive hardened navigation/routes");
 assert(stabilityDoc.includes("v0.33.4") && stabilityDoc.includes("Data Integrity") && stabilityDoc.includes("Mobile App") && stabilityManifest.includes("migrate-period/route.js") && stabilityManifest.includes("InvestorShell.js"), "v0.33.4 stability workflow and changed-code manifest are packaged with the release");
 
 const investorPortfolioViewRoute = read("src/app/api/portfolio/investor-view/route.js");
@@ -427,8 +427,8 @@ assert(investorPageHeaderV0335.includes('className="hidden gap-2.5 md:flex') && 
 assert(actionRouteV0335.includes("export async function GET") && actionRouteV0335.includes("verifyAppRequest(request)") && actionDetailRouteV0335.includes("export async function GET") && actionDetailRouteV0335.includes("verifyAppRequest(request)") && actionServiceV0335.includes("getInvestorActions") && actionServiceV0335.includes("getActionDetail"), "v0.33.5 Investor Actions and action detail have authenticated server read APIs");
 assert(investorActionsPanelV0335.includes("getInvestorPortfolioView") && investorActionsPanelV0335.includes("getInvestorActions") && actionTimelineV0335.includes('profile.role === "investor"') && actionTimelineV0335.includes("getActionDetail") && withdrawalPanelV0335.includes('profile.role === "investor"') && withdrawalPanelV0335.includes("getInvestorPortfolioView") && withdrawalPanelV0335.includes("getInvestorActions"), "v0.33.5 Investor Advisor-Follow-up, timeline and withdrawal views avoid protected browser list reads");
 assert(investorGlobalStylesV0334.includes("v0.33.5 Investor Mobile App Experience & Design System") && investorGlobalStylesV0334.includes("@media (max-width: 767px)") && investorGlobalStylesV0334.includes("--gv-mobile-card-radius"), "v0.33.5 mobile design-system CSS is explicitly scoped to phone widths below 768px");
-assert(serviceWorker.includes("growvest-investor-v0.34.32") && serviceWorker.includes("growvest-pages-v0.34.32"), "Investor PWA caches are current for the phone app release");
-assert(packageJson.version === "0.34.32" && mobileExperienceDocV0335.includes("phone-only") && mobileExperienceDocV0335.includes("Dynamic Investor Dashboard") && mobileExperienceManifestV0335.includes("MobileInvestorDashboard.js") && reportPrintClientV0335.includes("getInvestorReportDetail"), "Investor mobile design/security documentation and secure print path remain packaged with the current release");
+assert(serviceWorker.includes("growvest-investor-v0.34.35") && serviceWorker.includes("growvest-pages-v0.34.35"), "Investor PWA caches are current for the phone app release");
+assert(packageJson.version === "0.34.35" && mobileExperienceDocV0335.includes("phone-only") && mobileExperienceDocV0335.includes("Dynamic Investor Dashboard") && mobileExperienceManifestV0335.includes("MobileInvestorDashboard.js") && reportPrintClientV0335.includes("getInvestorReportDetail"), "Investor mobile design/security documentation and secure print path remain packaged with the current release");
 
 // v0.33.5 phone-only GrowVest brand UI refinement regression checks.
 const investorDocumentsBrandRefinementV0335 = read("src/app/investor/documents/page.js");
@@ -439,7 +439,7 @@ assert(investorDocumentsBrandRefinementV0335.includes("Phone-only compact explai
 assert(investorPortfolioBrandRefinementV0335.includes("Phone-first intelligence hierarchy") && investorPortfolioBrandRefinementV0335.includes("gv-mobile-brand-panel") && investorPortfolioBrandRefinementV0335.includes("gv-mobile-yellow-soft") && investorPortfolioBrandRefinementV0335.includes("gv-mobile-wrap"), "v0.33.5 phone Portfolio Intelligence uses GrowVest brand accents, stronger hierarchy and long-name wrapping");
 assert(investorGlobalStylesV0334.includes(".gv-mobile-brand-panel") && investorGlobalStylesV0334.includes(".gv-mobile-cyan-soft") && investorGlobalStylesV0334.includes(".gv-mobile-yellow-soft") && investorGlobalStylesV0334.includes(".gv-investor-viewport main > *") && investorGlobalStylesV0334.includes("overflow-x: clip") && investorGlobalStylesV0334.includes("overflow-y: visible"), "v0.33.5 phone design system constrains horizontal overflow without turning the Investor App wrapper into a vertical scroll container");
 assert(documentPreviewModal.includes('window.matchMedia("(min-width: 768px)")') && documentPreviewModal.includes("shouldLockBody") && investorShell.includes("Mobile scroll recovery guard") && investorShell.includes('document.body.style.overflow === "hidden"'), "v0.33.5 mobile scroll recovery prevents document-preview body locks from leaving the Investor App unable to scroll");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1") && mobileBrandRefinementDocV0335.includes("Royal Trust Blue") && mobileBrandRefinementDocV0335.includes("Growth Cyan") && mobileBrandRefinementManifestV0335.includes("InvestorPortfolioPanel.js"), "Mobile brand refinement documentation, manifest and installed-PWA cache refresh remain packaged");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1") && mobileBrandRefinementDocV0335.includes("Royal Trust Blue") && mobileBrandRefinementDocV0335.includes("Growth Cyan") && mobileBrandRefinementManifestV0335.includes("InvestorPortfolioPanel.js"), "Mobile brand refinement documentation, manifest and installed-PWA cache refresh remain packaged");
 
 
 // v0.33.6 phone-only finance-app redesign regression checks.
@@ -460,7 +460,7 @@ assert(mobileInvestorDashboardV0335.includes("Total Wealth") && investorPortfoli
 assert(investorMeetingsV0336.includes("MobileMeetingsApp") && investorMeetingsV0336.includes("md:hidden") && investorSipV0336.includes("MobileSipApp") && investorSipV0336.includes("md:hidden") && investorActionsPanelV0335.includes("MobileActionsApp") && investorActionsPanelV0335.includes("md:hidden") && investorSecurityV0336.includes("MobileProvider") && investorSecurityV0336.includes("md:hidden"), "v0.33.6 extends the phone finance-app design to Meetings, SIP, Actions and Login & Security while preserving desktop views");
 assert(investorGlobalStylesV0334.includes("v0.33.6 Investor finance-app shell refinements") && investorGlobalStylesV0334.includes("left: max(.7rem") && investorGlobalStylesV0334.includes("border-radius: 1.45rem") && investorShell.includes("grid-cols-5"), "v0.33.6 uses a floating five-item phone navigation bar with safe-area spacing");
 assert(investorGlobalStylesV0334.includes("--gv-brand-primary: #1f4ed8") && investorGlobalStylesV0334.includes("--gv-brand-secondary: #1f4ed8") && investorGlobalStylesV0334.includes("--gv-brand-dark: #0b0b0f") && investorGlobalStylesV0334.includes("--gv-brand-warning: #f5b301") && investorGlobalStylesV0334.includes("--gv-brand-danger: #e53935") && investorGlobalStylesV0334.includes("--gv-brand-surface: #f4f6f9") && investorGlobalStylesV0334.includes("--gv-brand-muted: #6b7280"), "Current mobile design system uses the approved GrowVest Royal Trust Blue, Deep Premium Black, Insight Yellow, Strategic Red and neutral tokens");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("/brand/growvest-logo-white.svg") && packageJson.version === "0.34.32" && mobileRedesignDocV0336.includes("below 768px only") && mobileRedesignManifestV0336.includes("MobileFinanceCharts.js"), "Current release preserves phone-only scope, official SVG assets and finance-app chart foundation");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("/brand/growvest-logo-white.svg") && packageJson.version === "0.34.35" && mobileRedesignDocV0336.includes("below 768px only") && mobileRedesignManifestV0336.includes("MobileFinanceCharts.js"), "Current release preserves phone-only scope, official SVG assets and finance-app chart foundation");
 
 const officialBrandPolishDocV0336 = read("docs/INVESTOR_MOBILE_OFFICIAL_SVG_BRAND_POLISH_v0.33.6.md");
 const officialBrandPolishManifestV0336 = read("docs/INVESTOR_MOBILE_OFFICIAL_SVG_BRAND_POLISH_CODE_MANIFEST_v0.33.6.md");
@@ -484,7 +484,7 @@ assert(investorProfileV0337.includes("ProfilePhotoUploader minimal") && investor
 assert(investorNotificationsV0337.includes("Choose your alerts") && investorNotificationsV0337.includes("settingsOpen") && investorNotificationsV0337.includes("updatePushCategory"), "v0.33.7 Notifications includes a phone-native alert-preferences bottom sheet");
 assert(investorActionsPanelV0335.includes("Your actions") && investorActionsPanelV0335.includes("Review decision options") && investorShell.includes('title: "Your Actions"'), "v0.33.7 Investor follow-up is presented as clear Your Actions / Next Steps on phones");
 assert(investorGlobalStylesV0334.includes("v0.33.7 Investor mobile professional polish") && investorGlobalStylesV0334.includes("gv-brand-outline-drift") && mobileProfessionalDocV0337.includes("below 768px") && mobileProfessionalManifestV0337.includes("InvestorMobilePrimitives.js"), "v0.33.7 professional mobile polish is phone-scoped, motion-aware and documented");
-assert(packageJson.version === "0.34.32" && serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "Current metadata and installed-PWA caches are current");
+assert(packageJson.version === "0.34.35" && serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "Current metadata and installed-PWA caches are current");
 
 // v0.33.8 GrowVest motion-language and website-to-app continuity checks.
 const motionMarkV0338 = read("src/components/investor/mobile/GrowVestMotionMark.js");
@@ -497,7 +497,7 @@ assert(entryMotionV0338.includes("sessionStorage") && entryMotionV0338.includes(
 assert(splashV0338.includes("GrowVestMotionMark") && splashV0338.includes('variant="logo"') && splashV0338.includes("Preparing your investor app"), "Branded Investor splash uses the official logo and GrowVest motion mark");
 assert(investorShell.includes("InvestorEntryMotion") && mobileInvestorDashboardV0335.includes("GrowVestActivityIndicator") && read("src/app/investor/reports/page.js").includes("GrowVestActivityIndicator"), "v0.33.8 reuses the GrowVest motion language for app entry, Portfolio Master refresh and Monthly Review preparation");
 assert(investorGlobalStylesV0334.includes("v0.33.8 GrowVest Motion Language") && investorGlobalStylesV0334.includes("gv-motion-outline-reveal") && investorGlobalStylesV0334.includes("prefers-reduced-motion"), "v0.33.8 motion CSS includes brand reveal, compact activity and accessibility safeguards");
-assert(packageJson.version === "0.34.32" && serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1") && motionDocV0338.includes("once per browser session") && motionManifestV0338.includes("GrowVestMotionMark.js"), "GrowVest motion-language documentation remains packaged with current metadata and PWA cache");
+assert(packageJson.version === "0.34.35" && serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1") && motionDocV0338.includes("once per browser session") && motionManifestV0338.includes("GrowVestMotionMark.js"), "GrowVest motion-language documentation remains packaged with current metadata and PWA cache");
 
 
 // v0.33.9 Investor Mobile App recomposition regression checks.
@@ -506,7 +506,7 @@ const mobileRecompositionManifestV0339 = read("docs/INVESTOR_MOBILE_APP_RECOMPOS
 const reportsV0339 = read("src/app/investor/reports/page.js");
 const insuranceV0339 = read("src/components/insurance/InsuranceProtectionPanel.js");
 const reportSectionNavV0339 = read("src/components/investor/InvestorReportSectionNav.js");
-assert(packageJson.version === "0.34.32" && serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.33.9 release metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.35" && serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.33.9 release metadata and installed Investor PWA caches are current");
 assert(splashV0338.includes("Preparing your investor app") && entryMotionV0338.includes('gv-investor-entry-motion-v3') && entryMotionV0338.includes('1080'), "v0.33.9 uses the simplified faster official-SVG phone entry experience");
 assert(mobileInvestorDashboardV0335.includes("Total Wealth") && mobileInvestorDashboardV0335.includes("What needs your attention") && mobileInvestorDashboardV0335.includes("attentionActionsFor") && mobileInvestorDashboardV0335.includes("Your GrowVest Partner"), "Home prioritizes one focal wealth hero, priority-driven attention and relationship access");
 assert(investorGoalsV0336.includes("topFilters") && investorGoalsV0336.includes("overflow-x-auto") && investorGoalsV0336.includes("Show goals by status") && investorGoalsV0336.includes("filtersOpen"), "Current Bucket List uses a scroll-safe compact filter strip with a full status filter sheet");
@@ -528,7 +528,7 @@ const investorDocumentsV0340 = read("src/app/investor/documents/page.js");
 const investorNotificationsV0340 = read("src/app/investor/notifications/page.js");
 const investorProfileV0340 = read("src/app/investor/profile/page.js");
 const investorLoadingV0340 = read("src/app/investor/loading.js");
-assert(packageJson.version === "0.34.32" && serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.0 release metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.35" && serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.0 release metadata and installed Investor PWA caches are current");
 assert(investorAppServiceV0340.includes("responseCache") && investorAppServiceV0340.includes("inFlight") && investorAppServiceV0340.includes("ttlBySection") && investorAppServiceV0340.includes("force = false"), "v0.34.0 Investor App client data layer provides short-lived section caching, forced refresh and in-flight request deduplication");
 assert(investorAppDataRouteV0340.includes('section === "documents"') && investorAppDataRouteV0340.includes('section === "meetings"') && investorAppDataRouteV0340.includes('section === "reports"') && investorAppDataRouteV0340.includes('section === "profile"') && investorAppDataRouteV0340.includes("const portfolio = await loadPortfolio(investor.id)"), "v0.34.0 utility sections bypass unnecessary Portfolio Master reads while wealth sections still hydrate live portfolio data");
 assert(investorHoldingRouteV0340.includes("verifyAppRequest(request)") && investorHoldingRouteV0340.includes("positionId") && investorHoldingRouteV0340.includes("holding_access_denied") && investorHoldingPageV0340.includes("Investment activity") && investorPortfolioPanelV0334.includes('href={`/investor/portfolio/${position.id}`}'), "v0.34.0 adds secure Investor Holding Detail drill-down from the Portfolio holdings list");
@@ -550,7 +550,7 @@ const actionDialogV0341 = read("src/components/actions/ActionRequestDialog.js");
 const investorLoginV0341 = read("src/app/investor-login/page.js");
 const uxDocV0341 = read("docs/INVESTOR_MOBILE_UX_PREMIUM_DESIGN_SYSTEM_v0.34.1.md");
 const uxManifestV0341 = read("docs/INVESTOR_MOBILE_UX_PREMIUM_DESIGN_SYSTEM_CODE_MANIFEST_v0.34.1.md");
-assert(packageJson.version === "0.34.32" && serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.1 release metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.35" && serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.1 release metadata and installed Investor PWA caches are current");
 assert(investorPrivacyV0341.includes("growvest-investor-financial-privacy") && investorPrivacyV0341.includes("localStorage") && investorShell.includes("Financial privacy") && mobileInvestorDashboardV0335.includes("useInvestorPrivacy"), "v0.34.1 financial privacy persists and is available across the Investor App");
 assert(investorExperienceV0341.includes("filterTrendByRange") && investorExperienceV0341.includes("cutoff.setMonth") && investorPortfolioPanelV0334.includes("filterTrendByRange"), "Portfolio trend controls use calendar-based ranges instead of fixed point slicing");
 assert(mobileInvestorDashboardV0335.includes("attentionActionsFor") && mobileInvestorDashboardV0335.includes("priority:") && mobileInvestorDashboardV0335.includes("What needs your attention"), "Home selects priority-driven actions requiring the investor's attention");
@@ -567,7 +567,7 @@ assert(investorGlobalStylesV0334.includes("v0.34.1 Investor Mobile UX & Premium 
 const signatureDocV0342 = read("docs/INVESTOR_MOBILE_SIGNATURE_UI_v0.34.2.md");
 const signatureManifestV0342 = read("docs/INVESTOR_MOBILE_SIGNATURE_UI_CODE_MANIFEST_v0.34.2.md");
 const splashV0342 = read("src/components/investor/mobile/InvestorAppSplash.js");
-assert(packageJson.version === "0.34.32" && serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.2 release metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.35" && serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.2 release metadata and installed Investor PWA caches are current");
 assert(investorGlobalStylesV0334.includes("--gv-brand-primary: #1f4ed8") && investorGlobalStylesV0334.includes("--gv-brand-dark: #0b0b0f") && investorGlobalStylesV0334.includes("--gv-brand-warning: #f5b301") && investorGlobalStylesV0334.includes("--gv-brand-danger: #e53935") && investorGlobalStylesV0334.includes("v0.34.2 GrowVest Signature Mobile UI"), "v0.34.2 uses the supplied GrowVest palette and a canonical Signature Mobile UI layer");
 assert(investorShell.includes("gv-signature-nav-item") && investorShell.includes("Open GrowVest actions") && investorShell.includes('variant="icon"') && investorShell.includes("strokeWidth={active ? 1.55 : 1.4}"), "v0.34.2 mobile navigation uses slim icons and the official GrowVest centre action");
 assert(mobileInvestorDashboardV0335.includes("Total Wealth") && mobileInvestorDashboardV0335.includes("What needs your attention") && mobileInvestorDashboardV0335.includes("QuickAction") && mobileInvestorDashboardV0335.includes("bg-[#0B0B0F]"), "v0.34.2 Home uses the approved wealth hero, overlapping quick actions and focused review treatment");
@@ -581,7 +581,7 @@ assert(signatureDocV0342.includes("Royal Trust Blue") && signatureDocV0342.inclu
 // v0.34.3 visual-correction checks after device screenshot review.
 const visualCorrectionDocV0343 = read("docs/INVESTOR_MOBILE_VISUAL_CORRECTION_v0.34.3.md");
 const visualCorrectionManifestV0343 = read("docs/INVESTOR_MOBILE_VISUAL_CORRECTION_CODE_MANIFEST_v0.34.3.md");
-assert(packageJson.version === "0.34.32" && serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.3 release metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.35" && serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.3 release metadata and installed Investor PWA caches are current");
 assert(investorShell.includes('backHref: "/investor/dashboard"') && investorShell.includes('backHref: "/investor/goals"') && investorShell.includes('backHref: "/investor/portfolio"') && investorShell.includes('brightness-0 invert'), "v0.34.3 secondary Investor screens have consistent back navigation and the home logo is readable on Royal Trust Blue");
 assert(mobileInvestorDashboardV0335.includes('pb-[38px]') && !mobileInvestorDashboardV0335.includes('pointer-events-none absolute -right-12 top-7 w-44') && mobileInvestorDashboardV0335.includes('progressLabel(goalPct)') && mobileInvestorDashboardV0335.includes('movementPercent).toFixed(1)') && mobileInvestorDashboardV0335.includes('movementPercent !== null'), "Current Home preserves compact hero proportions, no giant watermark, approved previous-update percentage and sub-1-percent goal progress");
 assert(investorPortfolioPanelV0334.includes('const displayGain = Number(summary.gain || 0)') && investorPortfolioPanelV0334.includes('Gain / Loss on known cost') && investorPortfolioPanelV0334.includes('Limited verified history') && investorPortfolioPanelV0334.includes('mobileTrendDateLabel'), "Current Portfolio UI uses the cost-basis-aware gain/loss result and labels sparse history honestly");
@@ -597,7 +597,7 @@ const goalVisualsV0344 = read("src/components/investor/goalVisuals.js");
 const mobileFinanceChartsV0344 = read("src/components/investor/mobile/MobileFinanceCharts.js");
 const holdingDetailV0344 = read("src/app/investor/portfolio/[positionId]/page.js");
 const investorNavigationV0344 = read("src/lib/constants/investorNavigation.js");
-assert(packageJson.version === "0.34.32" && serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.4 release metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.35" && serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.4 release metadata and installed Investor PWA caches are current");
 assert(mobileInvestorDashboardV0335.includes("gv-mobile-home-hero") && mobileInvestorDashboardV0335.includes("attentionActionsFor") && mobileInvestorDashboardV0335.includes("daysUntilDebit") && mobileInvestorDashboardV0335.includes("Portfolio update is under review"), "v0.34.4 Home uses the full-bleed wealth hero and data-driven attention priorities including SIP and portfolio review states");
 assert(investorNavigationV0344.includes("ChartNoAxesCombined") && mobileInvestorDashboardV0335.includes("icon={ChartNoAxesCombined}") && mobileInvestorDashboardV0335.includes("icon={Target}"), "v0.34.4 primary Investor navigation and Home quick actions use a locked slim icon mapping");
 assert(investorPortfolioPanelV0334.includes("aria-pressed={range === item}") && investorPortfolioPanelV0334.includes("filterTrendByRange(rawTrend, range)") && investorPortfolioPanelV0334.includes("rangeDescription") && investorPortfolioPanelV0334.includes("mobileAllocationColor") && !investorPortfolioPanelV0334.includes("slice(0, 24).reverse"), "v0.34.4 Portfolio range filters are wired to actual dated history and All can use the full available series");
@@ -617,7 +617,7 @@ const bucketRequestStaffV0345 = read("src/components/investors/BucketListRequest
 const sipFundingApiV0345 = read("src/app/api/sip-funding/route.js");
 const profileV0345 = read("src/app/investor/profile/page.js");
 const functionsV0345 = read("functions/index.js");
-assert(packageJson.version === "0.34.32" && serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.5 release metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.35" && serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.5 release metadata and installed Investor PWA caches are current");
 assert(investorNavigationV0344.includes('{ label: "Reports", href: "/investor/reports", icon: FileBarChart2, mobile: true, tourKey: "reports" }') && investorNavigationV0344.includes('{ label: "Profile", href: "/investor/profile", icon: UserRound }'), "v0.34.5 exact-reference phone navigation uses Reports as the fifth persistent tab while Profile remains available from avatar/More");
 assert(investorShell.includes('isMobileHome ? "px-0 py-0"') && investorGlobalStylesV0334.includes('.gv-mobile-home-stack > :not(.gv-mobile-home-hero)'), "v0.34.5 Home uses a structural edge-to-edge hero instead of a clipped negative-margin breakout");
 assert(bucketRequestApiV0345.includes('status: "submitted"') && bucketRequestApiV0345.includes('nextStatus === "confirmed"') && bucketRequestApiV0345.includes('bucketList: nextGoals') && bucketRequestInvestorV0345.includes("Submit to GrowVest") && bucketRequestStaffV0345.includes("Confirm goal"), "v0.34.5 lets investors propose Bucket List items while GrowVest confirms them before active-goal calculations");
@@ -641,7 +641,7 @@ const loginV0346 = read("src/app/investor-login/page.js");
 const messagingWorkerV0346 = read("public/firebase-messaging-sw.js");
 const notificationApiV0346 = read("src/app/api/notifications/route.js");
 const investorAppServiceV0346 = read("src/services/investorAppService.js");
-assert(packageJson.version === "0.34.32" && serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.6 Family Access metadata and installed-PWA caches are current");
+assert(packageJson.version === "0.34.35" && serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.6 Family Access metadata and installed-PWA caches are current");
 assert(apiAuthV0346.includes("X-GrowVest-Investor-Id") && investorAccessClientV0346.includes("gv.activeInvestor."), "v0.34.6 sends the selected Investor context with authenticated API requests");
 assert(firebaseAdminV0346.includes("investorAccessMemberships") && firebaseAdminV0346.includes("investor_context_denied") && firebaseAdminV0346.includes("primaryInvestorId"), "v0.34.6 validates household Investor switching server-side before changing actor context");
 assert(firestoreRules.includes("match /investorAccessMemberships/{membershipId}") && firestoreRules.includes("allow read, write: if false") && firestoreRules.includes("accessibleInvestorIds") && firestoreRules.includes("investorIds"), "v0.34.6 keeps household grants server-only and constrains Google first-login access to authorised alias Investor IDs");
@@ -665,7 +665,7 @@ assert(demoCtaV0347.includes('action: "express_interest"') && demoCtaV0347.inclu
 assert(demoProspectApiV0347.includes("demoLeadDocumentId") && demoProspectApiV0347.includes('status: "NEW"') && demoProspectApiV0347.includes('leadSource: "Investor App Demo"') && demoProspectApiV0347.includes('originalLeadFlow: "SOP 1 - Lead to Conversion"'), "v0.34.7 hands a guest directly into the existing NEW Lead / SOP 1 workflow");
 assert(demoProspectApiV0347.includes("if (leadSnapshot.exists)") && demoProspectApiV0347.includes("demoLastInterestAt") && demoProspectApiV0347.includes("created: false"), "v0.34.7 makes repeated Become part of GrowVest clicks idempotent for the same Demo session");
 assert(demoProspectApiV0347.includes("demoGuestEmail") && demoProspectApiV0347.includes("!text(existing.email, 120)") && demoInterestV0347.includes('action: "enrich"') && demoInterestV0347.includes("they do not create another lead"), "v0.34.7 enrichment updates the same Lead without overwriting staff-entered normal Lead fields");
-assert(demoDocV0347.includes("lead is created at the moment") && demoManifestV0347.includes("Lead-on-agreement refinement") && serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1"), "v0.34.7 guest-demo Lead trigger documentation and installed-PWA cache refresh are packaged");
+assert(demoDocV0347.includes("lead is created at the moment") && demoManifestV0347.includes("Lead-on-agreement refinement") && serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1"), "v0.34.7 guest-demo Lead trigger documentation and installed-PWA cache refresh are packaged");
 assert(notificationBellV0347.includes("isDemoInvestor") && notificationBellV0347.includes("staffNotificationMode") && notificationBellV0347.includes('profile?.role === "investor" || isDemoInvestor'), "v0.34.7 Demo Investor notification bell uses synthetic Investor notifications and never falls through to Firebase-authenticated staff polling");
 
 // v0.34.8 Portfolio Gain/Loss Integrity and Investment Type Totals.
@@ -679,7 +679,7 @@ const manualWorkbookV0348 = read("src/lib/server/manualPortfolioWorkbook.js");
 const portfolioServerV0348 = read("src/lib/server/portfolioServer.js");
 const portfolioIntegrityDocV0348 = read("docs/PORTFOLIO_GAIN_LOSS_DATA_INTEGRITY_v0.34.8.md");
 const portfolioIntegrityManifestV0348 = read("docs/PORTFOLIO_GAIN_LOSS_DATA_INTEGRITY_CODE_MANIFEST_v0.34.8.md");
-assert(packageJson.version === "0.34.32" && serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.8 metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.35" && serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.8 metadata and installed Investor PWA caches are current");
 assert(portfolioPerformanceV0348.includes("summarisePortfolioPerformance") && portfolioPerformanceV0348.includes("summarisePortfolioByInvestmentType") && portfolioPerformanceV0348.includes("pendingCostBasisCount") && portfolioPerformanceV0348.includes("gainLoss += current - invested"), "v0.34.8 centralises cost-basis-aware portfolio performance and category totals, including losses");
 assert(portfolioPanelV0348.includes("Investment Type Totals") && portfolioPanelV0348.includes("How Total Invested is built") && portfolioPanelV0348.includes("Trading / Derivatives") && portfolioPanelV0348.includes("never included in Total Invested or Bucket List corpus") && portfolioPanelV0348.includes("turnover this month"), "v0.34.8 shows Mutual Fund/Equity/ULIP/etc. totals and keeps Trading/Derivatives separate from invested wealth");
 assert(portfolioPanelV0348.includes("Known Invested") && portfolioPanelV0348.includes("Gain / Loss (Known Cost)") && portfolioPanelV0348.includes("cost basis pending"), "v0.34.8 surfaces partial performance instead of treating missing purchase cost as profit");
@@ -695,7 +695,7 @@ const investorProfileSignoutV0348 = read("src/app/investor/profile/page.js");
 const mobileSignoutDocV0348 = read("docs/MOBILE_INVESTOR_SIGNOUT_HOTFIX_v0.34.8.md");
 assert(investorShell.includes('const exitHref = isDemoInvestor ? "/investor-demo" : "/investor-login"') && investorShell.includes('isDemoInvestor ? "Exit Demo" : "Sign Out"') && investorShell.includes('aria-label={isDemoInvestor ? "Exit GrowVest demo" : "Sign out of GrowVest Investor App"}'), "v0.34.8 phone GrowVest action sheet exposes Sign Out for real Investors and Exit Demo for guest Investors");
 assert(investorProfileSignoutV0348.includes('onLogout={handleLogout}') && investorProfileSignoutV0348.includes('isDemoInvestor ? "Exit Demo" : "Sign Out"') && investorProfileSignoutV0348.includes('router.replace(exitHref)'), "v0.34.8 mobile Profile also exposes the correct real-Investor/demo exit action");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1") && mobileSignoutDocV0348.includes("Investor App") && mobileSignoutDocV0348.includes("Demo"), "v0.34.8 mobile sign-out hotfix is documented and refreshes installed-PWA caches");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1") && mobileSignoutDocV0348.includes("Investor App") && mobileSignoutDocV0348.includes("Demo"), "v0.34.8 mobile sign-out hotfix is documented and refreshes installed-PWA caches");
 
 const secureCompare = read("src/lib/server/secureCompare.js");
 assert(secureCompare.includes("MIN_SERVER_SECRET_LENGTH = 32"), "cron/webhook authentication rejects short server secrets");
@@ -710,7 +710,7 @@ assert(mobileInvestorDashboardV0335.includes("togglePrivacyMode") && mobileInves
 assert(mobileInvestorDashboardV0335.includes("What needs your attention") && mobileInvestorDashboardV0335.includes("allAttentionActions.slice(0, 1)") && mobileInvestorDashboardV0335.includes("sipNeedsAction") && mobileInvestorDashboardV0335.includes("protectionDays"), "v0.34.5 Home previews one priority-driven attention item while preserving expandable SIP/protection intelligence");
 assert(mobileInvestorDashboardV0335.includes("Your Bucket List") && mobileInvestorDashboardV0335.includes("progressLabel(goalPct)") && mobileInvestorDashboardV0335.includes("Your GrowVest Partner"), "v0.34.5 Home keeps Bucket List and GrowVest Partner compact on the approved flat white content canvas");
 assert(mobileInvestorDashboardV0335.includes("bg-[#0B0B0F]") && mobileInvestorDashboardV0335.includes("Review is ready") && mobileInvestorDashboardV0335.includes("Your Monthly Review") && mobileInvestorDashboardV0335.includes("BarChart3"), "v0.34.5 Home uses the approved compact Deep Premium Black Monthly Review card with chart motif");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1") && homeLockDocV0345.includes("approved Home screenshot"), "v0.34.5 exact Home reference documentation and installed-PWA cache refresh are packaged");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1") && homeLockDocV0345.includes("approved Home screenshot"), "v0.34.5 exact Home reference documentation and installed-PWA cache refresh are packaged");
 
 const brevoWebhook = read("src/app/api/webhooks/brevo/route.js");
 assert(brevoWebhook.includes("1024 * 1024") && brevoWebhook.includes("safeProviderPayload"), "Brevo webhook payload size and stored provider fields are bounded");
@@ -769,7 +769,7 @@ const investorSecurityGateV0349 = read("src/components/investor/InvestorSecurity
 const investorSecurityPageV0349 = read("src/app/investor/change-password/page.js");
 const investorLayoutV0349 = read("src/app/investor/layout.js");
 const investorSecurityDocV0349 = read("docs/INVESTOR_DEVICE_SECURITY_APP_LOCK_v0.34.9.md");
-assert(packageJson.version === "0.34.32" && serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.9 metadata and Investor PWA caches are current");
+assert(packageJson.version === "0.34.35" && serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.9 metadata and Investor PWA caches are current");
 assert(investorSecurityPreferencesV0349.includes("PBKDF2") && investorSecurityPreferencesV0349.includes("210000") && investorSecurityPreferencesV0349.includes("mobilePinHash") && !investorSecurityPreferencesV0349.includes("mobilePinPlain"), "v0.34.9 stores only a hardened one-way App Lock PIN hash with per-device salt");
 assert(investorSecurityPreferencesV0349.includes("PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable") && investorSecurityPreferencesV0349.includes("userVerification: \"required\"") && investorSecurityPageV0349.includes("Biometric unlock"), "v0.34.9 supports optional platform biometric/device verification with PIN fallback");
 assert(investorSecurityGateV0349.includes("shouldLockInvestorMobileApp") && investorSecurityGateV0349.includes("Forgot PIN? Sign in again") && investorLayoutV0349.includes("<InvestorSecurityGate>"), "v0.34.9 gates Investor UI before notification/privacy providers and provides full-sign-in PIN recovery");
@@ -782,7 +782,7 @@ const reportPdfV03410 = read("src/lib/server/reportPdf.js");
 const reportServerV03410 = read("src/lib/server/reportServer.js");
 const reportHowToDocV03410 = read("docs/MONTHLY_REPORT_HOW_TO_USE_v0.34.10.md");
 const reportDesignReviewV03410 = read("docs/REPORT_PDF_DESIGN_REVIEW_v0.34.10.md");
-assert(packageJson.version === "0.34.32" && serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.10 report guidance remains packaged in the current release");
+assert(packageJson.version === "0.34.35" && serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.10 report guidance remains packaged in the current release");
 assert(reportWorkflowShellV03410.includes("REPORT_HOW_TO_USE_STEPS") && reportWorkflowShellV03410.includes("How to use") && reportWorkflowShellV03410.includes("Generate / Regenerate PDF"), "v0.34.10 Monthly Report workspace includes end-to-end How-to-use guidance");
 assert(reportPdfV03410.includes("General Wealth Corpus") && reportPdfV03410.includes("const hasGoals") && reportServerV03410.includes('pdfRendererVersion: "2.4.10"'), "v0.34.10 secure PDF no-goals state is aligned and renderer version is recorded");
 assert(reportHowToDocV03410.includes("10") && reportHowToDocV03410.includes("Publish") && reportDesignReviewV03410.includes("separate renderers") && reportDesignReviewV03410.includes("coverPattern") && reportDesignReviewV03410.includes("chartStyle"), "v0.34.10 report operating guide and PDF design review are packaged");
@@ -796,7 +796,7 @@ const reportServerV03411 = read("src/lib/server/reportServer.js");
 const reportCssV03411 = read("src/app/globals.css");
 const reportDesignDocV03411 = read("docs/REPORT_MODULE_REVIEW_AND_PDF_DESIGN_v0.34.11.md");
 const reportDesignManifestV03411 = read("docs/REPORT_PDF_DESIGN_CODE_MANIFEST_v0.34.11.md");
-assert(packageJson.version === "0.34.32" && serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.11 metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.35" && serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.11 metadata and installed Investor PWA caches are current");
 assert(reportServerV03411.includes('pdfRendererVersion: "2.4.10"') && reportPdfV03411.includes("drawCoverPattern") && reportPdfV03411.includes("coverPattern") && reportPdfV03411.includes("chartStyle"), "v0.34.11 secure PDF renderer records the new renderer version and consumes report-template cover/chart controls");
 assert(reportPrintDocumentV03411.includes("report-cover-pattern-") && reportPrintDocumentV03411.includes("resolveReportTheme") && reportTrendChartV03411.includes("primaryColor") && reportTrendChartV03411.includes("chartStyle") && reportDonutChartV03411.includes("printMode"), "v0.34.11 browser A4 report consumes template theme/chart controls and uses print-safe charts");
 assert(reportCssV03411.includes("premium A4 statement system") && reportCssV03411.includes("report-cover-pattern-orbital") && reportCssV03411.includes("report-table-density-compact") && reportCssV03411.includes("report-table-density-comfortable"), "v0.34.11 premium A4 statement styling, cover patterns and table-density treatments are packaged");
@@ -809,7 +809,7 @@ const reportPdfV03412 = read("src/lib/server/reportPdf.js");
 const reportServerV03412 = read("src/lib/server/reportServer.js");
 const reportAssetHotfixDocV03412 = read("docs/REPORT_ASSET_ALLOCATION_CHART_HOTFIX_v0.34.12.md");
 const reportAssetManifestV03412 = read("docs/REPORT_ASSET_ALLOCATION_CHART_CODE_MANIFEST_v0.34.12.md");
-assert(packageJson.version === "0.34.32" && serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.12 metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.35" && serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.12 metadata and installed Investor PWA caches are current");
 assert(reportDonutChartV03412.includes("<svg") && reportDonutChartV03412.includes("strokeDasharray") && reportDonutChartV03412.includes("normaliseSegments") && !reportDonutChartV03412.includes("conic-gradient"), "v0.34.12 browser/print asset allocation chart uses print-safe SVG segments instead of CSS conic-gradient");
 assert(reportPrintDocumentV03412.includes("allocationChartHoldings") && reportPrintDocumentV03412.includes("ASSET ALLOCATION") && reportPrintDocumentV03412.includes("CURRENT VS TARGET"), "v0.34.12 A4 Portfolio Allocation page explicitly renders asset composition and target comparison");
 assert(reportPdfV03412.includes("drawAllocationDonut") && reportPdfV03412.includes("holdingColor") && reportPdfV03412.includes("ASSET ALLOCATION") && reportServerV03412.includes('pdfRendererVersion: "2.4.10"'), "v0.34.12 secure PDF native vector allocation chart remains packaged with the current renderer");
@@ -828,7 +828,7 @@ const reportServerV03413 = read("src/lib/server/reportServer.js");
 const reportSchemaV03413 = read("src/lib/validation/reportSchema.js");
 const openingReviewDocV03413 = read("docs/INVESTOR_LAUNCH_OPENING_WEALTH_REVIEW_v0.34.13.md");
 const openingReviewManifestV03413 = read("docs/INVESTOR_LAUNCH_OPENING_WEALTH_REVIEW_CODE_MANIFEST_v0.34.13.md");
-assert(packageJson.version === "0.34.32" && serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.13 metadata and installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.35" && serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.13 metadata and installed Investor PWA caches are current");
 assert(reportConstantsV03413.includes('OPENING: "opening"') && reportConstantsV03413.includes('MONTHLY: "monthly"') && reportConstantsV03413.includes("GV-OWR-") && reportConstantsV03413.includes("GV-MWR-") && reportConstantsV03413.includes("padStart(3, \"0\")"), "v0.34.13 centralises Opening/Monthly Wealth Review types, report codes and padded immutable version IDs");
 assert(reportFormV03413.includes("shouldCreateOpeningReview") && reportFormV03413.includes("Opening Wealth Review has been selected automatically") && reportServiceV03413.includes("The first investor-facing GrowVest report must be an Opening Wealth Review") && reportPublishRouteV03413.includes("Publish the Opening Wealth Review before publishing a Monthly Wealth Review"), "v0.34.13 Opening Wealth Review baseline remains mandatory before first-time investor publication");
 assert(portfolioGoalAllocationV03413.includes("derivePortfolioGoalProgress") && portfolioGoalAllocationV03413.includes("general wealth corpus creation") && portfolioGoalAllocationV03413.includes("SIP Running") && portfolioGoalAllocationV03413.includes("Invested / No Active SIP"), "v0.34.13 derives goal corpus, Active SIP and status from Portfolio Master while reconciling General Wealth aliases");
@@ -852,8 +852,8 @@ const navigationV03414 = read("src/lib/constants/navigation.js");
 const reportBrandingV03414 = read("src/lib/utils/reportBranding.js");
 const signatureDocV03414 = read("docs/GROWVEST_SIGNATURE_INVESTOR_REPORT_v0.34.14.md");
 const signatureManifestV03414 = read("docs/GROWVEST_SIGNATURE_INVESTOR_REPORT_CODE_MANIFEST_v0.34.14.md");
-assert(packageJson.version === "0.34.32" && packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "v0.34.15 package metadata is current");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.15 installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.15 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.15 installed Investor PWA caches are current");
 assert(signatureTemplateV03414.includes('id: "growvest-signature"') && signatureTemplateV03414.includes('primaryColor: "#1F4ED8"') && signatureTemplateV03414.includes('secondaryColor: "#0CC0DF"') && signatureTemplateV03414.includes('darkColor: "#0B0B0F"') && signatureTemplateV03414.includes('DEFAULT_REPORT_TEMPLATE_ID = "growvest-signature"'), "v0.34.15 GrowVest Signature is the default template with the approved official palette");
 assert(signatureTemplateV03414.includes("getSystemReportTemplate(template?.id || template?.slug || DEFAULT_REPORT_TEMPLATE_ID)") && signatureTemplateV03414.includes('label: "GrowVest View"') && signatureTemplateV03414.includes('label: "Your Next Steps"'), "v0.34.15 preserves historical template snapshots and uses launch-approved investor-facing section naming");
 assert(signatureClientV03414.includes("OPENING") && signatureClientV03414.includes("Wealth at a Glance") && signatureClientV03414.includes("Asset Allocation") && signatureClientV03414.includes("Bucket List & Wealth Goals") && signatureClientV03414.includes("Investment Portfolio") && signatureClientV03414.includes("Protection Overview") && signatureClientV03414.includes("GrowVest View") && signatureClientV03414.includes("Your Next Steps"), "v0.34.15 browser/A4 Signature renderer contains the approved report architecture");
@@ -884,8 +884,8 @@ const visualLockServerV03415 = read("src/lib/server/reportPdf.js");
 const visualLockServiceV03415 = read("src/services/reportService.js");
 const visualLockDocV03415 = read("docs/GROWVEST_SIGNATURE_RENDER_LOCK_HOTFIX_v0.34.15.md");
 const visualLockManifestV03415 = read("docs/GROWVEST_SIGNATURE_RENDER_LOCK_HOTFIX_CODE_MANIFEST_v0.34.15.md");
-assert(packageJson.version === "0.34.32" && packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "v0.34.15 package metadata is current");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.15 PWA cache refresh is current");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.15 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.15 PWA cache refresh is current");
 assert(visualLockTemplatesV03415.includes('LOCKED_REPORT_VISUAL_VERSION = "growvest-signature-2026-09"') && visualLockTemplatesV03415.includes("shouldUseGrowVestSignatureDesign") && visualLockTemplatesV03415.includes("!hasPublishedReportSnapshot(report)"), "v0.34.15 has a durable launch visual-lock decision with historical-published preservation");
 assert(visualLockReportV03415.includes("visualDesignVersion: LOCKED_REPORT_VISUAL_VERSION") && visualLockServiceV03415.includes("visualDesignVersion: existing.visualDesignVersion"), "v0.34.15 new/unpublished reports persist the locked visual version");
 assert(visualLockFormV03415.includes("migrated to the GrowVest Signature renderer") && visualLockFormV03415.includes("reportTemplates.filter((item) => item.id === DEFAULT_REPORT_TEMPLATE_ID)") && visualLockStepV03415.includes("GrowVest Signature design is locked for investor launch"), "v0.34.15 Report Form migrates legacy drafts and prevents launch users from selecting a legacy visual");
@@ -910,8 +910,8 @@ const momPdfV03416 = read("src/lib/server/momPdf.js");
 const pdfShellV03416 = read("src/lib/server/pdfDocumentShell.js");
 const stabilityDocV03416 = read("docs/PDF_ENCODING_OPENING_VERIFICATION_STABILITY_v0.34.16.md");
 const stabilityManifestV03416 = read("docs/PDF_ENCODING_OPENING_VERIFICATION_STABILITY_CODE_MANIFEST_v0.34.16.md");
-assert(packageJson.version === "0.34.32" && packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "v0.34.16 package metadata is current");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.16 installed Investor PWA caches are current");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.16 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.16 installed Investor PWA caches are current");
 assert(read("src/lib/server/reportServer.js").includes('pdfRendererVersion: "2.4.10"'), "v0.34.16 secure PDF renderer version is 2.4.5");
 assert(pdfTextSanitizerV03416.includes("pdfSafeLine") && pdfTextSanitizerV03416.includes("pdfSafeMultiline") && pdfTextSanitizerV03416.includes("\\x00-\\x1F") && pdfTextSanitizerV03416.includes("\\x7F-\\x9F"), "v0.34.16 native PDF text boundary strips C0/C1 controls from direct WinAnsi text");
 assert(pdfShellV03416.includes("return pdfSafeLine(value)") && reportPdfV03416.includes("pdfSafeMultiline(text).split(/\\n/)") && momPdfV03416.includes('pdfSafeMultiline(value || "")'), "v0.34.16 direct PDF text is single-line safe while wrapped Wealth Review/MOM paragraphs preserve deliberate line breaks");
@@ -930,8 +930,8 @@ const designPolishServerV03417 = read("src/lib/server/reportPdf.js");
 const designPolishCommentaryV03417 = read("src/services/marketCommentaryService.js");
 const designPolishDocV03417 = read("docs/GROWVEST_REPORT_DESIGN_POLISH_v0.34.17.md");
 const designPolishManifestV03417 = read("docs/GROWVEST_REPORT_DESIGN_POLISH_CODE_MANIFEST_v0.34.17.md");
-assert(packageJson.version === "0.34.32" && packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "v0.34.17 package metadata is current");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1") && serviceWorker.includes("/brand/growvest-cover-wash.png"), "v0.34.17 installed PWA cache and cover-wash asset are current");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.17 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1") && serviceWorker.includes("/brand/growvest-cover-wash.png"), "v0.34.17 installed PWA cache and cover-wash asset are current");
 assert(fs.existsSync(path.join(root, "public/brand/growvest-cover-wash.png")) && fs.statSync(path.join(root, "public/brand/growvest-wealth-review-cover-v03424.jpg")).size > 700000 && designPolishCssV03417.includes("width: 66%") && designPolishServerV03417.includes("coverWash"), "v0.34.17 cover uses high-resolution proportional artwork and a smooth wash in both renderers");
 assert(designPolishServerV03417.includes("RUPEE_GLYPH_PATH") && designPolishServerV03417.includes("drawSignatureMoney") && designPolishServerV03417.includes("page.drawSvgPath(RUPEE_GLYPH_PATH"), "v0.34.17 secure Signature PDF renders a vector Indian Rupee glyph without WinAnsi downgrade");
 assert(designPolishClientV03417.includes("targetAllocationConfigured") && designPolishClientV03417.includes('signature-not-set">Not set') && designPolishServerV03417.includes('targetAllocationConfigured ? `${target.toFixed(1)}%` : "Not set"'), "v0.34.17 unset target allocation is presented as Not set rather than false 0% variance");
@@ -950,8 +950,8 @@ const visualParityCssV03418 = read("src/app/globals.css");
 const visualParityServerV03418 = read("src/lib/server/reportPdf.js");
 const visualParityDocV03418 = read("docs/GROWVEST_REPORT_VISUAL_PARITY_v0.34.18.md");
 const visualParityManifestV03418 = read("docs/GROWVEST_REPORT_VISUAL_PARITY_CODE_MANIFEST_v0.34.18.md");
-assert(packageJson.version === "0.34.32" && packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "v0.34.19 package metadata is current");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.19 installed PWA caches are current");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.19 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.19 installed PWA caches are current");
 assert(visualParityClientV03418.includes("Binoculars") && visualParityClientV03418.includes("CalendarClock") && visualParityClientV03418.includes("brandIconWhite") && visualParityClientV03418.includes("<Cog"), "v0.34.19 browser Signature report restores locked-reference icon roles");
 assert(visualParityClientV03418.includes("signature-numeric-table") && visualParityCssV03418.includes("font-variant-numeric: tabular-nums lining-nums") && visualParityCssV03418.includes("text-align: right !important"), "v0.34.19 browser financial numbers use tabular/right-aligned grids");
 assert(visualParityServerV03418.includes("function drawSignatureVectorIcon") && visualParityServerV03418.includes('case "binoculars"') && visualParityServerV03418.includes('case "compass"') && visualParityServerV03418.includes('case "gear"') && visualParityServerV03418.includes('case "target"'), "v0.34.19 secure PDF has native vector icons for the locked reference");
@@ -967,8 +967,8 @@ const responsiveInvestorDetailV03419 = read("src/components/reports/InvestorRepo
 const responsiveCssV03419 = read("src/app/globals.css");
 const responsiveDocV03419 = read("docs/RESPONSIVE_EXACT_REPORT_VIEWER_v0.34.19.md");
 const responsiveManifestV03419 = read("docs/RESPONSIVE_EXACT_REPORT_VIEWER_CODE_MANIFEST_v0.34.19.md");
-assert(packageJson.version === "0.34.32" && packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "v0.34.19 package metadata is current");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.19 installed PWA caches are current");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.19 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.19 installed PWA caches are current");
 assert(responsivePreviewV03419.includes("ResizeObserver") && responsivePreviewV03419.includes("BASE_REPORT_WIDTH = 842") && responsivePreviewV03419.includes("style={{ zoom: activeZoom }}") && responsivePreviewV03419.includes("Fit"), "v0.34.19 responsive viewer scales the fixed A4 design instead of reflowing it");
 assert(responsivePrintClientV03419.includes("ResponsiveReportPreview") && responsivePrintClientV03419.includes("Exact Wealth Review") && responsivePrintClientV03419.includes("hidden sm:inline"), "v0.34.19 report preview toolbar is compact and mobile safe");
 assert(responsiveInvestorDetailV03419.includes("View exact report design") && responsiveInvestorDetailV03419.includes("View interactive review"), "v0.34.19 Investor mobile report offers both canonical exact-design pages and the interactive review");
@@ -980,8 +980,8 @@ assert(responsiveDocV03419.includes("does **not** reflow") && responsiveManifest
 const rupeeGlyphPdfV03420 = read("src/lib/server/reportPdf.js");
 const rupeeGlyphDocV03420 = read("docs/RUPEE_GLYPH_ORIENTATION_HOTFIX_v0.34.20.md");
 const rupeeGlyphManifestV03420 = read("docs/RUPEE_GLYPH_ORIENTATION_HOTFIX_CODE_MANIFEST_v0.34.20.md");
-assert(packageJson.version === "0.34.32" && packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "v0.34.20 package metadata is current");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.20 installed PWA caches are current");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.20 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.20 installed PWA caches are current");
 assert(rupeeGlyphPdfV03420.includes("M106 123 161 0H1199") && !rupeeGlyphPdfV03420.includes("M106 1370 161 1493H1199"), "v0.34.20 secure PDF uses the upright vertically-corrected rupee vector path");
 assert(rupeeGlyphPdfV03420.includes("y: y + fitted * 0.8"), "v0.34.20 upright rupee glyph is aligned to the financial-number baseline");
 assert(read("src/lib/server/reportServer.js").includes('pdfRendererVersion: "2.4.10"'), "v0.34.20 secure PDF renderer version is 2.4.7");
@@ -998,8 +998,8 @@ const reportCssV03421 = read("src/app/globals.css");
 const appGuideDocV03421 = read("docs/INVESTOR_APP_GUIDE_TOUR_v0.34.21.md");
 const reportReviewDocV03421 = read("docs/REPORT_DESIGN_VERIFICATION_v0.34.21.md");
 const releaseValidationV03421 = read("RELEASE_VALIDATION_v0.34.21.md");
-assert(packageJson.version === "0.34.32" && packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "v0.34.21 package metadata is current");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.21 installed Investor PWA caches refresh for the App Guide release");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.21 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.21 installed Investor PWA caches refresh for the App Guide release");
 assert(appGuideV03421.includes("GUIDE_STEPS") && appGuideV03421.includes("data-investor-tour") && appGuideV03421.includes("localStorage") && appGuideV03421.includes("max-width: 767px"), "v0.34.21 phone App Guide has first-run persistence and real navigation spotlight targeting");
 assert(appGuideV03421.includes("Home keeps the important things close") && appGuideV03421.includes("Portfolio shows what you own") && appGuideV03421.includes("GrowVest opens everything else") && appGuideV03421.includes("Bucket List connects wealth to life") && appGuideV03421.includes("Reports keep your reviews together"), "v0.34.21 App Guide covers the five locked mobile navigation areas");
 assert(investorShellV03421.includes("InvestorAppGuideTour") && investorShellV03421.includes("OPEN_GUIDE_EVENT") && investorShellV03421.includes(">App guide<") && investorShellV03421.includes('data-investor-tour="growvest"'), "v0.34.21 Investor Shell mounts the guide and exposes a permanent replay entry");
@@ -1016,8 +1016,8 @@ const reportVisualServerV03422 = read("src/lib/server/reportPdf.js");
 const reportVisualDocV03422 = read("docs/REPORT_VISUAL_RECONCILIATION_v0.34.22.md");
 const reportVisualManifestV03422 = read("docs/REPORT_VISUAL_RECONCILIATION_CODE_MANIFEST_v0.34.22.md");
 const releaseValidationV03422 = read("RELEASE_VALIDATION_v0.34.22.md");
-assert(packageJson.version === "0.34.32" && packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "v0.34.22 package metadata is current");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.22 installed Investor PWA caches refresh for the report reconciliation release");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.22 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.22 installed Investor PWA caches refresh for the report reconciliation release");
 assert(reportVisualServerV03422.includes("const steps = 420") && reportVisualServerV03422.includes("radialThickness") && reportVisualServerV03422.includes("visually solid ring"), "v0.34.22 secure PDF allocation donut removes visible radial striping");
 assert(reportVisualCssV03422.includes("min-height: 82px") && reportVisualCssV03422.includes("border-radius: 50%") && reportVisualServerV03422.includes("height: 84"), "v0.34.22 Starting Point treatment is compact and uses a clean outline icon treatment in both renderers");
 assert(!reportVisualClientV03422.includes("signature-cover-confidence") && !reportVisualServerV03422.includes("A more confident\\ntomorrow, together."), "v0.34.22 removes the incomplete/redundant cover confidence fragment");
@@ -1033,8 +1033,8 @@ const reportAlignServerV03423 = read("src/lib/server/reportPdf.js");
 const reportAlignDocV03423 = read("docs/REPORT_ALIGNMENT_COVER_CLARITY_v0.34.23.md");
 const reportAlignManifestV03423 = read("docs/REPORT_ALIGNMENT_COVER_CLARITY_CODE_MANIFEST_v0.34.23.md");
 const releaseValidationV03423 = read("RELEASE_VALIDATION_v0.34.23.md");
-assert(packageJson.version === "0.34.32" && packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "v0.34.23 package metadata is current");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.23 installed Investor PWA caches refresh for report alignment release");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.23 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.23 installed Investor PWA caches refresh for report alignment release");
 assert(reportAlignServerV03423.includes("drawSignatureCallout") && reportAlignServerV03423.includes("y: isOpening ? 216 : 94") && reportAlignServerV03423.includes("textInset: 58") && reportAlignServerV03423.includes("drawSignatureClosingBanner"), "v0.34.23 secure PDF callout geometry is compact and consistently aligned");
 assert(reportAlignServerV03423.includes("drawSignatureImageBadge") && reportAlignServerV03423.includes("drawSignatureCallout"), "v0.34.23 leaf badge icon is re-centred as an outline treatment");
 assert(reportAlignCssV03423.includes("min-height: 82px") && reportAlignCssV03423.includes("min-height: 60px") && reportAlignCssV03423.includes("min-height: 62px"), "v0.34.23 browser exact-design callouts mirror the tighter secure PDF rhythm");
@@ -1049,8 +1049,8 @@ const reportRootCssV03424 = read("src/app/globals.css");
 const reportRootDocV03424 = read("docs/REPORT_RENDERER_ROOT_RECONCILIATION_v0.34.24.md");
 const reportRootManifestV03424 = read("docs/REPORT_RENDERER_ROOT_RECONCILIATION_CODE_MANIFEST_v0.34.24.md");
 const releaseValidationV03424 = read("RELEASE_VALIDATION_v0.34.24.md");
-assert(packageJson.version === "0.34.32" && packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "v0.34.24 package metadata is current");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.24 installed Investor PWA caches refresh for renderer root reconciliation");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.24 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.24 installed Investor PWA caches refresh for renderer root reconciliation");
 assert(reportRootServerV03424.includes("function drawSignatureCallout") && reportRootServerV03424.includes("drawSignatureClosingBanner") && reportRootServerV03424.includes("iconImage: report.__brandingAssets?.icon"), "v0.34.24 secure PDF uses shared callout geometry and official brand artwork");
 assert(reportRootServerV03424.includes("/brand/growvest-wealth-review-cover-v03424.jpg") && reportRootClientV03424.includes("/brand/growvest-wealth-review-cover-v03424.jpg") && fs.statSync(path.join(root, "public/brand/growvest-wealth-review-cover-v03424.jpg")).size > 3000000, "v0.34.24 browser and secure PDF use the new versioned high-detail cover asset");
 assert(fs.existsSync(path.join(root, "public/brand/growvest-icon-blue-v03424.png")) && fs.existsSync(path.join(root, "public/brand/growvest-icon-white-v03424.png")) && reportRootClientV03424.includes("brandIconWhite"), "v0.34.24 official GrowVest icon PNGs are packaged for aligned callouts");
@@ -1068,8 +1068,8 @@ const tradingAccountsV03425 = read("src/app/api/portfolio/trading/accounts/route
 const tradingCentreV03425 = read("src/components/portfolio/TradingAccountCentre.js");
 const manualTradingV03425 = read("src/app/api/portfolio/trading/manual/route.js");
 const releaseValidationV03425 = read("RELEASE_VALIDATION_v0.34.25.md");
-assert(packageJson.version === "0.34.32" && packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "v0.34.25 package metadata is current");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.25 Investor PWA caches refresh for Daily Trading/F&O release");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.25 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.25 Investor PWA caches refresh for Daily Trading/F&O release");
 assert(portfolioConstantsV03425.includes('GROWVEST_TRADING: "growvest_trading"') && portfolioConstantsV03425.includes('FUTURE: "future"') && portfolioConstantsV03425.includes('OPTION_CALL: "option_call"') && portfolioConstantsV03425.includes('OPTION_PUT: "option_put"'), "v0.34.25 portfolio constants define the standard trading source and F&O instrument types");
 assert(tradingParserV03425.includes("function parseGrowVestTrading") && tradingParserV03425.includes("only CLOSED trades are supported") && tradingParserV03425.includes("Resolve the Daily Trading row warnings before importing") && tradingParserV03425.includes('positionSide === "short" ? entryPrice - exitPrice : exitPrice - entryPrice'), "v0.34.25 parser validates closed LONG/SHORT trading rows and calculates realised P&L");
 assert(importPreviewV03425.includes("GROWVEST_TRADING") && importCommitV03425.includes("commitGrowVestTradingFile") && importCommitV03425.includes('collection("tradingTransactions")') && importCommitV03425.includes('source: "mixed_trading"'), "v0.34.25 preview/commit pipeline stores trading separately and rebuilds mixed trading monthly summaries");
@@ -1084,10 +1084,10 @@ const simpleManualPanelV03426 = read("src/components/portfolio/ManualPortfolioEx
 const portfolioServerV03426 = read("src/lib/server/portfolioServer.js");
 const releaseValidationV03426 = read("RELEASE_VALIDATION_v0.34.26.md");
 const manualRulesDocV03426 = read("docs/MANUAL_INVESTMENT_FOLIO_DATE_RULES_v0.34.26.md");
-assert(packageJson.version === "0.34.32" && packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "v0.34.26 package metadata is current");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.26 installed PWA caches are current");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.26 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.26 installed PWA caches are current");
 assert(portfolioServerV03426.includes("isin || symbol || instrumentName") && portfolioServerV03426.includes('folioNo || ""'), "v0.34.26 simple Manual holding identity continues to include folio/account number");
-assert(simpleManualImportV03426.includes('valuationDateInput: excelDate') && simpleManualImportV03426.includes('valuationDate: ""') && simpleManualImportV03426.includes('valuationDateBasis: "manual_import_date"') && simpleManualImportV03426.includes('manualImportDate: importDate'), "v0.34.26 simple Manual Excel Valuation Date is ignored and import date becomes the effective date");
+assert(simpleManualImportV03426.includes('valuationDateInput: excelDate') && simpleManualImportV03426.includes('valuationDate: ""') && simpleManualImportV03426.includes('valuationDate: row.valuationDateInput || importDate') && simpleManualImportV03426.includes('manualImportDate: importDate'), "Manual Excel preserves an actual supplied valuation date; a missing date remains explicitly upload-based");
 assert(simpleManualImportV03426.includes("const isNewInvestment = !existing") && simpleManualImportV03426.includes("effectiveInvestmentDate") && simpleManualImportV03426.includes("isNewInvestment ? importDate"), "v0.34.26 newly detected folios receive the import date when Investment Date is blank");
 assert(simpleManualImportV03426.includes("existing?.investmentDate") && simpleManualImportV03426.includes("existing?.purchaseDate") && simpleManualImportV03426.includes("createdAt: existing?.createdAt || now"), "v0.34.26 existing simple Manual holdings preserve original investment and creation dates");
 assert(simpleManualPanelV03426.includes("Valuation Date may be left blank for now") && simpleManualPanelV03426.includes("new Folio / Account / Policy No. is treated as a new investment"), "v0.34.26 Manual Investment UI explains the valuation-date and folio rules");
@@ -1102,8 +1102,8 @@ const portfolioServerV03427 = read("src/lib/server/portfolioServer.js");
 const portfolioIntelligenceV03427 = read("src/lib/server/portfolioIntelligence.js");
 const releaseValidationV03427 = read("RELEASE_VALIDATION_v0.34.27.md");
 const manualPmsFreshnessDocV03427 = read("docs/MANUAL_PMS_REPORT_FRESHNESS_v0.34.27.md");
-assert(packageJson.version === "0.34.32" && packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "v0.34.27 package metadata is current");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.27 installed PWA caches are current");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.27 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.27 installed PWA caches are current");
 assert(portfolioFreshnessV03427.includes("manualPortfolioRefreshDate") && portfolioFreshnessV03427.includes("dateKeyFromManualBulkImportId") && portfolioFreshnessV03427.includes('freshnessBasis: manualManaged ? "manual_import" : "valuation_date"'), "v0.34.27 shared freshness helper recognises Manual PMS import dates and legacy batch IDs");
 assert(manualPmsWorkbookV03427.includes("manualImportDate: importDate") && manualPmsWorkbookV03427.includes("manualSourceRefreshDate: importDate") && manualPmsWorkbookV03427.includes('freshnessDateBasis: "manual_workbook_import"'), "v0.34.27 Manual PMS imports persist an explicit source-refresh date");
 assert(portfolioIntelligenceV03427.includes("buildPortfolioSourceFreshness") && portfolioServerV03427.includes("manualBulkImportId: position.manualBulkImportId"), "v0.34.27 Portfolio Intelligence and snapshots preserve Manual freshness metadata");
@@ -1119,8 +1119,8 @@ const publishRouteV03428 = read("src/app/api/reports/[reportId]/publish/route.js
 const reportSourceRouteV03428 = read("src/app/api/portfolio/report-source/route.js");
 const releaseValidationV03428 = read("RELEASE_VALIDATION_v0.34.28.md");
 const reportPeriodDocV03428 = read("docs/REPORT_PERIOD_OPENING_FLOW_v0.34.28.md");
-assert(packageJson.version === "0.34.32" && packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "v0.34.28 package metadata is current");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.28 installed PWA caches are current");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.28 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.28 installed PWA caches are current");
 assert(reportPeriodRulesV03428.includes("previousCompletedMonthPeriod") && reportPeriodRulesV03428.includes("monthlyDate > openingDate") && reportPeriodRulesV03428.includes("sameMonthOpeningBaselineDate"), "v0.34.28 central period rules support previous-month reporting and later same-month Monthly cutoff");
 assert(reportSourceRouteV03428.includes("sameMonthOpeningBaselineDate") && reportSourceRouteV03428.includes("openingBaseline?.sourceSnapshotId") && reportSourceRouteV03428.includes("Opening 11 Sep -> Monthly 30 Sep"), "v0.34.28 same-month Monthly performance uses the verified Opening snapshot as its baseline");
 assert(reportFormV03428.includes("const selectedPeriod =") && reportFormV03428.includes("statementDate: getReportPeriodCutoffDate(form.reportYear, form.reportMonth)") && reportFormV03428.includes("openingPublicationPending"), "v0.34.28 Report Form preserves the selected business period and separates Opening publication from period validity");
@@ -1135,8 +1135,8 @@ const fundbazaarCommitV03429 = read("src/app/api/portfolio/imports/fundbazaar/co
 const portfolioImportCentreV03429 = read("src/components/portfolio/PortfolioImportCentre.js");
 const releaseValidationV03429 = read("RELEASE_VALIDATION_v0.34.29.md");
 const fundbazaarStabilityDocV03429 = read("docs/FUNDBAZAAR_DAILY_IMPORT_STABILITY_v0.34.29.md");
-assert(packageJson.version === "0.34.32" && packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "v0.34.29 package metadata is current");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.29 installed PWA caches refresh for Fundbazaar import stability");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.29 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.29 installed PWA caches refresh for Fundbazaar import stability");
 assert(fundbazaarCommitV03429.includes("postCommitWarnings") && fundbazaarCommitV03429.includes("snapshot_refresh_failed") && fundbazaarCommitV03429.includes("coverage_refresh_failed"), "v0.34.29 keeps committed Fundbazaar holdings from being converted into an opaque 500 by derived snapshot/coverage refresh failures");
 assert(fundbazaarCommitV03429.includes("failureStage") && fundbazaarCommitV03429.includes("Daily portfolio update failed during") && fundbazaarCommitV03429.includes("Portfolio file commit failed"), "v0.34.29 persists and returns actionable commit-stage diagnostics");
 assert(fundbazaarCommitV03429.includes("safeFiniteNumber") && fundbazaarCommitV03429.includes('productType: safeText(holding.productType, "mutual_fund")') && fundbazaarCommitV03429.includes("missing its file fingerprint"), "v0.34.29 hardens Fundbazaar payload values and validates stale preview fingerprints before commit");
@@ -1144,24 +1144,24 @@ assert(fundbazaarCommitV03429.includes('await fileRef.set({ status: "failed"') &
 assert(releaseValidationV03429.includes("Fundbazaar") && fundbazaarStabilityDocV03429.includes("500"), "v0.34.29 Fundbazaar stability documentation and validation are packaged");
 
 
-// v0.34.32 multi-file Daily Portfolio Update hardening.
+// v0.34.34 multi-file Daily Portfolio Update hardening.
 const portfolioPreviewV03430 = read("src/app/api/portfolio/imports/preview/route.js");
 const portfolioCommitV03430 = read("src/app/api/portfolio/imports/fundbazaar/commit/route.js");
 const portfolioServiceV03430 = read("src/services/portfolioService.js");
 const portfolioImportCentreV03430 = read("src/components/portfolio/PortfolioImportCentre.js");
-const releaseValidationV03430 = read("RELEASE_VALIDATION_v0.34.32.md");
-const bulkUploadDocV03430 = read("docs/DAILY_PORTFOLIO_MULTI_FILE_STABILITY_v0.34.32.md");
-assert(packageJson.version === "0.34.32" && packageLock.version === "0.34.32" && packageLock.packages?.[""]?.version === "0.34.32", "v0.34.32 package metadata is current");
-assert(serviceWorker.includes("growvest-investor-v0.34.32-pmswithdrawal1") && serviceWorker.includes("growvest-pages-v0.34.32-pmswithdrawal1"), "v0.34.32 installed PWA caches refresh for multi-file Daily Portfolio Update");
-assert(portfolioPreviewV03430.includes('formData.get("batchId")') && portfolioPreviewV03430.includes("previewChunkCount") && portfolioPreviewV03430.includes("uploadOffset") && portfolioPreviewV03430.includes("finalizeBatch"), "v0.34.32 analyses large multi-file selections one physical file per request while preserving one preview batch");
-assert(portfolioServiceV03430.includes("uploadOffset") && portfolioServiceV03430.includes("fileIds") && portfolioServiceV03430.includes("finalizeBatch"), "v0.34.32 portfolio client APIs carry chunked preview/commit controls");
-assert(portfolioImportCentreV03430.includes("Analysing ${previewProgress.current}/${previewProgress.total}") && portfolioImportCentreV03430.includes("Updating ${commitProgress.current}/${commitProgress.total}") && portfolioImportCentreV03430.includes("one physical file per request") && portfolioImportCentreV03430.includes("one analysed report per request"), "v0.34.32 UI processes multi-file preview and commit sequentially with visible progress");
-assert(portfolioCommitV03430.includes("let writer = null") && portfolioCommitV03430.includes("requestedFileIds") && portfolioCommitV03430.includes('commitStage = "batch_progress"') && portfolioCommitV03430.includes('commitStage = "batch_aggregate"'), "v0.34.32 isolates every committed file with its own BulkWriter and aggregates the final batch after sequential requests");
-assert(releaseValidationV03430.includes("multiple") && bulkUploadDocV03430.includes("one file per request"), "v0.34.32 multi-file stability documentation and validation are packaged");
+const releaseValidationV03430 = read("RELEASE_VALIDATION_v0.34.30.md");
+const bulkUploadDocV03430 = read("docs/DAILY_PORTFOLIO_MULTI_FILE_STABILITY_v0.34.30.md");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.34 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.34 installed PWA caches refresh for multi-file Daily Portfolio Update");
+assert(portfolioPreviewV03430.includes('formData.get("batchId")') && portfolioPreviewV03430.includes("previewChunkCount") && portfolioPreviewV03430.includes("uploadOffset") && portfolioPreviewV03430.includes("finalizeBatch"), "v0.34.34 analyses large multi-file selections one physical file per request while preserving one preview batch");
+assert(portfolioServiceV03430.includes("uploadOffset") && portfolioServiceV03430.includes("fileIds") && portfolioServiceV03430.includes("finalizeBatch"), "v0.34.34 portfolio client APIs carry chunked preview/commit controls");
+assert(portfolioImportCentreV03430.includes("Analysing ${previewProgress.current}/${previewProgress.total}") && portfolioImportCentreV03430.includes("Updating ${commitProgress.current}/${commitProgress.total}") && portfolioImportCentreV03430.includes("one physical file per request") && portfolioImportCentreV03430.includes("one analysed report per request"), "v0.34.34 UI processes multi-file preview and commit sequentially with visible progress");
+assert(portfolioCommitV03430.includes("let writer = null") && portfolioCommitV03430.includes("requestedFileIds") && portfolioCommitV03430.includes('commitStage = "batch_progress"') && portfolioCommitV03430.includes('commitStage = "batch_aggregate"'), "v0.34.34 isolates every committed file with its own BulkWriter and aggregates the final batch after sequential requests");
+assert(releaseValidationV03430.includes("multiple") && bulkUploadDocV03430.includes("one file per request"), "v0.34.34 multi-file stability documentation and validation are packaged");
 
 
 
-// v0.34.32 dashboard/SIP/monthly-progress reconciliation
+// v0.34.34 dashboard/SIP/monthly-progress reconciliation
 const fundbazaarSipV03431 = read("src/lib/fundbazaarSip.js");
 const monthlyProgressV03431 = read("src/lib/portfolioMonthlyProgress.js");
 const portfolioPanelV03431 = read("src/components/portfolio/InvestorPortfolioPanel.js");
@@ -1171,14 +1171,40 @@ assert(monthlyProgressV03431.includes("buildMonthlyPortfolioProgress") && monthl
 assert(portfolioPanelV03431.includes("Month-by-month wealth movement") && portfolioPanelV03431.includes("monthlyProgress") && portfolioPanelV03431.includes("MTD"), "Investor Portfolio shows month-end history plus current-month MTD progress");
 assert(investorDetailV03431.includes("livePortfolioPositions.reduce") && investorDetailV03431.includes("latestPortfolioDate"), "Investor summary Current Portfolio and Monthly SIP use the live Portfolio Master before stored profile summary fields");
 
-// v0.34.32 PMS withdrawal support.
+// v0.34.34 PMS withdrawal support.
 const pmsWithdrawalRulesV03432 = read("src/lib/withdrawalPortfolio.js");
 const pmsWithdrawalDocV03432 = read("docs/PMS_WITHDRAWAL_SUPPORT_v0.34.32.md");
-assert(pmsWithdrawalRulesV03432.includes('const PMS = "pms"') && pmsWithdrawalRulesV03432.includes("STRUCTURED_WITHDRAWAL_PRODUCT_TYPES") && pmsWithdrawalRulesV03432.includes("supportsWithdrawalSipInstruction"), "v0.34.32 structured withdrawal rules include PMS while retaining product-aware SIP behavior");
-assert(withdrawalCashNeedsPanel.includes("No Mutual Funds or PMS holdings mapped to this Bucket List") && withdrawalCashNeedsPanel.includes("PMS withdrawal") && withdrawalCashNeedsPanel.includes("Amount-based withdrawal"), "v0.34.32 withdrawal planner exposes PMS holdings and amount-based PMS instructions");
-assert(actionServerForRequests.includes("Structured withdrawals support Mutual Fund and PMS holdings") && actionServerForRequests.includes('"not_applicable"') && actionServerForRequests.includes("productLabel: withdrawalProductLabel(position)"), "v0.34.32 server validation persists PMS withdrawal identity without Mutual Fund SIP instructions");
-assert(withdrawalCompletionRoute.includes("Automatic withdrawal completion supports Mutual Fund and PMS positions") && withdrawalCompletionRoute.includes("const sipFields = supportsSip") && withdrawalCompletionRoute.includes("isPms && !(currentUnits > 0 && actualUnits > 0)"), "v0.34.32 completion handles unitless PMS amount withdrawals without overwriting PMS SIP fields");
-assert(monthlyWealthReport.includes('" · PMS"') && pmsWithdrawalDocV03432.includes("amount-based") && releaseValidationV03430.includes("PMS"), "v0.34.32 report presentation, documentation and validation include PMS withdrawals");
+assert(pmsWithdrawalRulesV03432.includes('const PMS = "pms"') && pmsWithdrawalRulesV03432.includes("STRUCTURED_WITHDRAWAL_PRODUCT_TYPES") && pmsWithdrawalRulesV03432.includes("supportsWithdrawalSipInstruction"), "v0.34.34 structured withdrawal rules include PMS while retaining product-aware SIP behavior");
+assert(withdrawalCashNeedsPanel.includes("No Mutual Funds or PMS holdings mapped to this Bucket List") && withdrawalCashNeedsPanel.includes("PMS withdrawal") && withdrawalCashNeedsPanel.includes("Amount-based withdrawal"), "v0.34.34 withdrawal planner exposes PMS holdings and amount-based PMS instructions");
+assert(actionServerForRequests.includes("Structured withdrawals support Mutual Fund and PMS holdings") && actionServerForRequests.includes('"not_applicable"') && actionServerForRequests.includes("productLabel: withdrawalProductLabel(position)"), "v0.34.34 server validation persists PMS withdrawal identity without Mutual Fund SIP instructions");
+assert(withdrawalCompletionRoute.includes("Automatic withdrawal completion supports Mutual Fund and PMS positions") && withdrawalCompletionRoute.includes("const sipFields = supportsSip") && withdrawalCompletionRoute.includes("isPms && !(currentUnits > 0 && actualUnits > 0)"), "v0.34.34 completion handles unitless PMS amount withdrawals without overwriting PMS SIP fields");
+const releaseValidationV03432 = read("RELEASE_VALIDATION_v0.34.32.md");
+assert(monthlyWealthReport.includes('" · PMS"') && pmsWithdrawalDocV03432.includes("amount-based") && releaseValidationV03432.includes("PMS"), "v0.34.34 report presentation, documentation and validation include PMS withdrawals");
+
+// v0.34.34 Monthly Wealth Review continuity and snapshot-revision hardening.
+const monthlyContinuityDocV03433 = read("docs/MONTHLY_WEALTH_REVIEW_CONTINUITY_v0.34.34.md");
+const monthlyContinuityValidationV03433 = read("RELEASE_VALIDATION_v0.34.34.md");
+const snapshotSelectionV03433 = read("src/lib/portfolioSnapshotSelection.js");
+assert(packageJson.version === "0.34.35" && packageLock.version === "0.34.35" && packageLock.packages?.[""]?.version === "0.34.35", "v0.34.34 package metadata is current");
+assert(serviceWorker.includes("growvest-investor-v0.34.35-reconcileclient1") && serviceWorker.includes("growvest-pages-v0.34.35-reconcileclient1"), "v0.34.34 installed PWA caches refresh for monthly-review continuity");
+assert(monthlyContinuityDocV03433.includes("previous completed Monthly Wealth Review") && monthlyContinuityDocV03433.includes("snapshotVersion") && monthlyContinuityValidationV03433.includes("Same-date snapshot revisions"), "v0.34.34 monthly-review continuity documentation and validation are packaged");
+assert(snapshotSelectionV03433.includes("snapshotVersion") && snapshotSelectionV03433.includes("updatedAt") && portfolioReportSourceRoute.includes("previous_monthly_review"), "v0.34.34 uses revision-aware month-end snapshots and previous-review opening baselines");
+assert(reportForm.includes("sourceRevisionAdvanced") && investorPermissionReportService.includes("sourcePortfolioSnapshotVersion"), "v0.34.34 refreshes stale draft financial facts when the month-end snapshot revision advances");
+
+// v0.34.34 production reconciliation gate: stale completed reviews cannot be sent.
+const reportPortfolioGateV03434 = read("src/lib/server/reportPortfolioReconciliation.js");
+const reportGeneratePdfRouteV03434 = read("src/app/api/reports/[reportId]/generate-pdf/route.js");
+assert(reportForm.includes("financialSummaryDiffers") && reportForm.includes("Refresh Financial Data") && reportForm.includes("reopened the report for financial review"), "v0.34.34 reopens internal completed Monthly Reviews when month-end financial facts changed");
+assert(reportForm.includes("Completion is a financial control point") && reportForm.includes("getPortfolioReportSource(form.investorId, asOfDate, profile)"), "v0.34.34 re-reads Portfolio Master immediately before Monthly Review completion");
+assert(reportPortfolioGateV03434.includes("source_snapshot_revision_advanced") && reportPortfolioGateV03434.includes("newer_month_end_snapshot_available") && reportPortfolioGateV03434.includes("report_portfolio_stale"), "v0.34.34 server reconciliation gate detects stale snapshot revisions and newer month-end sources");
+assert(reportGeneratePdfRouteV03434.includes("assertReportPortfolioCurrent(report") && reportPublish.includes("assertReportPortfolioCurrent(report"), "v0.34.34 blocks stale reports before final PDF generation and Publish/send");
+assert(monthlyContinuityDocV03433.includes("reconciliation gate") && monthlyContinuityValidationV03433.includes("Completed-but-not-published"), "v0.34.34 reconciliation-gate documentation and validation are packaged");
+
+// v0.34.35 Turbopack-safe Monthly Review reconciliation client.
+const reportReconciliationClientV03435 = read("src/services/reportReconciliationService.js");
+assert(reportForm.includes('from "@/services/reportReconciliationService"') && !reportForm.includes('reconcileMonthlyReportPortfolio,\n  saveMonthlyReport\n} from "@/services/reportService"'), "v0.34.35 ReportForm uses the dedicated reconciliation client module");
+assert(reportReconciliationClientV03435.includes("export async function reconcileMonthlyReportPortfolio") && reportReconciliationClientV03435.includes('/api/reports/reconcile-portfolio') && reportReconciliationClientV03435.includes('cache: "no-store"'), "v0.34.35 reconciliation client exports the completion guard and bypasses fetch caching");
+assert(read("RELEASE_VALIDATION_v0.34.35.md").includes("Turbopack-safe") && read("README.md").includes("v0.34.35"), "v0.34.35 reconciliation-client documentation and validation are packaged");
 
 console.log(`\nGrowVest v${packageJson.version} release audit`);
 console.log("=".repeat(48));

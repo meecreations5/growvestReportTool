@@ -1,0 +1,49 @@
+{
+  "release": "v0.34.35-auto-close-bridge-2026-11-06",
+  "basis": "v0.34.35 Unified Monthly PMS Full Project",
+  "modified": [
+    "src/lib/portfolioHistoricalMonthEnd.js",
+    "src/app/api/portfolio/valuation-history/approve-month-end/route.js",
+    "src/services/portfolioService.js",
+    "src/components/reports/ReportForm.js"
+  ],
+  "added": [
+    "src/lib/amfiNavHistory.js",
+    "src/lib/server/amfiOfficialNavEvidence.js",
+    "scripts/qa/amfi-automatic-monthend-fixture.mjs"
+  ],
+  "files": {
+    "src/lib/portfolioHistoricalMonthEnd.js": {
+      "action": "modified",
+      "old_sha256": "4003e0541414dc67f27b41008f030afee66ec6a4c1a532beafb6343f980f7dce",
+      "new_sha256": "89d4e77c46bb58e724b1cb3dab0c724cf3af7958c65a6a17f27fa3984a37da7a"
+    },
+    "src/app/api/portfolio/valuation-history/approve-month-end/route.js": {
+      "action": "modified",
+      "old_sha256": "5bf4bee059a564e1ec96637b3ed9ee9221484461aa0db4e9a2f737d00e0ee6f1",
+      "new_sha256": "c8a3ae6224a26ff1a80115dbe408811ac83b2726483291831c1ea0e4d1c0cf21"
+    },
+    "src/services/portfolioService.js": {
+      "action": "modified",
+      "old_sha256": "1654b2cf0577653c2edd301e1798d1d70cfc5dd99c6f98740eb383a29111d5fa",
+      "new_sha256": "94238bf935bec9912cc0ea386b5922e4524b3f5943ac6dc9ffc02fe14dc33af1"
+    },
+    "src/components/reports/ReportForm.js": {
+      "action": "modified",
+      "old_sha256": "5c0f7cda5c03699e2dee5c94a7fe691edaa8530a9b5974c5b18fdd2be43f2e0e",
+      "new_sha256": "71a8373bb2d297fef838029acf5ea46f5e0538e91c0254c10be52f7bf287a84d"
+    },
+    "src/lib/amfiNavHistory.js": {
+      "action": "added",
+      "new_sha256": "095e0186ee1eb0725d9543f8537808f1140e1427a9dd5d6368b95c144cf087e2"
+    },
+    "src/lib/server/amfiOfficialNavEvidence.js": {
+      "action": "added",
+      "new_sha256": "9214af2076b4c55525342c828fe6cfbce1f5f1a2a37be44a5770637c7d1bb357"
+    },
+    "scripts/qa/amfi-automatic-monthend-fixture.mjs": {
+      "action": "added",
+      "new_sha256": "2a577e4eed9b1e4f2eea7bc281776f757d8d070807e8d1f2586c3dbd5373e4fa"
+    }
+  }
+}

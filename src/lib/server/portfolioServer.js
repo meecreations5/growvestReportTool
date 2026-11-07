@@ -8,6 +8,8 @@ import {
 import { stableHash } from "@/lib/server/portfolioImportParser";
 import { buildPortfolioIntelligence } from "@/lib/server/portfolioIntelligence";
 import { buildPortfolioSourceFreshness } from "@/lib/server/portfolioFreshness";
+import { loadInvestorPortfolioLedger } from "@/lib/server/portfolioHistoricalManualLedger";
+import { buildMonthlyReportingLedger } from "@/lib/portfolioMonthlyLedger";
 import {
   GENERAL_WEALTH_BUCKET_ID,
   GENERAL_WEALTH_BUCKET_NAME,
@@ -73,67 +75,14 @@ async function previousSnapshotContext(investorId, snapshotDate) {
     .get();
   const previousPositions = previousPositionsResult.docs.map((item) => ({ id: item.id, ...item.data() }));
 
-  let transactions = [];
-  try {
-    const transactionResult = await adminDb.collection("investmentTransactions")
-      .where("investorId", "==", investorId)
-      .where("transactionDate", ">", previousSnapshot.snapshotDate)
-      .where("transactionDate", "<=", snapshotDate)
-      .orderBy("transactionDate", "asc")
-      .get();
-    transactions = transactionResult.docs.map((item) => ({ id: item.id, ...item.data() }));
-  } catch (error) {
-    const fallback = await adminDb.collection("investmentTransactions").where("investorId", "==", investorId).get();
-    transactions = fallback.docs
-      .map((item) => ({ id: item.id, ...item.data() }))
-      .filter((item) => String(item.transactionDate || "") > String(previousSnapshot.snapshotDate || "") && String(item.transactionDate || "") <= String(snapshotDate || ""))
-      .sort((a, b) => String(a.transactionDate || "").localeCompare(String(b.transactionDate || "")));
-  }
-
-  // Manual Portfolio Management keeps true investor-level cash flows in its
-  // cash ledger. Feed only external contributions/withdrawals into Portfolio
-  // Intelligence so buys, sells, dividends, charges and account transfers are
-  // not double-counted as fresh money.
-  let manualCashRows = [];
-  try {
-    const cashResult = await adminDb.collection("manualPortfolioCashLedger")
-      .where("investorId", "==", investorId)
-      .where("entryDate", ">", previousSnapshot.snapshotDate)
-      .where("entryDate", "<=", snapshotDate)
-      .orderBy("entryDate", "asc")
-      .get();
-    manualCashRows = cashResult.docs.map((item) => ({ id: item.id, ...item.data() }));
-  } catch (error) {
-    const fallback = await adminDb.collection("manualPortfolioCashLedger").where("investorId", "==", investorId).get();
-    manualCashRows = fallback.docs
-      .map((item) => ({ id: item.id, ...item.data() }))
-      .filter((item) => String(item.entryDate || "") > String(previousSnapshot.snapshotDate || "") && String(item.entryDate || "") <= String(snapshotDate || ""))
-      .sort((a, b) => String(a.entryDate || "").localeCompare(String(b.entryDate || "")));
-  }
-
-  const manualCashFlows = manualCashRows.flatMap((item) => {
-    const type = String(item.entryType || "").trim().toLowerCase();
-    const amount = Math.abs(Number(item.amount || item.signedAmount || 0));
-    if (!amount) return [];
-    let cashFlowType = "";
-    if (type.includes("opening cash") || type.includes("contribution") || type.includes("investor deposit")) cashFlowType = "new_money";
-    else if (type.includes("withdrawal") || type.includes("investor withdrawal")) cashFlowType = "withdrawal";
-    else if (type.includes("transfer in") || type.includes("transfer out")) cashFlowType = "internal";
-    else return [];
-    return [{
-      id: `manual_cash_${item.id}`,
-      investorId,
-      source: PORTFOLIO_SOURCES.MANUAL,
-      manualPortfolioCashFlow: true,
-      transactionDate: item.entryDate,
-      transactionType: `Manual cash - ${item.entryType || cashFlowType}`,
-      cashFlowType,
-      amount
-    }];
-  });
-
-  transactions = [...transactions, ...manualCashFlows]
-    .sort((a, b) => String(a.transactionDate || "").localeCompare(String(b.transactionDate || "")));
+  const ledger = await loadInvestorPortfolioLedger(investorId);
+  // Shared monthly engine: PMS account trades are internal movements and
+  // external investor capital is captured once from its dated cash ledger.
+  const transactions = buildMonthlyReportingLedger({
+    ledger, investorId,
+    startDate: String(previousSnapshot.snapshotDate || ""),
+    cutoffDate: String(snapshotDate || "")
+  }).filter((item) => String(item.transactionDate || "").slice(0, 10) > String(previousSnapshot.snapshotDate || "").slice(0, 10));
 
   return { previousSnapshot, previousPositions, transactions };
 }

@@ -1,6 +1,6 @@
 {
   "name": "growvest-investor-report-tool",
-  "version": "0.34.32",
+  "version": "0.34.35",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -19,7 +19,14 @@
     "qa:pms-freshness": "node scripts/qa/manual-pms-freshness-fixture.mjs",
     "qa:report-period": "node --no-warnings scripts/qa/report-period-opening-fixture.mjs",
     "qa:portfolio-progress": "node --no-warnings scripts/qa/portfolio-progress-sip-fixture.mjs",
-    "qa:pms-withdrawal": "node --no-warnings scripts/qa/pms-withdrawal-fixture.mjs"
+    "qa:fundbazaar-coverage": "node --no-warnings scripts/qa/fundbazaar-october-snapshot-coverage-fixture.mjs",
+    "qa:dated-valuations": "node --no-warnings scripts/qa/fundbazaar-dated-valuation-fixture.mjs",
+    "qa:pms-withdrawal": "node --no-warnings scripts/qa/pms-withdrawal-fixture.mjs",
+    "qa:report-reconciliation": "node --no-warnings scripts/qa/report-portfolio-reconciliation-fixture.mjs",
+    "qa:report-reconciliation-client": "node --no-warnings scripts/qa/report-reconciliation-client-service-fixture.mjs",
+    "qa:system-integrity": "node --no-warnings scripts/qa/portfolio-system-wide-integrity-fixture.mjs",
+    "qa:monthly-auto-recovery": "node --no-warnings scripts/qa/monthly-source-auto-recovery-fixture.mjs",
+    "qa:monthly-engine": "node --no-warnings scripts/qa/unified-monthend-market-calendar-fixture.mjs"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.3.0",

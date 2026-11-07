@@ -10,6 +10,7 @@ import {
 } from "@/lib/constants/portfolio";
 import { normaliseExternalName, stableHash } from "@/lib/server/portfolioImportParser";
 import { normalisePortfolioGoalAllocations, portfolioAllocationStatus } from "@/lib/portfolioGoalAllocation";
+import { archiveImportedFundbazaarValuation } from "@/lib/server/portfolioDatedValuationStore";
 import { buildDailyPortfolioCoverage } from "@/lib/server/portfolioCoverage";
 import {
   createPortfolioSnapshot,
@@ -2084,6 +2085,67 @@ export async function POST(request) {
         const investorPositions = investorPositionSnapshot.docs.map((item) => ({ id: item.id, ref: item.ref, ...item.data() }));
         const previousFundbazaarPositions = investorPositions.filter((item) => item.source === PORTFOLIO_SOURCES.FUNDBAZAAR && item.status !== "exited");
 
+        // A historical NAV export received after a newer live valuation must
+        // never roll the live positions backwards or mark newer holdings exited.
+        // It is retained as dated evidence; current positions stay untouched.
+        const importNavDate = String(file.summary?.navDate || "").slice(0, 10);
+        if (file.reportType === PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_CLIENT_VALUATION
+          && !/^\d{4}-\d{2}-\d{2}$/.test(importNavDate)) {
+          throw new Error("Fundbazaar Client Wise Valuation has no valid source NAV date. Its upload date must not be used as a financial valuation date.");
+        }
+        const newerLiveValuationExists = file.reportType === PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_CLIENT_VALUATION
+          && /^\d{4}-\d{2}-\d{2}$/.test(importNavDate)
+          && previousFundbazaarPositions.some((item) => {
+            const currentNavDate = String(item.navDate || item.valuationDate || "").slice(0, 10);
+            return currentNavDate && currentNavDate > importNavDate;
+          });
+        if (newerLiveValuationExists) {
+          const completedFile = { ...file, status: "imported", matchedInvestorId: investorId };
+          const fingerprint = safeText(file.fileFingerprint);
+          if (!fingerprint) throw new Error("Historical valuation archive requires the original file fingerprint.");
+          // Do the dated write before declaring import success. No live
+          // positions or canonical transaction ledger are mutated here.
+          const archive = await archiveImportedFundbazaarValuation({ file: completedFile, investorId, actor });
+          await adminDb.collection("portfolioFileFingerprints").doc(fingerprint).set({
+            source: PORTFOLIO_SOURCES.FUNDBAZAAR,
+            batchId,
+            fileId: file.id,
+            investorId,
+            historicalArchiveOnly: true,
+            importedAt: FieldValue.serverTimestamp(),
+            importedByUid: actor.uid
+          }, { merge: true });
+          await fileRef.set({
+            status: "imported",
+            matchStatus: PORTFOLIO_MATCH_STATUS.VERIFIED,
+            matchedInvestorId: investorId,
+            matchedInvestorName: investor.fullName || "",
+            historicalArchiveOnly: true,
+            importedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp()
+          }, { merge: true });
+          results.push({
+            fileId: file.id,
+            fileName: file.fileName,
+            status: "imported",
+            historicalArchiveOnly: true,
+            investorId,
+            investorName: investor.fullName || "",
+            sourceValuationDate: archive.date,
+            positionCount: Number(file.summary?.positionCount || 0),
+            transactionCount: Number(file.summary?.transactionCount || 0),
+            currentValue: Number(file.summary?.currentValue || 0)
+          });
+          await writer.close();
+          writer = null;
+          postCommitWarnings.push(compactWarning(
+            "historical_valuation_archived_only",
+            `Saved the Fundbazaar valuation dated ${archive.date} as history without overwriting newer holdings. This older file did not change the canonical transaction ledger or report verification.`,
+            { investorId, fileId: file.id }
+          ));
+          continue;
+        }
+
         const holdingEntries = (file.holdings || []).map((holding) => {
           const existingPosition = investorPositions.find((item) => sameFundHolding(item, holding));
           const ref = existingPosition?.ref || adminDb.collection("portfolioPositions").doc(positionDocumentId({
@@ -2377,6 +2439,17 @@ export async function POST(request) {
           });
         }
 
+        if (file.reportType === PORTFOLIO_REPORT_TYPES.FUNDBAZAAR_CLIENT_VALUATION) {
+          try {
+            await archiveImportedFundbazaarValuation({
+              file: { ...file, status: "imported", matchedInvestorId: investorId }, investorId, actor
+            });
+          } catch (archiveError) {
+            const message = safeText(archiveError?.message, "Dated NAV archival failed.");
+            console.error("Dated Fundbazaar valuation archival failed after import", { fileId: file.id, investorId, error: message });
+            postCommitWarnings.push(compactWarning("dated_valuation_archive_failed", message, { investorId, fileId: file.id }));
+          }
+        }
         affectedInvestors.set(investorId, investor);
         results.push({
           fileId: file.id,

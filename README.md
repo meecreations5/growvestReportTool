@@ -1104,3 +1104,20 @@ See `docs/PORTFOLIO_PROGRESS_SIP_RECONCILIATION_v0.34.31.md` and `RELEASE_VALIDA
 Investor Profile → **Withdrawals & Planned Cash Needs** now shows PMS holdings mapped to the selected Bucket List or General Wealth, in addition to Mutual Funds. PMS withdrawals support partial/complete amount-based instructions, while Mutual Fund-only SIP Continue/Pause/Stop controls remain hidden for PMS. Confirmed PMS withdrawals update Portfolio Master, create the confirmed cash-flow transaction and rebuild the verified snapshot without overwriting PMS SIP fields.
 
 See `docs/PMS_WITHDRAWAL_SUPPORT_v0.34.32.md` and `RELEASE_VALIDATION_v0.34.32.md`.
+
+## v0.34.34 — Monthly Wealth Review Continuity & Snapshot Revision Fix
+
+Monthly Wealth Reviews now preserve a strict closed-month chain. A completed prior Monthly Wealth Review is the preferred frozen opening baseline for the next month, while the closing portfolio continues to come from the verified month-end Portfolio Master snapshot. Draft reports detect a newer revision of the same month-end snapshot and refresh financial facts before completion, preventing an early 31 Oct snapshot from remaining frozen after later same-day portfolio updates. Month-by-month Portfolio Progress uses the same snapshot revision ordering.
+
+Actual confirmed investment and withdrawal cash flows remain separate from Active Monthly SIP. Published/completed financial facts remain frozen unless the report is explicitly reopened/recreated.
+
+See `docs/MONTHLY_WEALTH_REVIEW_CONTINUITY_v0.34.34.md` and `RELEASE_VALIDATION_v0.34.34.md`.
+
+## v0.34.34 - Monthly Review Reconciliation Gate
+
+Monthly Wealth Reviews now verify their Portfolio Master source again immediately before completion, PDF generation and investor publication. If a month-end snapshot changes after a report was prepared, internal reports refresh/reopen for financial review instead of allowing an outdated PDF to be sent. Published versions remain frozen and corrections use the existing revision workflow.
+
+## v0.34.35 - Turbopack reconciliation client fix
+
+- Moved Monthly Review completion reconciliation into a dedicated client service to prevent stale Turbopack module-shape errors.
+- Keeps the v0.34.34 reconciliation gate unchanged at Complete, PDF and Publish.

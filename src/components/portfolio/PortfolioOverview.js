@@ -35,6 +35,7 @@ import {
   getPortfolioReconciliation
 } from "@/services/portfolioService";
 import { getInsurancePortfolioOverview } from "@/services/insuranceService";
+import PortfolioSystemIntegrityPanel from "@/components/portfolio/PortfolioSystemIntegrityPanel";
 
 function statusClasses(status) {
   if (status === PORTFOLIO_RECONCILIATION_STATUS.VERIFIED) return "bg-emerald-50 text-emerald-700 ring-emerald-200";
@@ -133,6 +134,8 @@ export default function PortfolioOverview() {
     <PageHeader eyebrow="Portfolio management" title="Portfolio Overview" description="A single operating view of current investor portfolios, daily update coverage and portfolio-health exceptions. Uploads happen in Daily Portfolio Update; destructive cleanup stays in Portfolio Administration." action={<><Link href="/portfolio/daily-update" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800"><FileUp size={16} /> Daily Portfolio Update</Link>{canAdminister ? <Link href="/portfolio/administration" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Settings2 size={16} /> Portfolio Administration</Link> : null}</>} />
 
     {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}
+
+    {canAdminister ? <PortfolioSystemIntegrityPanel /> : null}
 
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <MetricCard label="Investors With Portfolio" value={summary.investors ?? (loading ? "—" : 0)} helper={`${summary.verified || 0} verified`} icon={UsersRound} tone="blue" />

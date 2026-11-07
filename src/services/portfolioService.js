@@ -79,8 +79,100 @@ async function authenticatedFetch(url, options = {}) {
   const headers = await authenticatedApiHeaders(options.headers || {}, user);
   const response = await fetch(url, { ...options, headers });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || "The portfolio request failed.");
+  if (!response.ok) {
+    const error = new Error(payload.error || "The portfolio request failed.");
+    error.statusCode = response.status;
+    error.code = String(payload.code || "");
+    // Preserve authenticated, structured coverage diagnostics (archive ID,
+    // selected snapshot date, latest source date) for targeted reconciliation.
+    // No sensitive Firebase internals or tokens are exposed by this response.
+    if (payload.details && typeof payload.details === "object" && !Array.isArray(payload.details)) {
+      error.details = payload.details;
+    }
+    throw error;
+  }
   return payload;
+}
+
+export async function getSystemWideMonthlyIntegrity(monthKey, cursor = "") {
+  const params = new URLSearchParams({ month: String(monthKey || ""), limit: "8" });
+  if (cursor) params.set("cursor", cursor);
+  return authenticatedFetch(`/api/portfolio/system-integrity?${params.toString()}`, {
+    method: "GET", cache: "no-store"
+  });
+}
+
+/** Attempt a financially validated historical month-end close using existing imported evidence. */
+export async function autoReconcileMonthEnd(investorId, monthKey) {
+  return authenticatedFetch("/api/portfolio/valuation-history/approve-month-end", {
+    method: "POST", cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ investorId, monthKey, auto: true })
+  });
+}
+
+export async function archiveHistoricalFundbazaarBatch(cursor = "") {
+  return authenticatedFetch("/api/portfolio/valuation-history/backfill", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cursor, limit: 5, confirm: "ARCHIVE HISTORY ONLY" })
+  });
+}
+
+export async function getInvestorDatedValuations(investorId, valuationId = "") {
+  const params = new URLSearchParams({ investorId });
+  if (valuationId) params.set("valuationId", valuationId);
+  return authenticatedFetch(`/api/portfolio/valuation-history?${params.toString()}`, {
+    method: "GET",
+    cache: "no-store"
+  });
+}
+
+/** Read-only eligibility preview followed by an explicit administrative approval. */
+export async function previewFundbazaarHistoricalMonthEnd(investorId, valuationId, monthKey, weekendNavEvidence = []) {
+  const params = new URLSearchParams({ investorId, valuationId, monthKey });
+  if (weekendNavEvidence.length) params.set("weekendNavEvidence", JSON.stringify(weekendNavEvidence));
+  return authenticatedFetch(`/api/portfolio/valuation-history/approve-month-end?${params.toString()}`, {
+    method: "GET", cache: "no-store"
+  });
+}
+
+export async function approveFundbazaarHistoricalMonthEnd(investorId, valuationId, monthKey, weekendNavEvidence = []) {
+  return authenticatedFetch("/api/portfolio/valuation-history/approve-month-end", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ investorId, valuationId, monthKey, weekendNavEvidence, confirm: "APPROVE HISTORICAL FUNDBAZAAR VALUATION" })
+  });
+}
+
+/** Staff preview and explicit admin approval of a capture made 1-7 days after a month ends. */
+export async function previewNextMonthClosingCapture(investorId, monthKey, snapshotId) {
+  const params = new URLSearchParams({ investorId, monthKey, snapshotId });
+  return authenticatedFetch(`/api/portfolio/month-end-capture-approval?${params.toString()}`, {
+    method: "GET", cache: "no-store"
+  });
+}
+
+export async function approveNextMonthClosingCapture(investorId, monthKey, snapshotId) {
+  return authenticatedFetch("/api/portfolio/month-end-capture-approval", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ investorId, monthKey, snapshotId, confirm: "APPROVE VERIFIED MONTH END CAPTURE" })
+  });
+}
+
+export async function archiveImportedFundbazaarFile(fileId) {
+  return authenticatedFetch("/api/portfolio/valuation-history", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fileId })
+  });
+}
+
+export async function rebuildCurrentPortfolioSnapshot(investorId) {
+  return authenticatedFetch("/api/portfolio/snapshots/rebuild", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ investorId })
+  });
 }
 
 export async function getInvestorPortfolioView(investorId = "") {
@@ -339,12 +431,13 @@ export async function createManualIntradayTrade(payload) {
   });
 }
 
-export async function getPortfolioReportSource(investorId, asOfDate, currentUser) {
+export async function getPortfolioReportSource(investorId, asOfDate, currentUser, { reportType = "monthly" } = {}) {
   if (!investorId || !asOfDate) return null;
   // Monthly Report creation must not read protected Portfolio Master
   // collections directly from browser Firestore. The authenticated server
   // route validates staff access and returns only this investor/report period.
   const params = new URLSearchParams({ investorId, asOfDate });
+  if (reportType === "opening") params.set("reportType", "opening");
   return authenticatedFetch(`/api/portfolio/report-source?${params.toString()}`);
 }
 

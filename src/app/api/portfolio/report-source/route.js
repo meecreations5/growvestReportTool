@@ -14,10 +14,15 @@ import {
 } from "@/lib/constants/portfolio";
 import { buildPortfolioSourceFreshness, manualPortfolioRefreshDate } from "@/lib/server/portfolioFreshness";
 import { sameMonthOpeningBaselineDate } from "@/lib/reportPeriodRules";
+import { latestVerifiedPortfolioSnapshot, selectVerifiedReportSnapshot } from "@/lib/portfolioSnapshotSelection";
+import { businessDateKey } from "@/lib/utils/date";
+import { inspectFrozenMonthlyActivity, inspectFrozenSourceSet } from "@/lib/portfolioMonthlyIntegrity";
+import { monthlyReportingWindow } from "@/lib/portfolioMonthlyClose";
+import { resolveMonthEndSnapshot } from "@/lib/server/portfolioMonthEndSelection";
+import { loadInvestorPortfolioLedger } from "@/lib/server/portfolioHistoricalManualLedger";
+import { buildMonthlyReportingLedger } from "@/lib/portfolioMonthlyLedger";
 
 export const runtime = "nodejs";
-
-const REPORT_SNAPSHOT_CAPTURE_GRACE_DAYS = 5;
 
 function safeDateKey(value = "") {
   const dateKey = String(value || "").slice(0, 10);
@@ -30,18 +35,8 @@ function addDaysToDateKey(dateKey, days) {
   return new Date(parsed + Number(days || 0) * 86400000).toISOString().slice(0, 10);
 }
 
-function portfolioValueDate(position = {}) {
-  return String(position.navDate || position.valuationDate || position.priceDate || "").slice(0, 10);
-}
-
 function rows(snapshot) {
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
-}
-
-function latestVerifiedSnapshot(snapshots = [], predicate = () => true) {
-  return snapshots
-    .filter((item) => item.verificationStatus === "verified" && predicate(item))
-    .sort((a, b) => String(b.snapshotDate || "").localeCompare(String(a.snapshotDate || "")))[0] || null;
 }
 
 async function loadSnapshotPositions(snapshotId) {
@@ -51,57 +46,6 @@ async function loadSnapshotPositions(snapshotId) {
     .get();
   return rows(result);
 }
-
-async function findPostCutoffCaptureSnapshot(snapshots, cutoffDate) {
-  const graceEnd = addDaysToDateKey(cutoffDate, REPORT_SNAPSHOT_CAPTURE_GRACE_DAYS);
-  if (!cutoffDate || !graceEnd) return null;
-
-  const candidates = snapshots
-    .filter((item) => item.verificationStatus === "verified")
-    .filter((item) => String(item.snapshotDate || "") > cutoffDate && String(item.snapshotDate || "") <= graceEnd)
-    .sort((a, b) => String(a.snapshotDate || "").localeCompare(String(b.snapshotDate || "")));
-
-  const compatible = [];
-  for (const candidate of candidates) {
-    const positions = await loadSnapshotPositions(candidate.id);
-    const datedValues = [
-      // Manual PMS sourceFreshness uses the workbook import date from v0.34.27.
-      // Do not treat that operational refresh date as the financial value date
-      // when deciding whether a post-cutoff capture can be back-dated.
-      ...(candidate.sourceFreshness || [])
-        .filter((item) => item.freshnessBasis !== "manual_import")
-        .map((item) => String(item.valuationDate || "").slice(0, 10)),
-      ...positions.map(portfolioValueDate)
-    ].filter(Boolean);
-
-    // A later capture is usable only when every dated underlying value belongs
-    // to the report cutoff or earlier. This prevents September market values
-    // from being pulled backwards into an August report.
-    if (!datedValues.length || datedValues.some((value) => value > cutoffDate)) continue;
-    const effectiveDate = [...datedValues].sort().at(-1) || cutoffDate;
-    compatible.push({ candidate, positions, effectiveDate });
-  }
-
-  if (!compatible.length) return null;
-  compatible.sort((a, b) => {
-    const effectiveCompare = String(b.effectiveDate).localeCompare(String(a.effectiveDate));
-    if (effectiveCompare) return effectiveCompare;
-    return String(a.candidate.snapshotDate || "").localeCompare(String(b.candidate.snapshotDate || ""));
-  });
-
-  const selected = compatible[0];
-  return {
-    snapshot: {
-      ...selected.candidate,
-      capturedSnapshotDate: selected.candidate.snapshotDate || "",
-      snapshotDate: selected.effectiveDate,
-      reportSnapshotMode: "post_cutoff_capture",
-      reportCutoffDate: cutoffDate
-    },
-    positions: selected.positions
-  };
-}
-
 
 function freshnessIssueRows(sourceFreshness = []) {
   const missing = sourceFreshness.filter((item) => item.freshnessStatus === "missing");
@@ -181,30 +125,31 @@ function patchSnapshotFreshness(snapshot = {}, positions = [], referenceDate = "
   };
 }
 
-function overlayManualFreshness(snapshotPositions = [], livePositions = [], manualAccountSnapshots = [], cutoffDate = "") {
-  const liveById = new Map(livePositions.map((item) => [String(item.id || item.positionId || ""), item]));
-  const latestPmsSnapshotDate = manualAccountSnapshots
-    .map((item) => safeDateKey(item.snapshotDate || item.manualImportDate || ""))
-    .filter((date) => date && (!cutoffDate || date <= cutoffDate))
-    .sort()
-    .at(-1) || "";
-
+function overlayManualFreshness(snapshotPositions = [], manualAccountSnapshots = [], cutoffDate = "") {
+  // A historical report must NEVER inherit a later live portfolio's refresh
+  // timestamp. The frozen holding is the primary evidence. A saved Manual PMS
+  // account receipt is only usable if it belongs to that exact import batch
+  // and was recorded no later than the original snapshot capture date.
+  const receiptsByBatch = new Map();
+  for (const account of manualAccountSnapshots) {
+    const batchId = String(account.manualBulkImportId || "");
+    const receiptDate = safeDateKey(account.snapshotDate || account.manualImportDate || "");
+    if (!batchId || !receiptDate || (cutoffDate && receiptDate > cutoffDate)) continue;
+    const previous = receiptsByBatch.get(batchId) || "";
+    if (receiptDate > previous) receiptsByBatch.set(batchId, receiptDate);
+  }
   return snapshotPositions.map((position) => {
-    if (String(position.source || "") !== "manual") return position;
-    const live = liveById.get(String(position.positionId || "")) || null;
-    const manualManaged = position.manualPortfolioManaged === true || live?.manualPortfolioManaged === true;
-    if (!manualManaged) return position;
-    const liveRefreshDate = live ? manualPortfolioRefreshDate(live) : "";
-    const allowedLiveDate = liveRefreshDate && (!cutoffDate || liveRefreshDate <= cutoffDate) ? liveRefreshDate : "";
-    const refreshDate = allowedLiveDate || manualPortfolioRefreshDate(position) || latestPmsSnapshotDate;
-    if (!refreshDate) return position;
+    if (String(position.source || "") !== "manual" || position.manualPortfolioManaged !== true) return position;
+    const existing = manualPortfolioRefreshDate(position);
+    const receipt = receiptsByBatch.get(String(position.manualBulkImportId || "")) || "";
+    const confirmed = existing || receipt;
+    if (!confirmed) return position;
     return {
       ...position,
-      manualPortfolioManaged: true,
-      manualImportDate: refreshDate,
-      manualSourceRefreshDate: refreshDate,
-      manualBulkImportId: position.manualBulkImportId || live?.manualBulkImportId || "",
-      freshnessDateBasis: "manual_workbook_import"
+      manualSourceRefreshDate: confirmed,
+      freshnessDateBasis: "manual_workbook_import",
+      // NAV date is deliberately not changed or inferred from the receipt.
+      sourceConfirmationDate: confirmed
     };
   });
 }
@@ -232,15 +177,40 @@ async function loadOpeningWealthReview(investorId) {
   return rows(history).find((item) => item.reportType === "opening") || null;
 }
 
+async function loadPreviousCompletedMonthlyReview(investorId, currentMonthKey) {
+  const history = await adminDb.collection("monthlyReports").where("investorId", "==", investorId).get();
+  const precedingMonth = addDaysToDateKey(`${currentMonthKey}-01`, -1).slice(0, 7);
+  return rows(history)
+    .filter((item) => item.reportType !== "opening")
+    .filter((item) => item.status === "completed")
+    .filter((item) => String(item.reportMonthKey || "") === precedingMonth)
+    .sort((a, b) => {
+      const monthCompare = String(b.reportMonthKey || "").localeCompare(String(a.reportMonthKey || ""));
+      if (monthCompare) return monthCompare;
+      const publishedCompare = Number(Boolean(b.publishedAt)) - Number(Boolean(a.publishedAt));
+      if (publishedCompare) return publishedCompare;
+      return String(b.updatedAt || b.completedAt || "").localeCompare(String(a.updatedAt || a.completedAt || ""));
+    })[0] || null;
+}
+
 export async function GET(request) {
   try {
     const actor = await verifyStaffRequest(request);
     const { searchParams } = new URL(request.url);
     const investorId = String(searchParams.get("investorId") || "").trim();
     const asOfDate = safeDateKey(searchParams.get("asOfDate"));
+    const reportType = searchParams.get("reportType") === "opening" ? "opening" : "monthly";
 
     if (!investorId) throw new AppRequestError("Investor is required.", 400, "investor_required");
     if (!asOfDate) throw new AppRequestError("A valid portfolio cutoff date is required.", 400, "portfolio_cutoff_required");
+    if (reportType === "monthly") {
+      if (asOfDate !== monthlyReportingWindow(asOfDate.slice(0, 7)).cutoffDate) {
+        throw new AppRequestError("Monthly Wealth Reviews must use the last calendar day of the selected reporting month, not an interim valuation or report-generation date.", 400, "invalid_monthly_cutoff");
+      }
+      if (asOfDate >= businessDateKey()) {
+        throw new AppRequestError("This reporting month has not ended. Monthly Wealth Reviews can be prepared from the 1st of the following month.", 409, "reporting_period_not_closed");
+      }
+    }
 
     const investorSnapshot = await adminDb.collection("investors").doc(investorId).get();
     if (!investorSnapshot.exists) throw new AppRequestError("Investor profile was not found.", 404, "investor_not_found");
@@ -259,18 +229,23 @@ export async function GET(request) {
       .where("investorId", "==", investorId)
       .get();
     const snapshots = rows(snapshotsResult);
-    const openingWealthReview = await loadOpeningWealthReview(investorId);
+    const monthKey = asOfDate.slice(0, 7);
+    const [openingWealthReview, previousMonthlyReview] = await Promise.all([
+      loadOpeningWealthReview(investorId),
+      loadPreviousCompletedMonthlyReview(investorId, monthKey)
+    ]);
 
-    let snapshot = latestVerifiedSnapshot(
-      snapshots,
-      (item) => String(item.snapshotDate || "") <= asOfDate
-    );
-    let closingPositions = null;
+    const selection = reportType === "monthly"
+      ? await resolveMonthEndSnapshot({ investorId, snapshots, cutoffDate: asOfDate })
+      : { snapshot: latestVerifiedPortfolioSnapshot(snapshots, (item) => String(item.snapshotDate || "") <= asOfDate), positions: null };
+    let snapshot = selection.snapshot;
+    let closingPositions = selection.positions;
 
-    if (!snapshot) {
-      const graceSnapshot = await findPostCutoffCaptureSnapshot(snapshots, asOfDate);
-      snapshot = graceSnapshot?.snapshot || null;
-      closingPositions = graceSnapshot?.positions || null;
+    // First Opening Review has no historical cutoff to honor when the default
+    // previous-month date predates the investor's first verified snapshot.
+    // Use the actual latest verified baseline, without backdating its value.
+    if (!snapshot && reportType === "opening") {
+      snapshot = selectVerifiedReportSnapshot(snapshots, asOfDate, { reportType, todayDate: businessDateKey() });
     }
 
     if (!snapshot) {
@@ -285,6 +260,14 @@ export async function GET(request) {
       }, { headers: { "Cache-Control": "private, no-store" } });
     }
 
+    if (reportType === "monthly" && snapshot.reportSnapshotMode === "post_cutoff_capture"
+      && snapshot.monthEndApprovalStatus !== "approved") {
+      throw new AppRequestError(
+        `A ${snapshot.capturedSnapshotDate} portfolio upload contains potentially usable ${monthKey} valuations, but an administrator has not yet approved its period-end source coverage. Open Portfolio Overview, scan the month and approve the eligible capture before preparing the Monthly Wealth Review.`,
+        409, "post_cutoff_capture_not_approved"
+      );
+    }
+
     if (!closingPositions) closingPositions = await loadSnapshotPositions(snapshot.id);
 
     // Manual Portfolio Management/PMS is a staff-maintained source. Its
@@ -294,20 +277,16 @@ export async function GET(request) {
     // so a recently maintained PMS portfolio does not show a false missing or
     // stale-source warning. Financial valuation dates remain untouched.
     if (closingPositions.some((item) => String(item.source || "") === "manual")) {
-      const [liveManualResult, manualAccountSnapshotResult] = await Promise.all([
-        adminDb.collection("portfolioPositions").where("investorId", "==", investorId).get(),
-        adminDb.collection("manualPortfolioAccountSnapshots").where("investorId", "==", investorId).get()
-      ]);
-      const livePositions = rows(liveManualResult);
+      const manualAccountSnapshotResult = await adminDb.collection("manualPortfolioAccountSnapshots")
+        .where("investorId", "==", investorId).get();
       const manualAccountSnapshots = rows(manualAccountSnapshotResult);
-      const freshnessReferenceDate = safeDateKey(snapshot.snapshotDate || asOfDate) || asOfDate;
-      closingPositions = overlayManualFreshness(closingPositions, livePositions, manualAccountSnapshots, freshnessReferenceDate);
+      const freshnessReferenceDate = safeDateKey(snapshot.capturedSnapshotDate || snapshot.snapshotDate || asOfDate) || asOfDate;
+      closingPositions = overlayManualFreshness(closingPositions, manualAccountSnapshots, freshnessReferenceDate);
       snapshot = patchSnapshotFreshness(snapshot, closingPositions, freshnessReferenceDate);
     }
 
-    const monthKey = asOfDate.slice(0, 7);
     const monthStart = `${monthKey}-01`;
-    let openingSnapshot = latestVerifiedSnapshot(
+    let openingSnapshot = latestVerifiedPortfolioSnapshot(
       snapshots,
       (item) => String(item.snapshotDate || "") < monthStart
     );
@@ -315,9 +294,35 @@ export async function GET(request) {
 
     if (!openingSnapshot) {
       const openingCutoff = addDaysToDateKey(monthStart, -1);
-      const graceOpening = await findPostCutoffCaptureSnapshot(snapshots, openingCutoff);
+      const graceOpening = await resolveMonthEndSnapshot({ investorId, snapshots, cutoffDate: openingCutoff });
       openingSnapshot = graceOpening?.snapshot || null;
       openingPositions = graceOpening?.positions || null;
+    }
+
+    // For an established monthly-review chain, prefer the previous completed
+    // Monthly Wealth Review's frozen closing corpus as the next month's opening
+    // value. This prevents later historical portfolio corrections from silently
+    // changing an already-reviewed month-to-month performance baseline.
+    let openingBaselineSource = openingSnapshot ? "portfolio_snapshot" : "";
+    if (previousMonthlyReview?.sourcePortfolioSnapshotId && Number(previousMonthlyReview?.summary?.totalCorpus || 0) >= 0) {
+      const previousSnapshotId = String(previousMonthlyReview.sourcePortfolioSnapshotId || "");
+      const previousSnapshotDate = safeDateKey(previousMonthlyReview.portfolioAsOfDate || previousMonthlyReview.statementDate || "");
+      openingSnapshot = {
+        id: previousSnapshotId,
+        snapshotDate: previousSnapshotDate,
+        verificationStatus: "verified",
+        snapshotVersion: Number(previousMonthlyReview.sourcePortfolioSnapshotVersion || 0),
+        reportBaseline: true,
+        sourceReportId: previousMonthlyReview.id,
+        sourceReportMonthKey: previousMonthlyReview.reportMonthKey || "",
+        summary: {
+          currentValue: Number(previousMonthlyReview.summary?.totalCorpus || 0),
+          totalInvested: Number(previousMonthlyReview.summary?.totalInvested || 0),
+          monthlySip: Number(previousMonthlyReview.summary?.monthlySip || 0)
+        }
+      };
+      openingPositions = previousSnapshotId ? await loadSnapshotPositions(previousSnapshotId) : [];
+      openingBaselineSource = "previous_monthly_review";
     }
 
     // When the investor's Opening Wealth Review was established earlier in the
@@ -333,96 +338,97 @@ export async function GET(request) {
       const openingReportSnapshot = snapshots.find((item) =>
         item.verificationStatus === "verified"
           && (openingSnapshotId ? item.id === openingSnapshotId : String(item.snapshotDate || "") <= sameMonthOpeningDate)
-      ) || latestVerifiedSnapshot(
+      ) || latestVerifiedPortfolioSnapshot(
         snapshots,
         (item) => String(item.snapshotDate || "") <= sameMonthOpeningDate
       );
       if (openingReportSnapshot) {
         openingSnapshot = openingReportSnapshot;
         openingPositions = await loadSnapshotPositions(openingReportSnapshot.id);
+        openingBaselineSource = "opening_wealth_review";
       }
     }
 
     if (openingSnapshot?.id && !openingPositions) openingPositions = await loadSnapshotPositions(openingSnapshot.id);
     if (!openingPositions) openingPositions = [];
 
-    const transactionResult = await adminDb.collection("investmentTransactions")
-      .where("investorId", "==", investorId)
-      .get();
-    let transactions = rows(transactionResult)
-      .filter((item) => String(item.transactionDate || "") >= monthStart && String(item.transactionDate || "") <= asOfDate)
-      .sort((a, b) => dateSortValue(a.transactionDate) - dateSortValue(b.transactionDate));
+    if (reportType === "monthly") {
+      const archiveDocs = await adminDb.collection("portfolioDatedValuations").where("investorId", "==", investorId).get();
+      const sourceSet = inspectFrozenSourceSet({
+        snapshot, positions: closingPositions, archives: rows(archiveDocs), cutoffDate: asOfDate
+      });
+      if (!sourceSet.ready) {
+        const error = new AppRequestError(
+          `Month-end source coverage is incomplete: ${sourceSet.issues.map((item) => item.message).join(" ")} The archived source must pass Check reporting eligibility and be approved as the verified month-end closing before this report can continue.`,
+          409, "portfolio_source_coverage_incomplete"
+        );
+        // The client can invoke its existing guarded automatic close once,
+        // while support/QA can identify the precise stale snapshot and archive
+        // without guessing or repeatedly uploading old Fundbazaar files.
+        error.details = {
+          reportingMonth: monthKey,
+          cutoffDate: asOfDate,
+          selectedSnapshot: { id: snapshot.id, date: safeDateKey(snapshot.snapshotDate), mode: String(snapshot.reportSnapshotMode || "") },
+          sourceIssues: sourceSet.issues.map(({ code, source, archiveId, valuationDate }) => ({
+            code, source, archiveId: archiveId || "", valuationDate: valuationDate || ""
+          })),
+          nextAction: "check_reporting_eligibility"
+        };
+        throw error;
+      }
+    }
+
+    const reportingLedger = await loadInvestorPortfolioLedger(investorId);
+    // Cash ledger is authoritative for managed PMS capital additions and
+    // withdrawals. The same normalized movements feed the scanner, financial
+    // model and publication guard, including manual_cash_movement actions.
+    let transactions = buildMonthlyReportingLedger({
+      ledger: reportingLedger, investorId, startDate: monthStart, cutoffDate: asOfDate
+    });
     transactions = dedupeActionWithdrawalTransactions(transactions);
 
-    const cashResult = await adminDb.collection("manualPortfolioCashLedger")
-      .where("investorId", "==", investorId)
-      .get();
-    const manualCashFlows = rows(cashResult)
-      .filter((item) => String(item.entryDate || "") >= monthStart && String(item.entryDate || "") <= asOfDate)
-      .sort((a, b) => dateSortValue(a.entryDate) - dateSortValue(b.entryDate))
-      .flatMap((item) => {
-        const type = String(item.entryType || "").trim().toLowerCase();
-        const amount = Math.abs(Number(item.amount || item.signedAmount || 0));
-        if (!amount) return [];
-        let cashFlowType = "";
-        if (type.includes("opening cash") || type.includes("contribution") || type.includes("investor deposit")) cashFlowType = "new_money";
-        else if (type.includes("withdrawal") || type.includes("investor withdrawal")) cashFlowType = "withdrawal";
-        else if (type.includes("transfer in") || type.includes("transfer out")) cashFlowType = "internal";
-        else return [];
-        return [{
-          id: `manual_cash_${item.id}`,
-          investorId,
-          source: "manual",
-          manualPortfolioCashFlow: true,
-          transactionDate: item.entryDate,
-          transactionType: `Manual cash - ${item.entryType || cashFlowType}`,
-          cashFlowType,
-          amount,
-          notes: item.notes || item.reference || ""
-        }];
+    if (reportType === "monthly") {
+      // A single max(snapshotDate) can conceal activity after an individual
+      // fund's older NAV or a Manual PMS account's older valuation. Check the
+      // frozen source/holding dates, never today's upload timestamp.
+      const coverage = inspectFrozenMonthlyActivity({
+        snapshot, positions: closingPositions, transactions,
+        startDate: monthStart, cutoffDate: asOfDate
       });
-
-    const actionResult = await adminDb.collection("investorActions")
-      .where("investorId", "==", investorId)
-      .get();
-    const confirmedActionCashFlows = rows(actionResult).flatMap((item) => {
-      if (item.financialImpactStatus !== "confirmed" || item.financialConfirmationMode !== "manual_cash_movement") return [];
-      const transactionDate = String(item.actualFinancialDate || "");
-      if (!transactionDate || transactionDate < monthStart || transactionDate > asOfDate) return [];
-      const amount = Math.abs(Number(item.actualFinancialAmount || 0));
-      if (!amount) return [];
-      const cashFlowType = item.financialImpactType === "external_inflow"
-        ? "new_money"
-        : item.financialImpactType === "external_outflow"
-          ? "withdrawal"
-          : "";
-      if (!cashFlowType) return [];
-      return [{
-        id: `action_cash_${item.id}`,
-        investorId,
-        source: "investor_action_confirmation",
-        sourceActionId: item.id,
-        transactionDate,
-        transactionType: item.requestType || item.recommendationType || (cashFlowType === "withdrawal" ? "Confirmed Withdrawal" : "Confirmed Investment"),
-        instrumentName: item.relatedInvestmentName || item.requestedAccountReference || "Portfolio",
-        cashFlowType,
-        financialImpactStatus: "confirmed",
-        amount,
-        notes: [item.requestedAccountReference, item.actualFinancialReference, item.portfolioConfirmationNote].filter(Boolean).join(" · ")
-      }];
-    });
-
-    transactions = [...transactions, ...manualCashFlows, ...confirmedActionCashFlows]
-      .sort((a, b) => dateSortValue(a.transactionDate) - dateSortValue(b.transactionDate));
+      if (coverage.invalidPositionDates) {
+        throw new AppRequestError(
+          `${coverage.invalidPositionDates} frozen holding(s) have missing or post-cutoff source valuation dates. Confirm the actual NAV/PMS valuation dates before preparing this Monthly Wealth Review.`,
+          409, "portfolio_monthly_invalid_source_dates"
+        );
+      }
+      const uncovered = coverage.postValuationCash;
+      if (uncovered.count) {
+        throw new AppRequestError(
+          `Financial reconciliation pending. The frozen portfolio has ${uncovered.count} confirmed external cash movement${uncovered.count === 1 ? "" : "s"} after an applicable holding/source valuation date in ${monthKey} (₹${uncovered.newMoney.toLocaleString("en-IN")} invested, ₹${uncovered.withdrawals.toLocaleString("en-IN")} withdrawn). Earlier valuations cannot represent these later investments. Reconcile a complete, verified month-end source; do not use post-cutoff NAVs.`,
+          409, "portfolio_closing_snapshot_missing_cash_flow"
+        );
+      }
+      if (coverage.postValuationActivity.count) {
+        throw new AppRequestError(
+          `${coverage.postValuationActivity.count} confirmed transaction(s) occurred after a holding's frozen valuation date in ${monthKey}. This includes internal switches or PMS trades, not just external money. A newer verified source valuation is required before completing the Wealth Review.`,
+          409, "portfolio_historical_snapshot_outdated"
+        );
+      }
+    }
 
     const tradingId = `${investorId}_${monthKey}`;
     const tradingDoc = await adminDb.collection("tradingMonthlySummaries").doc(tradingId).get();
     const tradingSummary = tradingDoc.exists ? { id: tradingDoc.id, ...tradingDoc.data() } : null;
 
     const payload = {
-      asOfDate,
+      asOfDate: reportType === "opening" && safeDateKey(snapshot.snapshotDate) > asOfDate
+        ? safeDateKey(snapshot.snapshotDate)
+        : asOfDate,
       snapshot,
       openingSnapshot,
+      openingBaselineSource,
+      openingMonthlyReportId: openingBaselineSource === "previous_monthly_review" ? (previousMonthlyReview?.id || "") : "",
+      openingMonthlyReportMonthKey: openingBaselineSource === "previous_monthly_review" ? (previousMonthlyReview?.reportMonthKey || "") : "",
       positions: closingPositions.map((item) => ({
         ...item,
         goalAllocations: normalisePortfolioGoalAllocations(item.goalAllocations),
@@ -441,9 +447,17 @@ export async function GET(request) {
       headers: { "Cache-Control": "private, no-store" }
     });
   } catch (error) {
-    console.error("Portfolio report source load failed", error);
+    // A missing month-end valuation is an expected financial-validation
+    // outcome, not a server exception or an investor access failure.
+    if (!["portfolio_closing_snapshot_missing_cash_flow", "portfolio_historical_snapshot_outdated", "post_cutoff_capture_not_approved", "portfolio_monthly_invalid_source_dates", "portfolio_source_coverage_incomplete"].includes(error?.code)) {
+      console.error("Portfolio report source load failed", error);
+    }
     return Response.json(
-      { error: error?.message || "Unable to load Portfolio Master for this report." },
+      {
+        error: error?.message || "Unable to load Portfolio Master for this report.",
+        code: error?.code || "portfolio_source_load_failed",
+        ...(error?.details ? { details: error.details } : {})
+      },
       { status: appRequestErrorStatus(error, 500) }
     );
   }

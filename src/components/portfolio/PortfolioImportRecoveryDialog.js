@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, History, Loader2, RefreshCcw, RotateCcw, UserRoundCog, X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { inputClassName } from "@/components/ui/Field";
-import { commitPortfolioImport, getPortfolioImportRecovery, recoverPortfolioImport } from "@/services/portfolioService";
+import { commitPortfolioImport, getPortfolioImportRecovery, recoverPortfolioImport, archiveImportedFundbazaarFile } from "@/services/portfolioService";
 import { formatCurrency } from "@/lib/utils/format";
 
 function reportTypeLabel(value = "") {
@@ -97,6 +97,20 @@ export default function PortfolioImportRecoveryDialog({ batchId, investors = [],
     }
   }
 
+  async function saveValuation(file) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await archiveImportedFundbazaarFile(file.id);
+      setNotice(`Saved valuation as of ${result.archive.date}. The existing investor portfolio was not changed.`);
+      await load();
+      onCompleted?.();
+    } catch (nextError) {
+      setError(nextError.message || "Unable to archive this valuation.");
+    } finally { setBusy(false); }
+  }
+
   return (
     <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-label="Import Correction and Recovery">
       <div className="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
@@ -131,6 +145,13 @@ export default function PortfolioImportRecoveryDialog({ batchId, investors = [],
                       <p className="truncate font-semibold text-slate-950">{file.fileName}</p>
                       <p className="mt-1 text-xs text-slate-500">{reportTypeLabel(file.reportType)} · {file.matchedInvestorName || "Investor not mapped"}{file.externalPan ? ` · PAN ${file.externalPan}` : ""}{file.externalClientCode ? ` · Client ${file.externalClientCode}` : ""}</p>
                       <p className="mt-2 text-xs text-slate-500">{file.summary?.positionCount || 0} holding(s){file.summary?.policyCount ? ` · ${file.summary.policyCount} policy/policies` : ""} · {file.summary?.transactionCount || 0} transaction(s) · {formatCurrency(file.summary?.currentValue)}</p>
+                      {file.status === "imported" && file.source === "fundbazaar" && file.reportType === "fundbazaar_client_valuation" ? (
+                        <div className="mt-3">
+                          {file.datedValuationStatus === "available" && file.datedValuationDate
+                            ? <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800"><History size={13} /> Archived NAV date {file.datedValuationDate}</span>
+                            : <Button type="button" variant="secondary" disabled={busy} onClick={() => saveValuation(file)}><History size={14} /> Save dated valuation (no reprocess)</Button>}
+                        </div>
+                      ) : null}
                     </div>
                     {file.recovery?.reversible ? (
                       <div className="flex flex-wrap gap-2">

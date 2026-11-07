@@ -42,6 +42,7 @@ import { resolveReportTemplate } from "@/lib/constants/reportTemplates";
 import { useBranding } from "@/contexts/BrandingContext";
 import { resolveReportBranding } from "@/lib/utils/reportBranding";
 import { supportsWithdrawalSipInstruction, withdrawalProductLabel } from "@/lib/withdrawalPortfolio";
+import { monthlyReviewBalanceSummary } from "@/lib/reportFinancialPresentation";
 
 const toneClasses = {
   success: "border-emerald-100 bg-emerald-50 text-emerald-800",
@@ -207,9 +208,15 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
   const health = derivePortfolioHealth(report);
   const trend = buildTrendData(report, history);
   const previous = isOpeningReview ? null : previousReportFor(report, history);
-  const previousValue = Number(previous?.summary?.totalCorpus || 0);
-  const monthChange = isOpeningReview ? 0 : Number(summary.investmentGain || 0);
-  const monthChangePercentage = Number(summary.openingValue || previousValue) > 0 ? (monthChange / Number(summary.openingValue || previousValue)) * 100 : 0;
+  const previousReportValue = previous && Number.isFinite(Number(previous.summary?.totalCorpus))
+    ? Number(previous.summary.totalCorpus)
+    : null;
+  const movement = monthlyReviewBalanceSummary(summary);
+  const monthChange = movement.balanceChange;
+  const monthChangePercentage = movement.balanceChangePercent;
+  const previousReportDiffersFromOpening = previousReportValue !== null
+    && movement.openingAvailable
+    && Math.abs(previousReportValue - movement.openingValue) > 1;
   const advisorEmail = report.advisorEmail || "cwp@growvest.info";
   const advisorPhone = report.advisorPhone || "";
   const period = isOpeningReview ? `As of ${formatDate(report.statementDate)}` : `${getMonthLabel(report.reportMonth)} ${report.reportYear}`;
@@ -369,17 +376,24 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Total Portfolio Value</p>
             <p className="mt-2 text-4xl font-black tracking-tight text-slate-950">{compactCurrency(summary.totalCorpus)}</p>
-            {isOpeningReview ? <div className="mt-3 flex flex-wrap items-center gap-5 text-sm"><span className="font-bold text-blue-700">Opening baseline established</span><span className="text-slate-500">Snapshot: <strong className="text-slate-950">{formatDate(report.statementDate)}</strong></span></div> : <div className="mt-3 flex flex-wrap items-center gap-5 text-sm">
-              <span className={monthChange >= 0 ? "font-bold text-emerald-600" : "font-bold text-red-600"}>{monthChange >= 0 ? "+" : ""}{compactCurrency(monthChange)} this month</span>
-              <span className="text-slate-500">Previous: <strong className="text-slate-950">{previousValue ? compactCurrency(previousValue) : "Not available"}</strong></span>
-            </div>}
+            {isOpeningReview ? <div className="mt-3 flex flex-wrap items-center gap-5 text-sm"><span className="font-bold text-blue-700">Opening baseline established</span><span className="text-slate-500">Snapshot: <strong className="text-slate-950">{formatDate(report.statementDate)}</strong></span></div> : <>
+              <div className="mt-3 flex flex-wrap items-center gap-5 text-sm">
+                <span className={monthChange === null ? "font-bold text-slate-500" : monthChange >= 0 ? "font-bold text-emerald-600" : "font-bold text-red-600"}>{monthChange === null ? "Balance change unavailable" : `${monthChange >= 0 ? "+" : ""}${compactCurrency(monthChange)} portfolio value change`}</span>
+                <span className="text-slate-500">Opening balance: <strong className="text-slate-950">{movement.openingAvailable ? compactCurrency(movement.openingValue) : "Not available"}</strong></span>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">Balance change means closing minus opening value, including money added and withdrawn. Investment gain/loss is shown separately below.</p>
+              {viewer !== "investor" && previousReportDiffersFromOpening ? <p className="mt-2 text-xs font-medium text-amber-800">Previous review closed at {compactCurrency(previousReportValue)}, which differs from this report's opening balance of {compactCurrency(movement.openingValue)}. Verify the dates and snapshot revisions before publishing.</p> : null}
+              {viewer !== "investor" && movement.reconciled === false ? <p className="mt-2 text-xs font-bold text-red-700">Closing balance does not reconcile with opening balance, confirmed cash flows and investment gain/loss. Refresh Financial Data and review Portfolio Master.</p> : null}
+              {viewer !== "investor" && movement.cashFlowReviewSuggested ? <p className="mt-2 text-xs font-medium text-amber-800">Investment gain/loss is unusually large relative to opening value. Check transaction classification, valuations and the latest verified snapshot before publishing.</p> : null}
+            </>}
             {hasGoals ? <>
               <div className="mt-5 flex items-center justify-between text-xs text-slate-400"><span>Overall Goal Progress — {Number(summary.overallProgress || 0).toFixed(1)}% of {compactCurrency(summary.lifetimeTarget)} combined target</span><strong className="text-blue-700">{Number(summary.overallProgress || 0).toFixed(1)}%</strong></div>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-blue-600" style={{ width: `${Math.min(100, Number(summary.overallProgress || 0))}%` }} /></div>
+              <p className="mt-2 text-xs text-slate-500">Only goal-allocated holdings count towards goal progress; General Wealth is not included.</p>
             </> : <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900"><span className="font-black">General Wealth (Default):</span> {compactCurrency(summary.generalWealthCorpus || summary.totalCorpus)} · No specific financial goal is required.</div>}
           </div>
           <div className="grid gap-4 sm:grid-cols-[120px_minmax(0,1fr)] lg:grid-cols-1">
-            {isOpeningReview ? <span className="mx-auto inline-flex w-fit items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-black text-blue-700"><CheckCircle2 size={15} /> Opening baseline</span> : <span className={`mx-auto inline-flex w-fit items-center gap-2 rounded-full px-4 py-2 text-sm font-black ${monthChangePercentage >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}><TrendingUp size={15} /> {monthChangePercentage >= 0 ? "+" : ""}{monthChangePercentage.toFixed(2)}%</span>}
+            {isOpeningReview ? <span className="mx-auto inline-flex w-fit items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-black text-blue-700"><CheckCircle2 size={15} /> Opening baseline</span> : <span className={`mx-auto inline-flex w-fit items-center gap-2 rounded-full px-4 py-2 text-xs font-bold ${monthChangePercentage === null ? "bg-slate-100 text-slate-600" : monthChangePercentage >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}><TrendingUp size={15} /> {monthChangePercentage === null ? "Change not available" : `${monthChangePercentage >= 0 ? "+" : ""}${monthChangePercentage.toFixed(2)}% value change`}</span>}
             <button type="button" onClick={() => document.getElementById("report-allocation")?.scrollIntoView({ behavior: "smooth" })} className="inline-flex min-h-12 items-center justify-center gap-3 rounded-2xl border border-blue-200 px-5 text-sm font-black text-blue-700 hover:bg-blue-50">View Portfolio Details <ArrowRight size={17} /></button>
           </div>
         </div>
@@ -396,7 +410,7 @@ export default function MonthlyWealthReport({ report, history = [], viewer = "st
           ["Monthly SIP", compactCurrency(summary.monthlySip), "Current running SIP", RefreshCcw, "text-blue-700 bg-blue-50"],
           ["Money Added", compactCurrency(summary.newMoneyAdded), "Confirmed this month", ArrowRight, "text-cyan-700 bg-cyan-50"],
           ["Money Withdrawn", compactCurrency(summary.totalWithdrawals), "Confirmed this month", ArrowRight, "text-amber-700 bg-amber-50"],
-          ["Portfolio Gain / Loss", compactCurrency(summary.investmentGain), `Investment performance in ${getMonthLabel(report.reportMonth)}`, TrendingUp, Number(summary.investmentGain || 0) < 0 ? "text-red-700 bg-red-50" : "text-emerald-700 bg-emerald-50"],
+          ["Investment Gain / Loss", compactCurrency(summary.investmentGain), `After confirmed cash flows in ${getMonthLabel(report.reportMonth)}`, TrendingUp, Number(summary.investmentGain || 0) < 0 ? "text-red-700 bg-red-50" : "text-emerald-700 bg-emerald-50"],
           [hasGoals ? "Active Financial Goals" : "General Wealth Corpus", hasGoals ? activeGoals : compactCurrency(summary.generalWealthCorpus || summary.totalCorpus), hasGoals ? `${onTrackGoals} on track · ${attentionGoals} need attention` : "Default bucket", Target, "text-violet-700 bg-violet-50"]
         ]).map(([label, value, hint, Icon, tone]) => (
           <SectionCard key={label} className="p-5">

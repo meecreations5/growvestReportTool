@@ -1,0 +1,135 @@
+{
+  "project": "GrowVest Report Tool",
+  "version": "v0.34.35 - Monthly Close Cutoff and Manual PMS History Safety Patch",
+  "base": "v0.34.35 with System-Wide Integrity + Historical Month-End Approval Bridge applied",
+  "release_date": "2026-11-05",
+  "changed_files": [
+    {
+      "path": "scripts/qa/monthly-close-cutoff-fixture.mjs",
+      "change": "added",
+      "sha256": "7753462a9bb4be1f474bab3daf156d01258fab79a20240562ab87716286af765",
+      "bytes": 9351
+    },
+    {
+      "path": "scripts/qa/release-audit.mjs",
+      "change": "modified",
+      "sha256": "3fb84aa25c0b109824ffafb6217d859d15dc20a3db29018244e22c3e1fee1cca",
+      "bytes": 211972
+    },
+    {
+      "path": "src/app/api/portfolio/month-end-capture-approval/route.js",
+      "change": "added",
+      "sha256": "eb98fe8f024e9f74281a304c10def48ea85a6278af53792131dd4f6ee3bcd57c",
+      "bytes": 7809
+    },
+    {
+      "path": "src/app/api/portfolio/report-source/route.js",
+      "change": "modified",
+      "sha256": "9d9df4bc9207b1a9ef922c4e11024af3f00ce9248730d6139c64bc5674741ecc",
+      "bytes": 25286
+    },
+    {
+      "path": "src/app/api/portfolio/system-integrity/route.js",
+      "change": "modified",
+      "sha256": "3ffc6a3075131f6622ebe260c4349f888b2989a3f3ef8ce358d62a36cf49bbda",
+      "bytes": 4703
+    },
+    {
+      "path": "src/components/portfolio/PortfolioSystemIntegrityPanel.js",
+      "change": "modified",
+      "sha256": "1fed10af0c1fa97e68d893bde5e002af4474fc4c010fd7a0e0cd347e8c9fc6b6",
+      "bytes": 14194
+    },
+    {
+      "path": "src/components/reports/ReportForm.js",
+      "change": "modified",
+      "sha256": "5c0f7cda5c03699e2dee5c94a7fe691edaa8530a9b5974c5b18fdd2be43f2e0e",
+      "bytes": 137671
+    },
+    {
+      "path": "src/components/reports/create/ReportingPeriodStep.js",
+      "change": "modified",
+      "sha256": "9765c852bbe238791814011bb26519ef229d5ac5d63e78b2f76d283229839f0a",
+      "bytes": 10898
+    },
+    {
+      "path": "src/lib/constants/report.js",
+      "change": "modified",
+      "sha256": "d1212d67fef85142a1e2a47990cfe93424925c85981f37ca0beb2aba3f1ece1a",
+      "bytes": 46906
+    },
+    {
+      "path": "src/lib/portfolioMonthlyClose.js",
+      "change": "added",
+      "sha256": "0f5339adc5deb9d7929552061d86ba97c075c9e874a5d1b8ecb396496bae1f6f",
+      "bytes": 6154
+    },
+    {
+      "path": "src/lib/portfolioSystemWideAudit.js",
+      "change": "modified",
+      "sha256": "4ac4e7f09945158bb8b422e111a5c0ace69313b9dcd2d79f9cff2415ef00313f",
+      "bytes": 9325
+    },
+    {
+      "path": "src/lib/server/manualPortfolioWorkbook.js",
+      "change": "modified",
+      "sha256": "fd458ef6530cf2cabc55717597c68c4760c0b83121978baed82c1968d953050f",
+      "bytes": 76304
+    },
+    {
+      "path": "src/lib/server/portfolioHistoricalManualLedger.js",
+      "change": "added",
+      "sha256": "39ea9360d8f30b398c922aad693abd55221f1d299376fb0231737d03994836bb",
+      "bytes": 3841
+    },
+    {
+      "path": "src/lib/server/portfolioManualValuationArchive.js",
+      "change": "added",
+      "sha256": "95fcbabf9477c7225643b49ea66a6fe440a2eef1e0417544e22f9a39954866e0",
+      "bytes": 4147
+    },
+    {
+      "path": "src/lib/server/portfolioMonthEndCaptureApproval.js",
+      "change": "added",
+      "sha256": "f5d4e98ba75dcc14f23a0f57e261ff083fd470199a37aeb1ccf3f055bcd5784d",
+      "bytes": 2436
+    },
+    {
+      "path": "src/lib/server/portfolioMonthEndSelection.js",
+      "change": "added",
+      "sha256": "9b6ca1cbd465ba27bf8c89d13ef386ec5ab764c9ddd1294f5a2b564a4959359c",
+      "bytes": 3459
+    },
+    {
+      "path": "src/lib/server/portfolioReportCashFlowCoverage.js",
+      "change": "modified",
+      "sha256": "b9de06c454aa967712b55587c0db24342438009e476cdf255e08289176621f02",
+      "bytes": 2616
+    },
+    {
+      "path": "src/lib/server/portfolioReset.js",
+      "change": "modified",
+      "sha256": "cb036695463db98b878d6f1fd49e9cfec36d4354adef9c9ec02e8415d3fc235f",
+      "bytes": 26981
+    },
+    {
+      "path": "src/lib/server/portfolioServer.js",
+      "change": "modified",
+      "sha256": "fa83bf256b6a20d9982aef4eb6c431333d553e9077cffcf3f8cd4bc4a045609b",
+      "bytes": 21118
+    },
+    {
+      "path": "src/lib/server/reportPortfolioReconciliation.js",
+      "change": "modified",
+      "sha256": "ccb34bf1755177aef67dab77d38a8483b997e0e2e795f27c17a8b10976fef3d6",
+      "bytes": 13083
+    },
+    {
+      "path": "src/services/portfolioService.js",
+      "change": "modified",
+      "sha256": "746b436df1671ce97d6b6efc17b3710e5915324d2d57e5586b0f198c2e26e586",
+      "bytes": 22288
+    }
+  ],
+  "note": "No direct production Firebase changes or backfill occurred. Backup before deploying."
+}

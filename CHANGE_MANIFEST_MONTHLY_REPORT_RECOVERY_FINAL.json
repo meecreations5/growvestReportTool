@@ -1,0 +1,51 @@
+{
+  "release": "v0.34.35-monthly-source-auto-recovery-2026-11-06",
+  "baseline": "GrowVest_v0.34.35_Auto_Monthly_Close_Full_Project.zip",
+  "scope": "Automatic report-load reconciliation handshake, preserving financial guards",
+  "files": [
+    {
+      "path": "src/components/reports/ReportForm.js",
+      "action": "modified",
+      "old_sha256": "71a8373bb2d297fef838029acf5ea46f5e0538e91c0254c10be52f7bf287a84d",
+      "new_sha256": "49a1fba11559f8fd8727a72957386003264135cda98a1947d611787ad741fcbd"
+    },
+    {
+      "path": "src/lib/portfolioMonthlySourceRecovery.js",
+      "action": "added",
+      "old_sha256": null,
+      "new_sha256": "45f15b12275afddf2d193667689e197513a66b29c0cf44a036ed3ee7facf3ca2"
+    },
+    {
+      "path": "scripts/qa/amfi-automatic-monthend-fixture.mjs",
+      "action": "modified",
+      "old_sha256": "2a577e4eed9b1e4f2eea7bc281776f757d8d070807e8d1f2586c3dbd5373e4fa",
+      "new_sha256": "05385117c3155fcb7e15c21b3c4873ef03d408b7e38b8075ff207e684d9f8785"
+    },
+    {
+      "path": "scripts/qa/monthly-source-auto-recovery-fixture.mjs",
+      "action": "added",
+      "old_sha256": null,
+      "new_sha256": "fa4524cff37def39743cd784a798da1feed2aae5287e2f69eacaab6763784ac4"
+    },
+    {
+      "path": "package.json",
+      "action": "modified",
+      "old_sha256": "124556f7b04e85cf27c2152609a288a9765847d99a81c05ec45a078c122994a8",
+      "new_sha256": "56824f86f5fc35eeabc03ba9f224b701a6254a79eff349d083f8c425ce1b2ae9"
+    }
+  ],
+  "tests": {
+    "release_audit": 577,
+    "monthend_behavior": 15,
+    "amfi_integration": 21,
+    "historical_approval": 41,
+    "monthly_cutoff": 45,
+    "manual_pms": 38,
+    "sip": 17
+  },
+  "constraints": [
+    "Staging validation required",
+    "Missing or unverified source evidence must remain blocked",
+    "Not a scheduled 54-investor auto-close service"
+  ]
+}

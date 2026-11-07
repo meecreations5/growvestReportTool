@@ -6,6 +6,7 @@ import { PORTFOLIO_IMPORT_STATUS, PORTFOLIO_MATCH_STATUS, PORTFOLIO_SOURCES } fr
 import { stableHash } from "@/lib/server/portfolioImportParser";
 import { normalisePortfolioGoalAllocations, portfolioAllocationStatus } from "@/lib/portfolioGoalAllocation";
 import { createPortfolioSnapshot, getAccessibleInvestor, indiaDateKey } from "@/lib/server/portfolioServer";
+import { voidDatedValuationForImport } from "@/lib/server/portfolioDatedValuationStore";
 
 export const runtime = "nodejs";
 
@@ -47,6 +48,9 @@ function publicFile(file = {}, recovery = null) {
     externalPan: file.externalPan || "",
     externalClientCode: file.externalClientCode || "",
     summary: file.summary || null,
+    datedValuationId: file.datedValuationId || "",
+    datedValuationDate: file.datedValuationDate || "",
+    datedValuationStatus: file.datedValuationStatus || "",
     recovery: recovery ? {
       status: recovery.status || "",
       reversible: recovery.reversible === true && ["committed", "commit_failed"].includes(recovery.status),
@@ -185,6 +189,10 @@ async function rollbackFile({ actor, batchRef, batch, file, recovery, reason, re
     }, { merge: true })
   ]);
 
+  // Preserve the historical audit record, but remove this cancelled source
+  // from available NAV history. This does not change live portfolio values.
+  await voidDatedValuationForImport({ file, actor, reason });
+
   const investorId = recovery.investorId || file.matchedInvestorId || "";
   let snapshot = null;
   if (investorId) {
@@ -266,6 +274,7 @@ async function legacyCleanupFile({ actor, batchRef, batch, file, reason, resetMa
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true });
   await writer.close();
+  await voidDatedValuationForImport({ file, actor, reason });
 
   const snapshot = await createPortfolioSnapshot(investorId, actor, {
     snapshotDate: indiaDateKey(),

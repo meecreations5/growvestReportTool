@@ -361,6 +361,10 @@ function renderableReportData(report = {}) {
     reportReconciliation: report.reportReconciliation || null,
     portfolioAsOfDate: report.portfolioAsOfDate || "",
     sourcePortfolioSnapshotId: report.sourcePortfolioSnapshotId || "",
+    sourcePortfolioSnapshotVersion: Number(report.sourcePortfolioSnapshotVersion || 0),
+    openingBaselineSource: report.openingBaselineSource || "",
+    openingMonthlyReportId: report.openingMonthlyReportId || "",
+    openingMonthlyReportMonthKey: report.openingMonthlyReportMonthKey || "",
     portfolioVerificationStatus: report.portfolioVerificationStatus || "",
     portfolioSourceFreshness: report.portfolioSourceFreshness || [],
     portfolioVerification: report.portfolioVerification || null,
@@ -465,6 +469,10 @@ function normaliseReportPayload(payload, currentUser, status) {
     } : null,
     portfolioAsOfDate: payload.portfolioAsOfDate || "",
     sourcePortfolioSnapshotId: payload.sourcePortfolioSnapshotId || null,
+    sourcePortfolioSnapshotVersion: Number(payload.sourcePortfolioSnapshotVersion || 0),
+    openingBaselineSource: payload.openingBaselineSource || "",
+    openingMonthlyReportId: payload.openingMonthlyReportId || "",
+    openingMonthlyReportMonthKey: payload.openingMonthlyReportMonthKey || "",
     portfolioVerificationStatus: payload.portfolioVerificationStatus || "",
     portfolioSourceFreshness: payload.portfolioSourceFreshness || [],
     portfolioVerification: payload.portfolioVerification ? {
@@ -728,6 +736,31 @@ export async function getMonthlyReport(reportId) {
   const snapshot = await getDoc(doc(db, "monthlyReports", reportId));
   if (snapshot.exists()) return { id: snapshot.id, ...snapshot.data() };
   return resolveMissingMonthlyReport(reportId);
+}
+
+export async function reconcileMonthlyReportPortfolio(payload) {
+  const headers = await authenticatedApiHeaders({ "Content-Type": "application/json" });
+  const response = await fetch("/api/reports/reconcile-portfolio", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      reportType: payload?.reportType || REPORT_TYPE.MONTHLY,
+      investorId: payload?.investorId || "",
+      statementDate: payload?.statementDate || "",
+      portfolioAsOfDate: payload?.portfolioAsOfDate || "",
+      reportingPeriod: payload?.reportingPeriod || null,
+      sourcePortfolioSnapshotId: payload?.sourcePortfolioSnapshotId || "",
+      sourcePortfolioSnapshotVersion: Number(payload?.sourcePortfolioSnapshotVersion || 0)
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data?.reconciliation?.message || data?.error || "Portfolio data changed after this Wealth Review was prepared.");
+    error.code = data?.reconciliation?.reason || "report_portfolio_stale";
+    error.reconciliation = data?.reconciliation || null;
+    throw error;
+  }
+  return data?.reconciliation || null;
 }
 
 export async function getOpeningInvestorReport(investorId) {

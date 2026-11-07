@@ -60,6 +60,7 @@ import {
 } from "@/lib/constants/assessment";
 import { getMonthLabel } from "@/lib/constants/report";
 import { derivePortfolioGoalProgress } from "@/lib/portfolioGoalAllocation";
+import { lastCalendarDayOfMonth, unrepresentedExternalCashFlows } from "@/lib/portfolioPeriodCoverage";
 import { formatDateTime } from "@/lib/utils/date";
 import { formatCurrency, formatDate } from "@/lib/utils/format";
 import { nextAnnualOccasion, turningAge } from "@/lib/utils/occasions";
@@ -546,9 +547,23 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
     .filter(Boolean)
     .sort()
     .at(-1) || portfolioView?.snapshots?.[0]?.snapshotDate || portfolioView?.investor?.latestPortfolioSnapshotDate || investor.latestPortfolioSnapshotDate || "";
+  const savedPortfolioSnapshot = Array.isArray(portfolioView?.snapshots) ? portfolioView.snapshots[0] : null;
+  const snapshotCurrentValue = Number(savedPortfolioSnapshot?.summary?.currentValue || 0);
+  const portfolioSnapshotCoversLive = Boolean(savedPortfolioSnapshot?.snapshotDate
+    && String(savedPortfolioSnapshot.snapshotDate) >= latestPortfolioDate
+    && Math.abs(snapshotCurrentValue - currentPortfolio) <= Math.max(1, Math.abs(currentPortfolio) * 0.0005));
   const activeMonthlySip = livePortfolioPositions.length
     ? livePortfolioPositions.reduce((sum, item) => sum + Number(item.monthlySip || item.monthlyContribution || 0), 0)
     : Number(portfolioView?.investor?.latestPortfolioMonthlySip ?? liveGoalProgress?.activeMonthlySip ?? investor.latestPortfolioMonthlySip ?? 0);
+  const latestReportMonthKey = String(latestReport?.reportMonthKey || (latestReport?.reportYear && latestReport?.reportMonth ? `${latestReport.reportYear}-${String(latestReport.reportMonth).padStart(2, "0")}` : ""));
+  const latestReportCutoffDate = String(latestReport?.reportingPeriod?.portfolioCutoffDate || latestReport?.statementDate || lastCalendarDayOfMonth(latestReportMonthKey)).slice(0, 10);
+  const latestReportSnapshotDate = String(latestReport?.portfolioAsOfDate || latestReport?.portfolioVerification?.snapshotDate || "").slice(0, 10);
+  const uncoveredReportFlows = unrepresentedExternalCashFlows({
+    snapshotDate: latestReportSnapshotDate,
+    cutoffDate: latestReportCutoffDate,
+    transactions: portfolioView?.transactions || []
+  });
+  const latestReportNeedsReconciliation = Boolean(latestReport?.reportType !== "opening" && uncoveredReportFlows.count);
   const latestGain = Number(latestReport?.summary?.investmentGain || 0);
   const latestNewMoney = Number(latestReport?.summary?.newMoneyAdded || 0);
   const latestWithdrawals = Number(latestReport?.summary?.withdrawals || latestReport?.summary?.amountWithdrawn || 0);
@@ -709,10 +724,10 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
       </section>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-        <SummaryMetric label="Current portfolio" value={formatCurrency(currentPortfolio)} helper={latestPortfolioDate ? `Verified ${formatDate(latestPortfolioDate)}` : "No current portfolio snapshot available"} icon={WalletCards} tone="blue" />
-        <SummaryMetric label="Monthly gain / loss" value={formatCurrency(latestGain)} helper={latestReport ? reportMonthText(latestReport) : "Awaiting report data"} icon={latestGain < 0 ? TrendingDown : TrendingUp} tone={latestGain < 0 ? "red" : "green"} />
-        <SummaryMetric label="Monthly return" value={formatPercent(latestMonthlyReturn)} helper="Calculated from latest report" icon={Activity} tone={latestMonthlyReturn < 0 ? "red" : "cyan"} trend={latestMonthlyReturn} />
-        <SummaryMetric label="YTD return" value={formatPercent(ytdReturn)} helper={latestYear ? `Calendar year ${latestYear}` : "Awaiting report history"} icon={Sparkles} tone={ytdReturn < 0 ? "red" : "green"} trend={ytdReturn} />
+        <SummaryMetric label="Current portfolio" value={formatCurrency(currentPortfolio)} helper={latestPortfolioDate ? `${portfolioSnapshotCoversLive ? "Verified" : "Holdings valued"} ${formatDate(latestPortfolioDate)}${!portfolioSnapshotCoversLive ? " · snapshot refresh needed" : ""}` : "No current portfolio snapshot available"} icon={WalletCards} tone="blue" />
+        <SummaryMetric label="Monthly gain / loss" value={latestReportNeedsReconciliation ? "Pending" : formatCurrency(latestGain)} helper={latestReportNeedsReconciliation ? "Month-end valuation needs reconciliation" : latestReport ? reportMonthText(latestReport) : "Awaiting report data"} icon={latestGain < 0 && !latestReportNeedsReconciliation ? TrendingDown : TrendingUp} tone={latestReportNeedsReconciliation ? "amber" : latestGain < 0 ? "red" : "green"} />
+        <SummaryMetric label="Monthly return" value={latestReportNeedsReconciliation ? "Pending" : formatPercent(latestMonthlyReturn)} helper={latestReportNeedsReconciliation ? "Report uses an earlier closing snapshot" : "Calculated from latest report"} icon={Activity} tone={latestReportNeedsReconciliation ? "amber" : latestMonthlyReturn < 0 ? "red" : "cyan"} trend={latestReportNeedsReconciliation ? undefined : latestMonthlyReturn} />
+        <SummaryMetric label="YTD return" value={latestReportNeedsReconciliation ? "Pending" : formatPercent(ytdReturn)} helper={latestReportNeedsReconciliation ? "Contains an unreconciled monthly report" : latestYear ? `Calendar year ${latestYear}` : "Awaiting report history"} icon={Sparkles} tone={latestReportNeedsReconciliation ? "amber" : ytdReturn < 0 ? "red" : "green"} trend={latestReportNeedsReconciliation ? undefined : ytdReturn} />
         <SummaryMetric label="Net contribution" value={formatCurrency(latestNetContribution)} helper={`${formatCurrency(latestNewMoney)} invested · ${formatCurrency(latestWithdrawals)} withdrawn`} icon={BadgeIndianRupee} tone="amber" />
         <SummaryMetric label="Reports generated" value={String(reports.length)} helper={latestReport ? `Latest: ${reportMonthText(latestReport)}` : "Create the first report"} icon={FileBarChart} tone="slate" />
       </section>
@@ -838,7 +853,7 @@ export default function InvestorDetailClient({ investorId, initialTab = "overvie
                     </div>
                     <div className="rounded-lg bg-slate-50 p-3">
                       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Return</p>
-                      <p className={`mt-1 text-sm font-bold tabular-nums ${latestMonthlyReturn < 0 ? "text-red-600" : "text-emerald-600"}`}>{formatPercent(latestMonthlyReturn)}</p>
+                      <p className={`mt-1 text-sm font-bold tabular-nums ${latestMonthlyReturn < 0 ? "text-red-600" : "text-emerald-600"}`}>{latestReportNeedsReconciliation ? "Pending reconciliation" : formatPercent(latestMonthlyReturn)}</p>
                     </div>
                   </div>
                   <div className="mt-4 flex items-center justify-between gap-3">

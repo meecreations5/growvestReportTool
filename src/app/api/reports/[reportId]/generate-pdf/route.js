@@ -3,6 +3,7 @@ import { adminDb, canStaffAccessRecord, verifyStaffRequest,
   appRequestErrorStatus
 } from "@/lib/server/firebaseAdmin";
 import { createAndUploadReportPdf } from "@/lib/server/reportServer";
+import { assertReportPortfolioCurrent } from "@/lib/server/reportPortfolioReconciliation";
 
 
 export const runtime = "nodejs";
@@ -16,6 +17,8 @@ export async function POST(request, { params }) {
     if (!canStaffAccessRecord(actor, report)) return NextResponse.json({ error: "You are not authorised to generate this PDF." }, { status: 403 });
     if (report.status !== "completed") return NextResponse.json({ error: "Complete the Wealth Review before generating the final PDF." }, { status: 422 });
 
+    const portfolioReconciliation = await assertReportPortfolioCurrent(report, { actionLabel: "generate the final PDF" });
+
     const pdf = await createAndUploadReportPdf(report, {
       reportId,
       publishedVersion: report.version || 1,
@@ -26,6 +29,7 @@ export async function POST(request, { params }) {
       pdfIsStale: false,
       pdfInvalidatedAt: null,
       pdfInvalidationReason: null,
+      reportPortfolioReconciliation: portfolioReconciliation,
       updatedAt: new Date()
     }, { merge: true });
     await adminDb.collection("activityLogs").add({

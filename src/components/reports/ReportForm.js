@@ -16,7 +16,8 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { getInvestors } from "@/services/investorListService";
 import { getDataImport, linkDataImportToReport } from "@/services/dataImportService";
-import { getPortfolioReportSource, updatePortfolioGoal } from "@/services/portfolioService";
+import { autoReconcileMonthEnd, getPortfolioReportSource, updatePortfolioGoal } from "@/services/portfolioService";
+import { isExpectedMonthlySourceError, loadMonthlyReportSourceWithRecovery, monthlyCloseRecoveryKey } from "@/lib/portfolioMonthlySourceRecovery";
 import { getInsuranceProtectionSnapshot } from "@/services/insuranceService";
 import { getInvestorProfileActionsForReportOnce, getOpenInvestorActionsOnce } from "@/services/actionService";
 import {
@@ -26,6 +27,7 @@ import {
   getMonthlyReport,
   saveMonthlyReport
 } from "@/services/reportService";
+import { reconcileMonthlyReportPortfolio } from "@/services/reportReconciliationService";
 import {
   ACTION_OWNER_OPTIONS,
   ACTION_PRIORITY_OPTIONS,
@@ -55,9 +57,10 @@ import {
   getReportPeriodCutoffDate,
   getReportPeriodEndDate
 } from "@/lib/constants/report";
-import { monthlyReportSchema, validateCompletedReport } from "@/lib/validation/reportSchema";
+import { isVerifiedZeroClosingPortfolio, monthlyReportSchema, validateCompletedReport } from "@/lib/validation/reportSchema";
 import { buildReportReconciliation } from "@/lib/reportReconciliation";
 import { isMonthlyPeriodAfterOpening } from "@/lib/reportPeriodRules";
+import { monthlyReviewBalanceSummary } from "@/lib/reportFinancialPresentation";
 import { getReportTemplate, subscribeReportTemplates } from "@/services/reportTemplateService";
 import {
   DEFAULT_REPORT_TEMPLATE_ID,
@@ -124,10 +127,14 @@ function nextReportPeriod(report) {
   return { month, year };
 }
 
-function reportPortfolioAsOfDate(year, month, statementDate = "") {
-  const cutoff = getReportPeriodCutoffDate(year, month);
+function reportPortfolioAsOfDate(year, month, statementDate = "", reportType = REPORT_TYPE.MONTHLY) {
+  const cutoff = reportType === REPORT_TYPE.OPENING
+    ? getReportPeriodCutoffDate(year, month)
+    : getReportPeriodEndDate(year, month);
   const monthPrefix = `${Number(year)}-${String(Number(month)).padStart(2, "0")}-`;
-  if (statementDate && String(statementDate).startsWith(monthPrefix) && statementDate <= cutoff) return statementDate;
+  // Only the Opening Review may use an in-month establishment date.
+  // A Monthly Wealth Review ALWAYS closes on the calendar month's final day.
+  if (reportType === REPORT_TYPE.OPENING && statementDate && String(statementDate).startsWith(monthPrefix) && statementDate <= cutoff) return statementDate;
   return cutoff;
 }
 
@@ -139,6 +146,61 @@ function hasMeaningfulPortfolioFacts(report = {}) {
     || (report.holdings || []).some((item) => Number(item.currentValue || 0) > 0)
     || (report.funds || []).some((item) => Number(item.currentValue || 0) > 0)
   );
+}
+
+function financialSummaryDiffers(currentSummary = {}, generatedSummary = {}, tolerance = 0.01) {
+  const fields = [
+    "totalCorpus",
+    "totalInvested",
+    "monthlySip",
+    "openingValue",
+    "newMoneyAdded",
+    "totalWithdrawals",
+    "investmentGain"
+  ];
+  return fields.some((field) => Math.abs(Number(currentSummary?.[field] || 0) - Number(generatedSummary?.[field] || 0)) > tolerance);
+}
+
+function mergeRefreshedPortfolioFacts(current, generated, { reopenForReview = false, asOfDate = "" } = {}) {
+  return withReportTemplateDefaults({
+    ...generated,
+    reportCode: current.reportCode || generated.reportCode,
+    version: Number(current.version || generated.version || 0),
+    templateId: current.templateId || generated.templateId,
+    templateVersion: current.templateVersion || generated.templateVersion,
+    templateSnapshot: current.templateSnapshot || generated.templateSnapshot,
+    templateAppliedAt: current.templateAppliedAt || generated.templateAppliedAt || null,
+    title: generated.reportType === REPORT_TYPE.OPENING ? generated.title : (current.title || generated.title),
+    statementDate: generated.reportType === REPORT_TYPE.OPENING
+      ? generated.statementDate
+      : (current.statementDate || generated.statementDate || asOfDate),
+    advisorNote: current.advisorNote || generated.advisorNote,
+    advisorInsights: current.advisorInsights || generated.advisorInsights,
+    commentarySources: current.commentarySources || generated.commentarySources,
+    monthlyHighlights: current.monthlyHighlights || generated.monthlyHighlights,
+    profileActions: current.profileActions || generated.profileActions,
+    nextSteps: current.nextSteps || generated.nextSteps,
+    nextReview: current.nextReview || generated.nextReview,
+    protectionSnapshot: current.protectionSnapshot || generated.protectionSnapshot || null,
+    financialPlan: current.financialPlan || generated.financialPlan,
+    disclaimer: current.disclaimer || generated.disclaimer,
+    sourceImportId: null,
+    sourceImportFileName: "",
+    importedDataSummary: null,
+    status: reopenForReview ? "draft" : (current.status || generated.status || "draft"),
+    investorVisible: reopenForReview ? false : Boolean(current.investorVisible),
+    publicationStatus: reopenForReview ? "internal" : (current.publicationStatus || generated.publicationStatus || "internal"),
+    completedAt: reopenForReview ? null : (current.completedAt || null),
+    pdfStoragePath: reopenForReview ? null : (current.pdfStoragePath || null),
+    pdfFileName: reopenForReview ? null : (current.pdfFileName || null),
+    pdfSizeBytes: reopenForReview ? null : (current.pdfSizeBytes || null),
+    pdfVersion: reopenForReview ? null : (current.pdfVersion || null),
+    pdfGeneratedAt: reopenForReview ? null : (current.pdfGeneratedAt || null),
+    pdfRendererVersion: reopenForReview ? null : (current.pdfRendererVersion || null),
+    pdfIsStale: reopenForReview ? Boolean(current.pdfStoragePath) : Boolean(current.pdfIsStale),
+    pdfInvalidatedAt: reopenForReview && current.pdfStoragePath ? new Date().toISOString() : (current.pdfInvalidatedAt || null),
+    pdfInvalidationReason: reopenForReview && current.pdfStoragePath ? "portfolio_snapshot_changed" : (current.pdfInvalidationReason || null)
+  });
 }
 
 function SectionHeader({ number, title, description, action }) {
@@ -211,6 +273,7 @@ export default function ReportForm({ reportId = null }) {
   const corpusTouchedRef = useRef(Boolean(reportId));
   const appliedImportRef = useRef("");
   const appliedPortfolioSnapshotRef = useRef("");
+  const monthEndRecoveryAttemptsRef = useRef(new Map());
   const carriedActionsFromReportRef = useRef("");
   const openingTypeResolvedRef = useRef("");
   const [activeImportId, setActiveImportId] = useState(() => searchParams.get("importId") || "");
@@ -333,6 +396,10 @@ export default function ReportForm({ reportId = null }) {
               statementDate: getReportPeriodCutoffDate(period.year, period.month),
               portfolioAsOfDate: "",
               sourcePortfolioSnapshotId: null,
+              sourcePortfolioSnapshotVersion: 0,
+              openingBaselineSource: "",
+              openingMonthlyReportId: "",
+              openingMonthlyReportMonthKey: "",
               portfolioVerificationStatus: "",
               portfolioSourceFreshness: [],
               portfolioVerification: null,
@@ -409,17 +476,33 @@ export default function ReportForm({ reportId = null }) {
   );
 
   useEffect(() => {
-    if ((reportId && portfolioRefreshToken === 0 && !existingDraftNeedsPortfolioHydration) || !form.investorId || !selectedInvestor || activeImportId || searchParams.get("importId")) {
+    const existingInternalReportCanCheckForNewSnapshotRevision = Boolean(
+      reportId
+      && !form.investorVisible
+      && ["draft", "completed"].includes(String(form.status || ""))
+    );
+    if ((reportId && portfolioRefreshToken === 0 && !existingDraftNeedsPortfolioHydration && !existingInternalReportCanCheckForNewSnapshotRevision) || !form.investorId || !selectedInvestor || activeImportId || searchParams.get("importId")) {
       if (!form.investorId) setPortfolioSource(null);
       return undefined;
     }
 
     let active = true;
     async function loadPortfolioSource() {
-      const asOfDate = reportPortfolioAsOfDate(form.reportYear, form.reportMonth, form.statementDate);
+      const asOfDate = reportPortfolioAsOfDate(form.reportYear, form.reportMonth, form.statementDate, form.reportType);
       setPortfolioSourceLoading(true);
       try {
-        const source = await getPortfolioReportSource(form.investorId, asOfDate, profile);
+        // Automatic month-end recovery is part of report loading, not an
+        // optional button click after a 409 error. This safely retries once
+        // after the server verifies/creates an eligible historical snapshot.
+        const { source, autoClosed } = await loadMonthlyReportSourceWithRecovery({
+          loadSource: () => getPortfolioReportSource(form.investorId, asOfDate, profile, { reportType: form.reportType }),
+          closeMonth: () => autoReconcileMonthEnd(form.investorId, asOfDate.slice(0, 7)),
+          investorId: form.investorId,
+          monthKey: asOfDate.slice(0, 7),
+          reportType: form.reportType,
+          published: Boolean(form.investorVisible),
+          attempts: monthEndRecoveryAttemptsRef.current
+        });
         if (!active) return;
         setPortfolioSource(source);
         const sourceForGeneration = source || { asOfDate, snapshot: null, positions: [], openingPositions: [], transactions: [] };
@@ -453,17 +536,47 @@ export default function ReportForm({ reportId = null }) {
             reportTypeLabel: generated.reportTypeLabel || current.reportTypeLabel,
             openingBaseline: generated.openingBaseline || current.openingBaseline || null
           }));
-          setError("No verified Portfolio Master snapshot is available on or before this report date. Update the investor portfolio before generating the wealth review.");
+          setError("No verified Portfolio Master snapshot is available for this report period. GrowVest attempted source reconciliation; inspect any unresolved month-end source exception before publication.");
           return;
         }
 
-        const portfolioSourceKey = `${source.snapshot.id}|${asOfDate}`;
+        const sourceSnapshotVersion = Number(source.snapshot.snapshotVersion || 0);
+        const storedSnapshotVersion = Number(form.sourcePortfolioSnapshotVersion || 0);
+        const storedSnapshotId = String(form.sourcePortfolioSnapshotId || "");
+        const sameStoredSnapshot = Boolean(storedSnapshotId && storedSnapshotId === String(source.snapshot.id));
+        const sourceRevisionAdvanced = Boolean(
+          sameStoredSnapshot
+          && sourceSnapshotVersion > storedSnapshotVersion
+        );
+        const sourceSelectionChanged = Boolean(
+          storedSnapshotId
+          && storedSnapshotId !== String(source.snapshot.id)
+        );
+        const forceFinancialRefresh = Boolean(portfolioRefreshToken > 0 && reportId && !form.investorVisible);
+        const generatedFinancialFactsDiffer = Boolean(
+          storedSnapshotId
+          && financialSummaryDiffers(form.summary, generated.summary)
+        );
+        const sourceFinancialFactsChanged = Boolean(
+          !form.investorVisible
+          && (sourceRevisionAdvanced || sourceSelectionChanged || generatedFinancialFactsDiffer)
+        );
+        const reopenForReview = Boolean(
+          !form.investorVisible
+          && form.status === "completed"
+          && (sourceFinancialFactsChanged || forceFinancialRefresh)
+        );
+        const portfolioSourceKey = `${form.reportType || REPORT_TYPE.MONTHLY}|${source.snapshot.id}@${sourceSnapshotVersion}|${asOfDate}`;
         if (appliedPortfolioSnapshotRef.current === portfolioSourceKey && portfolioRefreshToken === 0) return;
 
-        if (corpusTouchedRef.current) {
+        if (corpusTouchedRef.current && !sourceFinancialFactsChanged && !forceFinancialRefresh) {
           setForm((current) => ({
             ...current,
             sourcePortfolioSnapshotId: source.snapshot.id,
+            sourcePortfolioSnapshotVersion: sourceSnapshotVersion,
+            openingBaselineSource: generated.openingBaselineSource || current.openingBaselineSource || "",
+            openingMonthlyReportId: generated.openingMonthlyReportId || current.openingMonthlyReportId || "",
+            openingMonthlyReportMonthKey: generated.openingMonthlyReportMonthKey || current.openingMonthlyReportMonthKey || "",
             portfolioAsOfDate: source.snapshot.snapshotDate || "",
             portfolioVerificationStatus: source.snapshot.verificationStatus || "verified",
             portfolioSourceFreshness: source.snapshot.sourceFreshness || [],
@@ -473,36 +586,42 @@ export default function ReportForm({ reportId = null }) {
             monthlyChanges: generated.monthlyChanges || []
           }));
         } else {
-          setForm((current) => withReportTemplateDefaults({
-            ...generated,
-            templateId: current.templateId || generated.templateId,
-            templateVersion: current.templateVersion || generated.templateVersion,
-            templateSnapshot: current.templateSnapshot || generated.templateSnapshot,
-            title: generated.reportType === REPORT_TYPE.OPENING ? generated.title : (current.title || generated.title),
-            statementDate: generated.reportType === REPORT_TYPE.OPENING ? generated.statementDate : (current.statementDate || generated.statementDate || asOfDate),
-            advisorNote: current.advisorNote || generated.advisorNote,
-            advisorInsights: current.advisorInsights || generated.advisorInsights,
-            commentarySources: current.commentarySources || generated.commentarySources,
-            monthlyHighlights: current.monthlyHighlights || generated.monthlyHighlights,
-            nextSteps: current.nextSteps || generated.nextSteps,
-            nextReview: current.nextReview || generated.nextReview,
-            disclaimer: current.disclaimer || generated.disclaimer
+          setForm((current) => mergeRefreshedPortfolioFacts(current, generated, {
+            reopenForReview,
+            asOfDate
           }));
+          corpusTouchedRef.current = true;
+          setSaveState("dirty");
         }
         appliedPortfolioSnapshotRef.current = portfolioSourceKey;
         setError("");
         const verificationStatus = generated.portfolioVerification?.status;
-        setSuccess(verificationStatus === "review_required"
-          ? `Portfolio snapshot as of ${source.snapshot.snapshotDate} populated the report. Review and confirm the verification warnings before continuing.`
-          : verificationStatus === "blocked"
-            ? `Portfolio snapshot as of ${source.snapshot.snapshotDate} was found, but verification is blocked. Resolve the flagged source issues before completion.`
-            : `Verified portfolio snapshot as of ${source.snapshot.snapshotDate} populated this report automatically. Review the figures and add GrowVest Partner recommendations before completion.`);
+        setSuccess(autoClosed
+          ? `GrowVest automatically reconciled the ${asOfDate.slice(0, 7)} historical closing source and refreshed this report from the verified month-end snapshot.`
+          : reopenForReview
+          ? `Portfolio Master changed after this Monthly Wealth Review was completed. GrowVest refreshed the ${source.snapshot.snapshotDate} financial facts to snapshot revision ${sourceSnapshotVersion} and reopened the report for financial review. Review the recalculated figures, save, and complete it again before generating the PDF.`
+          : sourceFinancialFactsChanged
+            ? `The ${source.snapshot.snapshotDate} portfolio source changed after this report was prepared. GrowVest refreshed the financial facts to snapshot revision ${sourceSnapshotVersion}. Review the recalculated figures before completion.`
+            : forceFinancialRefresh
+              ? `Financial data was refreshed from the verified Portfolio Master snapshot revision ${sourceSnapshotVersion}. Review the figures before completion.`
+              : verificationStatus === "review_required"
+            ? `Portfolio snapshot as of ${source.snapshot.snapshotDate} populated the report. Review and confirm the verification warnings before continuing.`
+            : verificationStatus === "blocked"
+              ? `Portfolio snapshot as of ${source.snapshot.snapshotDate} was found, but verification is blocked. Resolve the flagged source issues before completion.`
+              : `Verified portfolio snapshot as of ${source.snapshot.snapshotDate} populated this report automatically. Review the figures and add GrowVest Partner recommendations before completion.`);
       } catch (nextError) {
-        console.error("Unable to load portfolio report source", nextError);
+        // Coverage gaps and failed automatic month-end approvals are expected
+        // financial-validation results, not unhandled console exceptions.
+        // In particular portfolio_source_coverage_incomplete (HTTP 409) must
+        // remain a visible BLOCK in the form without triggering Next's overlay.
+        const financialCoveragePending = isExpectedMonthlySourceError(nextError);
+        if (!financialCoveragePending) console.error("Unable to load portfolio report source", nextError);
         if (active) {
           const message = nextError?.message || "Unable to load Portfolio Master for this report.";
           setPortfolioSource(null);
-          setError(message);
+          setError(financialCoveragePending
+            ? `Financial reconciliation pending. ${message} Open Portfolio Overview > Historical valuations > Check reporting eligibility for ${asOfDate.slice(0, 7)} to see any remaining source-level blocker. Do not re-upload the same file just to retry. Earlier displayed portfolio values must not be published.`
+            : message);
           setForm((current) => ({
             ...current,
             portfolioVerification: {
@@ -514,8 +633,8 @@ export default function ReportForm({ reportId = null }) {
               openingSnapshotId: "",
               openingSnapshotDate: "",
               checks: [{
-                id: "portfolio_source_access",
-                label: "Portfolio Master access",
+                id: financialCoveragePending ? "financial_period_coverage" : "portfolio_source_access",
+                label: financialCoveragePending ? "Financial reconciliation pending" : "Portfolio Master access",
                 status: "block",
                 detail: message
               }],
@@ -535,7 +654,7 @@ export default function ReportForm({ reportId = null }) {
 
     loadPortfolioSource();
     return () => { active = false; };
-  }, [activeImportId, existingDraftNeedsPortfolioHydration, form.investorId, form.reportMonth, form.reportYear, form.statementDate, portfolioRefreshToken, profile, reportId, searchParams, selectedInvestor]);
+  }, [activeImportId, existingDraftNeedsPortfolioHydration, form.investorId, form.investorVisible, form.reportMonth, form.reportYear, form.reportType, form.statementDate, form.status, form.sourcePortfolioSnapshotId, form.sourcePortfolioSnapshotVersion, portfolioRefreshToken, profile, reportId, searchParams, selectedInvestor]);
 
   useEffect(() => {
     const importId = searchParams.get("importId");
@@ -653,10 +772,14 @@ export default function ReportForm({ reportId = null }) {
     && (portfolioVerification.status !== "review_required" || portfolioVerification.acknowledged)
   );
   const portfolioDataComplete = Boolean(
-    Number(form.summary?.totalCorpus || 0) > 0
-    && form.holdings?.some((item) => Number(item.currentValue || 0) > 0)
-    && form.funds?.some((item) => item.instrumentName?.trim() && Number(item.currentValue || 0) > 0)
-    && portfolioVerificationReady
+    portfolioVerificationReady && (
+      isVerifiedZeroClosingPortfolio(form)
+      || (
+        Number(form.summary?.totalCorpus || 0) > 0
+        && form.holdings?.some((item) => Number(item.currentValue || 0) > 0)
+        && form.funds?.some((item) => item.instrumentName?.trim() && Number(item.currentValue || 0) > 0)
+      )
+    )
   );
   const commentaryComplete = Boolean(form.advisorInsights?.narrative || form.advisorNote?.content);
   const validGoals = (form.goals || []).filter((goal) => goal.name?.trim() && Number(goal.targetAmount || 0) > 0);
@@ -807,6 +930,7 @@ export default function ReportForm({ reportId = null }) {
       } catch (lookupError) {
         console.error(lookupError);
         if (active) {
+          setError(`Unable to check this investor's Wealth Review history: ${lookupError?.message || "Please retry."}`);
           setPreviousReport(null);
           setWorkflowActions([]);
           setDuplicateReport(null);
@@ -887,6 +1011,12 @@ export default function ReportForm({ reportId = null }) {
   }
 
   function refreshPortfolioVerification() {
+    // Manual retry clears the previous source exception and retries the same
+    // guarded recovery path; never fire a second independent approval request.
+    if (form.investorId && form.reportType === REPORT_TYPE.MONTHLY) {
+      const monthKey = `${form.reportYear}-${String(form.reportMonth).padStart(2, "0")}`;
+      monthEndRecoveryAttemptsRef.current.delete(monthlyCloseRecoveryKey(form.investorId, monthKey));
+    }
     appliedPortfolioSnapshotRef.current = "";
     setPortfolioRefreshToken((value) => value + 1);
   }
@@ -1235,6 +1365,10 @@ export default function ReportForm({ reportId = null }) {
   async function handleSave(complete = false, options = {}) {
     const { silent = false, autosave = false, redirectToPreview = false } = options;
     if (isLocked || saving) return;
+    if (complete && portfolioSourceLoading) {
+      if (!silent) setError("Portfolio Master refresh is still in progress. Review the refreshed figures before completing this Wealth Review.");
+      return;
+    }
 
     if (!form.investorId || periodLookupLoading || periodContextResolvedFor !== `${form.investorId}:${form.reportType || REPORT_TYPE.MONTHLY}`) {
       if (!silent) {
@@ -1251,6 +1385,92 @@ export default function ReportForm({ reportId = null }) {
       setFieldErrors({});
     }
 
+    // Completion is a financial control point, not only a form-state change.
+    // Re-read Portfolio Master immediately before completion so a month-end
+    // upload/rebuild that happened after the form was opened cannot be missed.
+    if (complete && form.reportType === REPORT_TYPE.MONTHLY && form.investorId && selectedInvestor) {
+      const asOfDate = reportPortfolioAsOfDate(form.reportYear, form.reportMonth, form.statementDate, form.reportType);
+      setPortfolioSourceLoading(true);
+      try {
+        const source = await getPortfolioReportSource(form.investorId, asOfDate, profile);
+        if (!source?.snapshot?.id) {
+          setError(`No verified Portfolio Master snapshot is available for ${asOfDate}. Update the portfolio before completing this Monthly Wealth Review.`);
+          setSaveState("dirty");
+          setSaving(false);
+          return;
+        }
+
+        const generated = createReportFromPortfolioSource(
+          selectedInvestor,
+          source,
+          form.reportMonth,
+          form.reportYear,
+          { reportType: REPORT_TYPE.MONTHLY }
+        );
+        const latestSnapshotId = String(source.snapshot.id || "");
+        const latestSnapshotVersion = Number(source.snapshot.snapshotVersion || 0);
+        const storedSnapshotId = String(form.sourcePortfolioSnapshotId || "");
+        const storedSnapshotVersion = Number(form.sourcePortfolioSnapshotVersion || 0);
+        const sourceChanged = Boolean(
+          !storedSnapshotId
+          || storedSnapshotId !== latestSnapshotId
+          || latestSnapshotVersion > storedSnapshotVersion
+          || financialSummaryDiffers(form.summary, generated.summary)
+        );
+
+        if (sourceChanged) {
+          if (form.investorVisible || form.activePublishedVersionId) {
+            setError(`Portfolio Master changed for ${asOfDate} after this investor-facing report was prepared. The published version remains frozen. Refresh Financial Data in the working revision, review the recalculated figures, and complete the revision before publishing again.`);
+            setSaveState("dirty");
+            setSaving(false);
+            return;
+          }
+
+          const refreshed = mergeRefreshedPortfolioFacts(form, generated, {
+            reopenForReview: true,
+            asOfDate
+          });
+          const existingWorkingId = workingReportId;
+          const saved = await saveMonthlyReport(refreshed, profile, {
+            reportId: existingWorkingId,
+            complete: false,
+            autosave: false
+          });
+          const persisted = {
+            ...refreshed,
+            version: Number(saved.version || refreshed.version || 1),
+            status: saved.status || "draft",
+            publicationStatus: saved.publicationStatus || "internal"
+          };
+          setWorkingReportId(saved.id);
+          setPortfolioSource(source);
+          appliedPortfolioSnapshotRef.current = `${form.reportType || REPORT_TYPE.MONTHLY}|${latestSnapshotId}@${latestSnapshotVersion}|${asOfDate}`;
+          corpusTouchedRef.current = true;
+          setForm(persisted);
+          formSignatureRef.current = JSON.stringify(persisted);
+          setLastSavedAt(new Date());
+          setSaveState("saved");
+          setActiveStep("portfolio-data");
+          setError(`Portfolio data changed after this Monthly Wealth Review was prepared. GrowVest refreshed the report to the latest verified ${source.snapshot.snapshotDate || asOfDate} snapshot revision ${latestSnapshotVersion}. Review Opening Portfolio, Money Added, Money Withdrawn, Closing Portfolio and Investment Gain / Loss, then complete the report again.`);
+          setSuccess("");
+          setSaving(false);
+          return;
+        }
+
+        // Server-side snapshot guard closes the final race between the client
+        // re-read above and the completion write below.
+        await reconcileMonthlyReportPortfolio(form);
+      } catch (nextError) {
+        console.error("Unable to reconcile Portfolio Master before report completion", nextError);
+        setError(nextError?.message || "GrowVest could not verify the latest Portfolio Master snapshot before completion. Refresh Financial Data and try again.");
+        setSaveState("dirty");
+        setSaving(false);
+        return;
+      } finally {
+        setPortfolioSourceLoading(false);
+      }
+    }
+
     const parsed = monthlyReportSchema.safeParse(form);
     if (!parsed.success) {
       if (!silent) {
@@ -1263,6 +1483,7 @@ export default function ReportForm({ reportId = null }) {
       setSaving(false);
       return;
     }
+
 
     if (complete) {
       const completionErrors = validateCompletedReport(form);
@@ -1384,14 +1605,14 @@ export default function ReportForm({ reportId = null }) {
     && !["pdf", "delivery"].includes(activeStep);
 
   useEffect(() => {
-    if (loading || isLocked || saving || !canSaveDraft || saveState !== "dirty" || ["investor", "period"].includes(activeStep)) return undefined;
+    if (loading || isLocked || saving || portfolioSourceLoading || !canSaveDraft || saveState !== "dirty" || ["investor", "period"].includes(activeStep)) return undefined;
 
     const timer = window.setTimeout(() => {
       handleSave(false, { silent: true, autosave: true });
     }, 1800);
 
     return () => window.clearTimeout(timer);
-  }, [form, loading, isLocked, saving, canSaveDraft, saveState, activeStep]);
+  }, [form, loading, isLocked, saving, portfolioSourceLoading, canSaveDraft, saveState, activeStep]);
 
   if (loading) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">Loading wealth review…</div>;
 
@@ -1399,6 +1620,7 @@ export default function ReportForm({ reportId = null }) {
   const fundsTotal = (form.funds || []).reduce((sum, item) => sum + Number(item.currentValue || 0), 0);
   const corpusDifference = Number(form.summary?.totalCorpus || 0) - holdingsTotal;
   const portfolioFactsLocked = Boolean(form.sourcePortfolioSnapshotId && form.reportGenerationSource === "portfolio_master");
+  const financialMovement = monthlyReviewBalanceSummary(form.summary);
   const canModifyCurrentPortfolioBuckets = Boolean(
     portfolioFactsLocked
     && selectedInvestor?.latestPortfolioSnapshotId
@@ -1481,13 +1703,13 @@ export default function ReportForm({ reportId = null }) {
                           {form.portfolioVerification.status === "ready" ? <CheckCircle2 size={19} className="text-emerald-700" /> : <AlertTriangle size={19} className={form.portfolioVerification.status === "blocked" ? "text-red-700" : "text-amber-700"} />}
                           <p className="text-sm font-black text-slate-950">{form.reportType === REPORT_TYPE.OPENING ? "Opening Portfolio Verification" : "Monthly Portfolio Verification"}</p>
                         </div>
-                        <p className="mt-1 text-xs leading-5 text-slate-600">Portfolio verification as of {form.portfolioVerification.asOfDate || reportPortfolioAsOfDate(form.reportYear, form.reportMonth, form.statementDate)} · Snapshot {form.portfolioVerification.snapshotDate || "not available"}{form.portfolioVerification.snapshotCapturedDate && form.portfolioVerification.snapshotCapturedDate !== form.portfolioVerification.snapshotDate ? ` (captured ${form.portfolioVerification.snapshotCapturedDate})` : ""}. A value source older than 7 days is flagged for review; data older than 31 days blocks completion.</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-600">Portfolio verification as of {form.portfolioVerification.asOfDate || reportPortfolioAsOfDate(form.reportYear, form.reportMonth, form.statementDate, form.reportType)} · Snapshot {form.portfolioVerification.snapshotDate || "not available"}{Number(form.sourcePortfolioSnapshotVersion || 0) > 0 ? ` · Revision ${Number(form.sourcePortfolioSnapshotVersion || 0)}` : ""}{form.portfolioVerification.snapshotCapturedDate && form.portfolioVerification.snapshotCapturedDate !== form.portfolioVerification.snapshotDate ? ` (captured ${form.portfolioVerification.snapshotCapturedDate})` : ""}. A value source older than 7 days is flagged for review; data older than 31 days blocks completion.</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <span className={`inline-flex rounded-full px-3 py-1.5 text-xs font-bold ${form.portfolioVerification.status === "ready" ? "bg-emerald-100 text-emerald-800" : form.portfolioVerification.status === "review_required" ? "bg-amber-100 text-amber-800" : form.portfolioVerification.status === "blocked" ? "bg-red-100 text-red-800" : "bg-slate-100 text-slate-700"}`}>
                           {form.portfolioVerification.status === "ready" ? "Ready" : form.portfolioVerification.status === "review_required" ? "Review required" : form.portfolioVerification.status === "blocked" ? "Blocked" : "Checking"}
                         </span>
-                        <Button type="button" variant="secondary" onClick={refreshPortfolioVerification} disabled={portfolioSourceLoading}>Refresh verification</Button>
+                        <Button type="button" variant="secondary" onClick={refreshPortfolioVerification} disabled={portfolioSourceLoading}>{form.reportType === REPORT_TYPE.MONTHLY ? "Refresh Financial Data" : "Refresh verification"}</Button>
                       </div>
                     </div>
 
@@ -1577,7 +1799,7 @@ export default function ReportForm({ reportId = null }) {
                         ["monthlySip", "Monthly SIP"],
                         ["newMoneyAdded", "Money Added This Month"],
                         ["totalWithdrawals", "Money Withdrawn This Month"],
-                        ["investmentGain", "Portfolio Gain / Loss"]
+                        ["investmentGain", "Portfolio Gain / Loss (after cash flows)"]
                       ].map(([field, label]) => {
                         const readOnly = true;
                         return (
@@ -1592,13 +1814,22 @@ export default function ReportForm({ reportId = null }) {
                                 onChange={(event) => { if (!readOnly) setSummary(field, event.target.value); }}
                               />
                               <span className={`text-[11px] font-semibold ${readOnly ? "text-emerald-700" : "text-blue-700"}`}>
-                                {portfolioFactsLocked ? "Calculated from verified Portfolio Master" : field === "lifetimeTarget" || field === "overallProgress" ? "Calculated from Bucket List goals" : "Available automatically after a verified portfolio is selected"}
+                                {field === "overallProgress" && portfolioFactsLocked ? "Based on goal-allocated holdings only; General Wealth is excluded." : field === "investmentGain" && portfolioFactsLocked ? "Closing - opening - confirmed money added + withdrawals." : portfolioFactsLocked ? "Calculated from verified Portfolio Master" : field === "lifetimeTarget" || field === "overallProgress" ? "Calculated from Bucket List goals" : "Available automatically after a verified portfolio is selected"}
                               </span>
                             </div>
                           </Field>
                         );
                       })}
                     </div>
+                    {form.reportType === REPORT_TYPE.MONTHLY && portfolioFactsLocked && financialMovement.factsAvailable ? (
+                      <div className="mx-5 mb-5 rounded-xl border border-blue-100 bg-blue-50/60 p-4 text-xs text-slate-700">
+                        <p className="font-bold text-blue-900">Monthly balance reconciliation</p>
+                        <p className="mt-2 leading-6">Opening {formatCurrency(financialMovement.openingValue)} + Added {formatCurrency(financialMovement.moneyAdded)} - Withdrawn {formatCurrency(financialMovement.moneyWithdrawn)} + Investment Gain/Loss {formatCurrency(financialMovement.investmentGain)} = Closing {formatCurrency(financialMovement.expectedClosing)}</p>
+                        <p className="mt-1 text-slate-500">Portfolio value change is {formatCurrency(financialMovement.balanceChange)}. This is not the same as investment gain/loss when there are contributions or withdrawals.</p>
+                        {financialMovement.reconciled === false ? <p className="mt-2 font-bold text-red-700">Financial values do not reconcile. Refresh Financial Data and resolve the source discrepancy before completing this report.</p> : null}
+                        {financialMovement.cashFlowReviewSuggested ? <p className="mt-2 font-medium text-amber-800">The flow-adjusted loss is unusually large. Confirm investment transactions, valuation, and snapshot revision in Portfolio Master.</p> : null}
+                      </div>
+                    ) : null}
                   </Card>
             <Card id="report-monthly-changes" className="scroll-mt-28">
                     <SectionHeader number="2A" title="What changed this month" description="Detected automatically from Portfolio Master snapshots and confirmed transactions. Planned investor requests are shown later under Upcoming / Planned Actions and do not change these figures." />

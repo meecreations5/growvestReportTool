@@ -1,3 +1,4 @@
+import { isConfirmedInvestmentActivity } from "../portfolioPeriodCoverage.js";
 import {
   DEFAULT_REPORT_TEMPLATE_ID,
   LOCKED_REPORT_VISUAL_VERSION,
@@ -277,12 +278,12 @@ export function buildPortfolioReportVerification(portfolioSource, asOfDate, { re
   checks.push(verificationCheck(
     "opening_snapshot",
     reportType === REPORT_TYPE.OPENING ? "Opening baseline" : "Opening portfolio snapshot",
-    reportType === REPORT_TYPE.OPENING || openingSnapshot ? "pass" : "warn",
+    reportType === REPORT_TYPE.OPENING || openingSnapshot ? "pass" : "block",
     reportType === REPORT_TYPE.OPENING
       ? `This verified snapshot establishes the investor's opening GrowVest baseline as of ${snapshot.snapshotDate || referenceDate}. No prior-period performance is inferred.`
       : openingSnapshot
         ? `Opening reference ${openingSnapshot.snapshotDate} is available for monthly movement calculations.`
-        : "No earlier verified snapshot is available. Fresh money can still be shown, but investment gain is not inferred from an unknown opening corpus."
+        : "Monthly investment gain cannot be verified without an opening baseline. Establish the investor's Opening Wealth Review first; do not publish a guessed zero gain."
   ));
 
   const holdingChangeVerification = resolveHoldingChangeVerification({
@@ -317,6 +318,22 @@ export function buildPortfolioReportVerification(portfolioSource, asOfDate, { re
     invalidGoalAllocationCount
       ? `${invalidGoalAllocationCount} holding${invalidGoalAllocationCount === 1 ? " has" : "s have"} goal allocation above 100%.`
       : `${assignedHoldings} holding${assignedHoldings === 1 ? " has" : "s have"} a specific Bucket List link; ${generalWealthHoldings} holding${generalWealthHoldings === 1 ? " has" : "s have"} some or all value in General Wealth (Default).`
+  ));
+
+  // Never silently equate unexplained Manual PMS cash with investment gain.
+  // Only positively identified investor contributions and withdrawals feed
+  // monthly net flows; ambiguous ledger rows require focused staff review.
+  const unknownPmsMovements = transactions.filter((item) => (
+    item.manualPortfolioCashFlow === true || item.manualPortfolioTrade === true
+  ) && ["review", "internal_or_withdrawal_review"].includes(String(item.cashFlowType || "").toLowerCase())
+    && Math.abs(Number(item.amount || item.netAmount || 0)) > 0);
+  checks.push(verificationCheck(
+    "manual_pms_cash_classification",
+    "Manual PMS cash-movement classification",
+    unknownPmsMovements.length ? "block" : "pass",
+    unknownPmsMovements.length
+      ? `${unknownPmsMovements.length} dated Manual PMS movement${unknownPmsMovements.length === 1 ? " has" : "s have"} an unknown external/internal cash-flow type. Confirm the underlying entry without inventing fresh capital, withdrawals or market performance.`
+      : "Manual PMS cash movements have explicit external/internal classifications (or none occurred)."
   ));
 
   checks.push(verificationCheck(
@@ -613,8 +630,7 @@ function reportPositionKey(position = {}) {
 }
 
 function confirmedPortfolioTransaction(item = {}) {
-  const status = String(item.financialImpactStatus || item.transactionStatus || "").toLowerCase();
-  return !["planned", "pending", "in_progress", "awaiting_portfolio_confirmation"].includes(status);
+  return isConfirmedInvestmentActivity(item);
 }
 
 function portfolioTransactionFlow(item = {}) {
@@ -623,7 +639,8 @@ function portfolioTransactionFlow(item = {}) {
   const cashFlowType = String(item.cashFlowType || "").toLowerCase();
   if (cashFlowType === "withdrawal") return "withdrawal";
   if (cashFlowType === "new_money") return "new_money";
-  if (cashFlowType === "internal") return "internal";
+  if (["internal", "none", "non_cashflow", "non_cash_flow"].includes(cashFlowType)) return "internal";
+  if (["review", "internal_or_withdrawal_review"].includes(cashFlowType)) return "review";
   if (/switch\s*in|switch\s*out|transfer\s*in|transfer\s*out/.test(type)) return "internal";
   if (/redemption|redeem|withdraw/.test(type)) return "withdrawal";
   if (/sip|purchase|lump\s*sum|investment|deposit|fresh\s*buy|contribution/.test(type)) return "new_money";
@@ -917,7 +934,10 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
     reportType,
     reportTypeLabel: getReportTypeLabel(reportType),
     title: getReportDisplayTitle(reportType, month, year),
-    statementDate: snapshot.snapshotDate || base.statementDate,
+    // The statement/reporting cutoff is always the last CALENDAR day for a
+    // Monthly Wealth Review. The last eligible underlying NAV date is stored
+    // independently in portfolioAsOfDate; never relabel it as month-end NAV.
+    statementDate: reportType === REPORT_TYPE.OPENING ? (snapshot.snapshotDate || base.statementDate) : reportAsOfDate,
     openingBaseline: reportType === REPORT_TYPE.OPENING ? {
       asOfDate: snapshot.snapshotDate || reportAsOfDate,
       sourceSnapshotId: snapshot.id || "",
@@ -926,6 +946,10 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
     } : null,
     portfolioAsOfDate: snapshot.snapshotDate || "",
     sourcePortfolioSnapshotId: snapshot.id || "",
+    sourcePortfolioSnapshotVersion: Number(snapshot.snapshotVersion || 0),
+    openingBaselineSource: portfolioSource?.openingBaselineSource || "",
+    openingMonthlyReportId: portfolioSource?.openingMonthlyReportId || "",
+    openingMonthlyReportMonthKey: portfolioSource?.openingMonthlyReportMonthKey || "",
     portfolioVerificationStatus: snapshot.verificationStatus || "verified",
     portfolioSourceFreshness: snapshot.sourceFreshness || [],
     portfolioVerification,
@@ -963,7 +987,8 @@ export function createReportFromPortfolioSource(investor, portfolioSource, month
       openingValue: reportType === REPORT_TYPE.OPENING ? 0 : Number(openingValue.toFixed(2)),
       newMoneyAdded: reportType === REPORT_TYPE.OPENING ? 0 : Number(flowSummary.newMoney.toFixed(2)),
       totalWithdrawals: reportType === REPORT_TYPE.OPENING ? 0 : Number(flowSummary.withdrawals.toFixed(2)),
-      investmentGain: reportType === REPORT_TYPE.OPENING ? 0 : Number(investmentGain.toFixed(2))
+      investmentGain: reportType === REPORT_TYPE.OPENING ? 0 : Number(investmentGain.toFixed(2)),
+      monthlyGainVerified: reportType === REPORT_TYPE.OPENING || hasOpeningSnapshot
     },
     transactions: (reportType === REPORT_TYPE.OPENING ? [] : portfolioTransactions).map((item, index) => ({
       id: item.id || `portfolio-transaction-${index + 1}`,

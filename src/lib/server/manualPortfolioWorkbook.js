@@ -9,6 +9,9 @@ import {
 import { createPortfolioSnapshot, indiaDateKey } from "@/lib/server/portfolioServer";
 import { stableHash } from "@/lib/server/portfolioImportParser";
 import { summarisePortfolioPerformance } from "@/lib/portfolioPerformance";
+import { manualPmsCashEntryFlow, manualPmsTradeFlow } from "@/lib/portfolioMonthlyLedger";
+import { archiveManualLedgerBeforeReplace } from "@/lib/server/portfolioHistoricalManualLedger";
+import { archiveManualPortfolioValuation } from "@/lib/server/portfolioManualValuationArchive";
 import {
   GENERAL_WEALTH_BUCKET_NAME,
   generalWealthAllocation,
@@ -212,7 +215,8 @@ function parseHoldings(data) {
       investmentMode: clean(cell(row, columns, "investmentMode")),
       folioNo: clean(cell(row, columns, "folioNo")), isin: clean(cell(row, columns, "isin")), symbol: clean(cell(row, columns, "symbol")), exchange: clean(cell(row, columns, "exchange")),
       quantity, averageBuyRate, totalInvested: round(totalInvested), currentRate, currentValue: round(currentValue),
-      valuationDate: excelDate(cell(row, columns, "valuationDate")) || indiaDateKey(),
+      // Never infer a source NAV date from the day this workbook was uploaded.
+      valuationDate: excelDate(cell(row, columns, "valuationDate")),
       purchaseDate: excelDate(cell(row, columns, "purchaseDate")), maturityDate: excelDate(cell(row, columns, "maturityDate")),
       monthlySip: number(cell(row, columns, "monthlySip")), goalName: clean(cell(row, columns, "goalName")),
       status: clean(cell(row, columns, "status")) || "active", notes: clean(cell(row, columns, "notes"))
@@ -525,6 +529,10 @@ export async function resolveManualPortfolioWorkbook(parsed) {
     const holdingByKey = new Map();
     const explicitAllocationKeys = new Set(group.goals.map((allocation) => `${allocation.accountCode}:${clean(allocation.holdingKey).toUpperCase()}`));
     group.holdings.forEach((holding) => {
+      if (!holding.valuationDate) {
+        warnings.push({ sheet: "Holdings", rowNumber: holding.rowNumber, investorId: group.investor.id, reason: `Missing actual NAV/valuation date for ${holding.instrumentName}. The workbook can be imported, but its snapshot needs review before monthly reporting.` });
+        group.warningCount += 1;
+      }
       holding.positionId = manualPositionId(group.investor.id, holding.accountCode, holding.holdingKey, holding);
       const holdingLookupKey = `${holding.accountCode}:${clean(holding.holdingKey).toUpperCase()}`;
       holdingByKey.set(holdingLookupKey, holding);
@@ -587,8 +595,13 @@ function signedCashAmount(row) {
   const amount = Math.abs(Number(row.amount || 0));
   const type = normaliseHeader(row.entryType);
   if (!amount) return 0;
-  if (["withdrawal", "purchase debit", "charges", "transfer out", "fee", "expense", "other outflow"].some((item) => type.includes(item))) return -amount;
-  if (["opening cash", "contribution", "sale proceeds", "dividend", "interest", "transfer in", "maturity proceeds", "refund", "other inflow"].some((item) => type.includes(item))) return amount;
+  // A capital withdrawal must REDUCE the cash account even when the workbook
+  // uses newer labels such as "PMS Capital Withdrawal". Internal transfers
+  // still change cash balances but never add/withdraw investor wealth.
+  if (manualPmsCashEntryFlow(row.entryType) === "withdrawal"
+    || ["purchase debit", "charges", "transfer out", "fee", "expense", "other outflow"].some((item) => type.includes(item))) return -amount;
+  if (manualPmsCashEntryFlow(row.entryType) === "new_money"
+    || ["sale proceeds", "dividend", "interest", "transfer in", "maturity proceeds", "refund", "other inflow"].some((item) => type.includes(item))) return amount;
   return Number(row.amount || 0);
 }
 
@@ -722,18 +735,26 @@ async function refreshAccountSummaries(investor, actor, batchId) {
     const realizedPnl = round(transactions.reduce((sum, item) => sum + Number(item.realizedPnl || 0), 0));
     const incomeTotal = round(income.reduce((sum, item) => sum + Number(item.netAmount || 0), 0));
     const chargesTotal = round(charges.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0));
-    const investorContribution = round(cash.filter((item) => ["opening cash", "contribution", "transfer in"].some((type) => normaliseHeader(item.entryType).includes(type))).reduce((sum, item) => sum + Math.abs(Number(item.amount || 0)), 0));
-    const investorWithdrawal = round(cash.filter((item) => ["withdrawal", "transfer out"].some((type) => normaliseHeader(item.entryType).includes(type))).reduce((sum, item) => sum + Math.abs(Number(item.amount || 0)), 0));
+    const investorContribution = round(cash.filter((item) => manualPmsCashEntryFlow(item.entryType) === "new_money").reduce((sum, item) => sum + Math.abs(Number(item.amount || 0)), 0));
+    const investorWithdrawal = round(cash.filter((item) => manualPmsCashEntryFlow(item.entryType) === "withdrawal").reduce((sum, item) => sum + Math.abs(Number(item.amount || 0)), 0));
     const absoluteReturnPercentage = investorContribution > 0 ? round(((currentPortfolioValue + investorWithdrawal - investorContribution) / investorContribution) * 100, 4) : null;
-    const terminalDate = [indiaDateKey(), ...holdings.map((item) => item.valuationDate).filter(Boolean)].sort().at(-1) || indiaDateKey();
+    // Financial valuation dates come from workbook evidence/ledger, not from
+    // when staff uploaded the workbook. A 2 Nov import can still carry 30 Oct
+    // holdings; a 1 Nov cash movement must remain a November movement.
+    const terminalDate = [
+      ...holdings.map((item) => item.valuationDate),
+      ...cash.map((item) => item.entryDate),
+      ...income.map((item) => item.incomeDate)
+    ].filter(Boolean).sort().at(-1) || "";
     const flows = cash.flatMap((item) => {
-      const type = normaliseHeader(item.entryType); const amount = Math.abs(Number(item.amount || 0));
+      const amount = Math.abs(Number(item.amount || 0));
       if (!item.entryDate || !amount) return [];
-      if (["opening cash", "contribution", "transfer in"].some((name) => type.includes(name))) return [{ date: item.entryDate, amount: -amount }];
-      if (["withdrawal", "transfer out"].some((name) => type.includes(name))) return [{ date: item.entryDate, amount }];
+      const cashFlowType = manualPmsCashEntryFlow(item.entryType);
+      if (cashFlowType === "new_money") return [{ date: item.entryDate, amount: -amount }];
+      if (cashFlowType === "withdrawal") return [{ date: item.entryDate, amount }];
       return [];
     });
-    if (currentPortfolioValue) flows.push({ date: terminalDate, amount: currentPortfolioValue });
+    if (currentPortfolioValue && terminalDate) flows.push({ date: terminalDate, amount: currentPortfolioValue });
     const xirrPercentage = xirr(flows);
 
     const cashPositionId = manualPositionId(investorId, accountCode, "__CASH__", {});
@@ -830,11 +851,16 @@ export async function commitManualPortfolioWorkbook({ actor, file, mode, parsed,
     // Manual-source state first, then start a fresh writer for recreated rows.
     // This avoids enqueueing delete + set operations for the same document in
     // one BulkWriter and makes replacement deterministic.
+    let retainedHistoricalLedgerCount = 0;
     if (mode === "replace") {
+      // Save all financial ledger events, including income, charges and
+      // corporate actions, before clearing operational Manual PMS records.
+      // A later daily Replace must not erase earlier-month evidence.
+      retainedHistoricalLedgerCount = await archiveManualLedgerBeforeReplace({ investorId, previous: existing, batchId, actor });
       const replaceWriter = adminDb.bulkWriter();
       existing.portfolioPositions.filter((item) => item.source === PORTFOLIO_SOURCES.MANUAL).forEach((item) => replaceWriter.delete(item.ref));
       existing.investmentTransactions.filter((item) => item.source === PORTFOLIO_SOURCES.MANUAL && item.manualPortfolioManaged === true).forEach((item) => replaceWriter.delete(item.ref));
-      ["manualPortfolioAccounts", "manualPortfolioAccountSnapshots", "manualPortfolioCashLedger", "manualPortfolioIncome", "manualPortfolioCorporateActions", "manualPortfolioCharges", "manualPortfolioGoalAllocations", "manualPortfolioReconciliations", "manualPortfolioNotes"].forEach((name) => existing[name].forEach((item) => replaceWriter.delete(item.ref)));
+      ["manualPortfolioAccounts", "manualPortfolioCashLedger", "manualPortfolioIncome", "manualPortfolioCorporateActions", "manualPortfolioCharges", "manualPortfolioGoalAllocations", "manualPortfolioReconciliations", "manualPortfolioNotes"].forEach((name) => existing[name].forEach((item) => replaceWriter.delete(item.ref)));
       await replaceWriter.close();
     }
 
@@ -916,6 +942,8 @@ export async function commitManualPortfolioWorkbook({ actor, file, mode, parsed,
         manualHoldingKey: row.holdingKey, transactionKey: row.transactionKey, transactionDate: row.transactionDate, transactionType: row.transactionType,
         instrumentName: row.instrumentName, quantity: row.quantity, transactionQuantity: row.quantity, rate: row.rate, transactionRate: row.rate,
         grossAmount: row.grossAmount, transactionAmount: row.grossAmount, charges: row.charges, taxes: row.taxes, netAmount: row.netAmount,
+        amount: Math.abs(Number(row.netAmount || row.grossAmount || 0)),
+        cashFlowType: manualPmsTradeFlow(row.transactionType), transactionStatus: "confirmed", financialImpactStatus: "confirmed",
         realizedPnl: row.realizedPnl, realisedPnl: row.realizedPnl, transactionReference: row.reference, notes: row.notes, manualBulkImportId: batchId, createdAt: now, updatedAt: now
       }, { merge: true });
     }
@@ -1002,14 +1030,29 @@ export async function commitManualPortfolioWorkbook({ actor, file, mode, parsed,
         advisorUid: investor.assignedAdvisorUid || investor.advisorUid || actor.uid, assignedAdvisorUid: investor.assignedAdvisorUid || investor.advisorUid || actor.uid,
         investorPortalUid: investor.portalUid || investor.investorPortalUid || null,
         accountId: account?.accountId || accountDocumentId(investorId, accountSummary.accountCode), accountCode: accountSummary.accountCode, accountName: account?.accountName || accountSummary.accountCode,
-        strategy: account?.strategy || "", provider: account?.provider || "Manual", snapshotDate: accountSnapshotDate, metrics: accountMetrics,
+        strategy: account?.strategy || "", provider: account?.provider || "Manual", snapshotDate: accountSnapshotDate,
+        // Snapshot valuation evidence is per PMS account, not the latest NAV
+        // of an unrelated account belonging to the same investor.
+        earliestValuationDate: group.holdings.filter((row) => row.accountCode === accountSummary.accountCode).map((row) => row.valuationDate).filter(Boolean).sort()[0] || "",
+        latestValuationDate: group.holdings.filter((row) => row.accountCode === accountSummary.accountCode).map((row) => row.valuationDate).filter(Boolean).sort().at(-1) || "",
+        metrics: accountMetrics,
         source: PORTFOLIO_SOURCES.MANUAL, manualPortfolioManaged: true, manualBulkImportId: batchId, manualImportDate: importDate, manualSourceRefreshDate: importDate, freshnessDateBasis: "manual_workbook_import", capturedAt: FieldValue.serverTimestamp(), capturedByUid: actor.uid, capturedByName: actor.fullName || actor.email || "GrowVest User"
       });
     }
     await accountSnapshotWriter.close();
 
     const snapshot = await createPortfolioSnapshot(investorId, actor, { snapshotDate: accountSnapshotDate, verificationStatus: group.warningCount ? "review_required" : "verified", sourceImportId: batchId });
-    results.push({ investorId, investorName: investor.fullName || investor.name || "Investor", clientCode: investor.clientCode || "", accountCount: group.accounts.length, holdingCount: group.holdings.length, transactionCount: group.transactions.length, createdHoldings, updatedHoldings, warningCount: group.warningCount, accountSummaries, snapshot });
+    let datedHistory = null;
+    let datedHistoryError = "";
+    try {
+      datedHistory = await archiveManualPortfolioValuation({ investorId, actor, batchId, fileName: parsed.fileName, mode, captureDate: importDate });
+    } catch (error) {
+      // Operational import is already committed; expose history failure rather
+      // than pretending history is complete or deleting this investor's data.
+      datedHistoryError = error?.message || "Manual PMS history archival failed.";
+      console.error("Manual PMS dated history archive failed", { investorId, batchId, message: datedHistoryError });
+    }
+    results.push({ investorId, investorName: investor.fullName || investor.name || "Investor", clientCode: investor.clientCode || "", accountCount: group.accounts.length, holdingCount: group.holdings.length, transactionCount: group.transactions.length, createdHoldings, updatedHoldings, warningCount: group.warningCount + Number(Boolean(datedHistoryError)), accountSummaries, snapshot, datedHistory, datedHistoryError, retainedHistoricalLedgerCount });
   }
 
   const batchLog = adminDb.collection("activityLogs").doc();

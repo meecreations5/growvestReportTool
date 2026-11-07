@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb, verifyStaffRequest, appRequestErrorStatus } from "@/lib/server/firebaseAdmin";
 import { PORTFOLIO_PRODUCT_TYPES, PORTFOLIO_SOURCES, portfolioAssetClass } from "@/lib/constants/portfolio";
 import { createPortfolioSnapshot, getAccessibleInvestor, indiaDateKey, positionDocumentId, transactionDocumentId } from "@/lib/server/portfolioServer";
+import { manualPmsTradeFlow } from "@/lib/portfolioMonthlyLedger";
 import {
   GENERAL_WEALTH_BUCKET_NAME,
   isGeneralWealthName,
@@ -35,6 +36,13 @@ const HEADER_ALIASES = {
   valuationDate: ["valuation date", "nav date", "price date", "as of date"],
   monthlySip: ["monthly sip contribution", "monthly sip", "sip amount", "monthly contribution"],
   sipStatus: ["sip status", "contribution status"],
+  // Optional columns let an existing simple Manual PMS holdings workbook
+  // record an ACTUAL dated capital addition/withdrawal without a new template.
+  pmsCapitalAdded: ["pms capital added", "additional pms capital", "additional pms investment", "capital added", "capital contribution", "fresh pms capital"],
+  pmsCapitalAddedDate: ["pms capital added date", "pms capital addition date", "capital addition date", "capital contribution date"],
+  pmsCapitalWithdrawn: ["pms capital withdrawn", "pms withdrawal amount", "capital withdrawn", "capital withdrawal", "pms capital withdrawal"],
+  pmsCapitalWithdrawnDate: ["pms capital withdrawal date", "capital withdrawal date", "pms withdrawal date"],
+  pmsCapitalReference: ["pms capital reference", "capital movement reference", "bank reference"],
   goalName: ["goal", "goal bucket list", "bucket list"],
   notes: ["notes", "remark", "remarks"]
 };
@@ -48,6 +56,7 @@ const TRANSACTION_ALIASES = {
   quantity: ["units quantity", "units", "quantity", "qty"],
   rate: ["nav rate", "nav", "rate", "price"],
   goalName: ["bucket list", "goal bucket list", "goal"],
+  transactionReference: ["transaction reference", "bank reference", "reference", "utr"],
   notes: ["notes", "remark", "remarks"]
 };
 
@@ -148,6 +157,7 @@ function parseTransactionSheet(workbook) {
         instrumentName: clean(cell(row, columns, "instrumentName")),
         folioNo: clean(cell(row, columns, "folioNo")),
         transactionType,
+        transactionReference: clean(cell(row, columns, "transactionReference")),
         amount: Math.abs(number(cell(row, columns, "amount"))),
         units: Math.abs(units),
         signedUnits: transactionSignedUnits(transactionType, units),
@@ -211,6 +221,11 @@ async function parseFile(file) {
       currentValue: Number(currentValue.toFixed(2)),
       valuationDateInput: excelDate(cell(row, columns, "valuationDate")),
       valuationDate: "",
+      pmsCapitalAdded: productType === PORTFOLIO_PRODUCT_TYPES.PMS ? Math.abs(number(cell(row, columns, "pmsCapitalAdded"))) : 0,
+      pmsCapitalAddedDate: excelDate(cell(row, columns, "pmsCapitalAddedDate")),
+      pmsCapitalWithdrawn: productType === PORTFOLIO_PRODUCT_TYPES.PMS ? Math.abs(number(cell(row, columns, "pmsCapitalWithdrawn"))) : 0,
+      pmsCapitalWithdrawnDate: excelDate(cell(row, columns, "pmsCapitalWithdrawnDate")),
+      pmsCapitalReference: clean(cell(row, columns, "pmsCapitalReference")),
       scheduledMonthlySip,
       monthlySip: ["paused", "stopped", "na"].includes(sipStatus) ? 0 : scheduledMonthlySip,
       sipStatus,
@@ -219,7 +234,47 @@ async function parseFile(file) {
     };
   }).filter((item) => item.instrumentName);
   if (!rows.length) throw new Error("No manual investments were found in the workbook.");
-  return { sheetName, headers, rows, transactions: parseTransactionSheet(workbook) };
+  const sourceTransactions = parseTransactionSheet(workbook);
+  const capitalTransactions = [];
+  for (const row of rows.filter((item) => item.productType === PORTFOLIO_PRODUCT_TYPES.PMS)) {
+    for (const movement of [
+      { amount: row.pmsCapitalAdded, date: row.pmsCapitalAddedDate, type: "PMS Capital Addition", cashFlowType: "new_money" },
+      { amount: row.pmsCapitalWithdrawn, date: row.pmsCapitalWithdrawnDate, type: "PMS Capital Withdrawal", cashFlowType: "withdrawal" }
+    ]) {
+      if (!(movement.amount > 0)) continue;
+      const validMovementDate = /^\d{4}-\d{2}-\d{2}$/.test(movement.date)
+        && Number.isFinite(Date.parse(`${movement.date}T00:00:00Z`))
+        && new Date(`${movement.date}T00:00:00Z`).toISOString().slice(0, 10) === movement.date;
+      if (!validMovementDate) {
+        throw new Error(`${row.instrumentName}: ${movement.type} of INR ${movement.amount.toLocaleString("en-IN")} needs its actual capital movement date. Do not substitute the upload date.`);
+      }
+      // If the optional Transactions sheet already carries this same actual
+      // movement, the capital columns are an annotation, not a second deposit.
+      const alreadyRecorded = sourceTransactions.some((item) =>
+        identityText(item.instrumentName) === identityText(row.instrumentName)
+        && identityText(item.folioNo) === identityText(row.folioNo)
+        && item.transactionDate === movement.date
+        && Number(item.amount || 0) === movement.amount
+        && (manualPmsTradeFlow(item.transactionType) === movement.cashFlowType));
+      if (alreadyRecorded) continue;
+      capitalTransactions.push({
+        rowNumber: row.rowNumber,
+        transactionDate: movement.date,
+        instrumentName: row.instrumentName,
+        folioNo: row.folioNo,
+        transactionType: movement.type,
+        transactionReference: row.pmsCapitalReference,
+        amount: movement.amount,
+        units: 0,
+        signedUnits: 0,
+        rate: 0,
+        cashFlowType: movement.cashFlowType,
+        goalName: row.goalName,
+        notes: ["Dated Manual PMS capital movement", row.pmsCapitalReference].filter(Boolean).join(" / ")
+      });
+    }
+  }
+  return { sheetName, headers, rows, transactions: [...sourceTransactions, ...capitalTransactions] };
 }
 
 function investorGoals(investor) {
@@ -364,11 +419,12 @@ export async function POST(request, { params }) {
         averagePurchaseNav: row.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? Number(averageBuyRate.toFixed(6)) : Number(existing?.averagePurchaseNav || 0),
         currentRate: row.currentRate,
         currentNav: row.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? row.currentRate : Number(existing?.currentNav || 0),
-        // Valuation Date in the simplified Manual Excel is optional/ignored for
-        // now. The import date is the effective source freshness date.
-        navDate: row.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? importDate : (existing?.navDate || ""),
-        valuationDate: importDate,
-        valuationDateBasis: "manual_import_date",
+        // Preserve a supplied actual source value date; never replace it with
+        // the upload date merely because a report is generated in November.
+        // Missing dates remain tagged as upload-based, requiring source review.
+        navDate: row.productType === PORTFOLIO_PRODUCT_TYPES.MUTUAL_FUND ? (row.valuationDateInput || importDate) : (existing?.navDate || ""),
+        valuationDate: row.valuationDateInput || importDate,
+        valuationDateBasis: row.valuationDateInput ? "manual_workbook_valuation_date" : "manual_import_date",
         manualImportDate: importDate,
         firstSeenDate: existing?.firstSeenDate || importDate,
         investmentAddedDate: existing?.investmentAddedDate || importDate,
@@ -399,7 +455,10 @@ export async function POST(request, { params }) {
 
     let removed = 0;
     if (mode === "replace") {
-      existingManual.filter((item) => !incomingIds.has(item.id)).forEach((item) => { writer.delete(item.ref); removed += 1; });
+      // Keep separately managed multi-account Manual PMS holdings intact.
+      // This endpoint replaces ONLY its own simple Manual Investment rows.
+      existingManual.filter((item) => item.manualInvestmentTemplate === true && !incomingIds.has(item.id))
+        .forEach((item) => { writer.delete(item.ref); removed += 1; });
     }
 
     let transactionCreated = 0;
@@ -440,7 +499,15 @@ export async function POST(request, { params }) {
         relatedInvestmentId: relatedPositionId,
         transactionDate: transaction.transactionDate,
         transactionType: transaction.transactionType,
-        cashFlowType: transaction.cashFlowType,
+        transactionReference: transaction.transactionReference || "",
+        manualPortfolioAccountCode: relatedHolding?.productType === PORTFOLIO_PRODUCT_TYPES.PMS ? (transaction.folioNo || "") : "",
+        // In a PMS account, a security trade is an internal investment move;
+        // only an explicitly identified capital addition/withdrawal crosses
+        // the investor-to-PMS boundary.
+        cashFlowType: relatedHolding?.productType === PORTFOLIO_PRODUCT_TYPES.PMS
+          ? manualPmsTradeFlow(transaction.transactionType)
+          : transaction.cashFlowType,
+        productType: relatedHolding?.productType || "",
         amount: transaction.amount,
         purchaseNav: transaction.rate,
         units: transaction.units,
@@ -458,11 +525,11 @@ export async function POST(request, { params }) {
       existingTransaction ? transactionUpdated += 1 : transactionCreated += 1;
     }
 
-    if (mode === "replace" && parsed.transactions.length) {
-      transactionSnapshot.docs
-        .filter((item) => item.data()?.source === PORTFOLIO_SOURCES.MANUAL && item.data()?.manualInvestmentTemplate === true && !incomingTransactionIds.has(item.id))
-        .forEach((item) => { writer.delete(item.ref); transactionRemoved += 1; });
-    }
+    // Replace only replaces operational holdings, NOT confirmed transaction
+    // history. A subsequent daily workbook frequently lists only today's rows.
+    // Deleting last month's SIP/PMS capital records here would silently corrupt
+    // recurring monthly reports. Explicit audited corrections must be separate.
+    // Stable transactionDocumentId makes repeated uploads idempotent.
 
     const logRef = adminDb.collection("activityLogs").doc();
     writer.set(logRef, {
@@ -475,7 +542,10 @@ export async function POST(request, { params }) {
       action: mode === "replace" ? "manual_portfolio_replaced" : "manual_portfolio_merged",
       title: mode === "replace" ? "Manual investments replaced from Excel" : "Manual investments updated from Excel",
       description: `${previewRows.length} manual investment holding(s) and ${parsed.transactions.length} optional transaction row(s) were processed from ${clean(file?.name) || "Excel"}.`,
-      metadata: { mode, created, updated, removed, transactionCreated, transactionUpdated, transactionRemoved, warningCount },
+      metadata: {
+        mode, created, updated, removed, transactionCreated, transactionUpdated,
+        transactionRemoved, warningCount, historicalTransactionsRetained: true
+      },
       createdByUid: actor.uid,
       createdByName: actor.fullName || actor.email || "GrowVest User",
       createdAt: now

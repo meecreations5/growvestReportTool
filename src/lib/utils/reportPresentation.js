@@ -96,8 +96,8 @@ export function deriveReportHighlights(report = {}) {
     highlights.push({
       id: "gain",
       type: Number(summary.investmentGain) >= 0 ? "success" : "danger",
-      title: "Portfolio movement",
-      description: `Portfolio ${Number(summary.investmentGain) >= 0 ? "increased" : "decreased"} by ${compactCurrency(Math.abs(summary.investmentGain))} this month.`
+      title: "Investment gain / loss",
+      description: `Based on confirmed cash flows, investment performance was ${Number(summary.investmentGain) >= 0 ? "+" : "-"}${compactCurrency(Math.abs(summary.investmentGain))} this month. This is not the change in portfolio balance.`
     });
   }
   if (bestGoal) {

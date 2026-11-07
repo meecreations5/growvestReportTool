@@ -1,0 +1,94 @@
+{
+  "title": "GrowVest v0.34.35 Unified Monthly Close and Special Market Session - Cumulative update",
+  "base_archive": "GrowVest_v0.34.35_Saturday_NAV_Cumulative_Project.zip",
+  "patch_requires_exact_base": true,
+  "installation": "Use complete ZIP OR apply patch once to exact Saturday NAV cumulative project. Preserve existing staging credentials separately.",
+  "added": [
+    {
+      "path": "scripts/qa/unified-monthend-market-calendar-fixture.mjs",
+      "sha256": "659bd008614ec8808c1f4a7541d698fd6bc8ff95eb142237d3a297fce5cf1e4b"
+    },
+    {
+      "path": "src/lib/portfolioManualMonthEnd.js",
+      "sha256": "b35959d5379949685ab5041304c06739f169c2e162958db2f52b5a25f91858a6"
+    },
+    {
+      "path": "src/lib/portfolioMarketCalendar.js",
+      "sha256": "03dd652be75dbc9d1f6ca4ccb40a9e8e3502d5a75dda218bbae7332a9ec2497a"
+    },
+    {
+      "path": "src/lib/portfolioMonthlyIntegrity.js",
+      "sha256": "d269410f0d01df7d5e268fc49a45fd18c5e9fa604196e5438e2ccdda19b80986"
+    }
+  ],
+  "modified": [
+    {
+      "path": "package.json",
+      "original_sha256": "56824f86f5fc35eeabc03ba9f224b701a6254a79eff349d083f8c425ce1b2ae9",
+      "new_sha256": "3fe924509f29157d585be3acf7177efec3370aae5e4ca9d44fdca7b6c5d93d10"
+    },
+    {
+      "path": "src/app/api/portfolio/report-source/route.js",
+      "original_sha256": "6fdc34cebf229e60c02f9878388a93b5223cbea7d8eed01cbd327bc8e313bf52",
+      "new_sha256": "48de0b26102b11ec3ecca12fa749ab169d7e8767bcdc40f12b889ffeffe01d82"
+    },
+    {
+      "path": "src/app/api/portfolio/system-integrity/route.js",
+      "original_sha256": "3ffc6a3075131f6622ebe260c4349f888b2989a3f3ef8ce358d62a36cf49bbda",
+      "new_sha256": "206e8d651ff51e958da2f28139cf4399de877836983e8846ac8300ada51c6e5d"
+    },
+    {
+      "path": "src/app/api/portfolio/valuation-history/approve-month-end/route.js",
+      "original_sha256": "b96410b276117340f6d2c0a4858e7e79ea4cb6017c2dbba8699314c66a4dc7e7",
+      "new_sha256": "cee96087e3043b702107fefd70681bfd1ce189f03d267f5d76c0f9b049fdecca"
+    },
+    {
+      "path": "src/lib/portfolioHistoricalMonthEnd.js",
+      "original_sha256": "b4e7b01002a4aa87959f7fddf8187159c8cb3e17d28f53463190771a3a383bd7",
+      "new_sha256": "7f87565ebfd4f73944aea49c2afde87f06362e0267a8d2d29df329452664d343"
+    },
+    {
+      "path": "src/lib/portfolioMonthlySourceRecovery.js",
+      "original_sha256": "45f15b12275afddf2d193667689e197513a66b29c0cf44a036ed3ee7facf3ca2",
+      "new_sha256": "b06acf6ca8f8cb30a7c177a8af820f713ba6e4367723b4aadb92db158de1d9fe"
+    },
+    {
+      "path": "src/lib/portfolioSnapshotSelection.js",
+      "original_sha256": "1074a18ba8f1059b99ac3d6ceb265464fb363df7b3493eff853c5085a727e8fc",
+      "new_sha256": "255c15ff3597fe254611a9f6e206bbf805cf978fff7280e8512311593f010011"
+    },
+    {
+      "path": "src/lib/portfolioSystemWideAudit.js",
+      "original_sha256": "4ac4e7f09945158bb8b422e111a5c0ace69313b9dcd2d79f9cff2415ef00313f",
+      "new_sha256": "24d81338b21648da8153638385914c8c5f226b0d6b323a6302c412ec04f80c72"
+    },
+    {
+      "path": "src/lib/server/portfolioMonthEndSelection.js",
+      "original_sha256": "9b6ca1cbd465ba27bf8c89d13ef386ec5ab764c9ddd1294f5a2b564a4959359c",
+      "new_sha256": "72f38daf79432b1dd84f387b0a76572e66c7684c80a9ebb7db1f9105c517f610"
+    },
+    {
+      "path": "src/lib/server/portfolioReportCashFlowCoverage.js",
+      "original_sha256": "8e48298645f0a55f2cf28ffe3c82c20d4c048fa7bf2dfe768996872e11f0d7e1",
+      "new_sha256": "9ba930701333469c065ba1d953a21b9d25edce61fd8bc04dd53e40390b65c1a1"
+    },
+    {
+      "path": "src/lib/server/reportPortfolioReconciliation.js",
+      "original_sha256": "ccb34bf1755177aef67dab77d38a8483b997e0e2e795f27c17a8b10976fef3d6",
+      "new_sha256": "405614998a5c919f48240866df25b7c91b887a606be118ccb06f7a6b136ed070"
+    }
+  ],
+  "removed": [],
+  "tests": {
+    "release_qa_passed": 577,
+    "monthly_engine_passed": 59,
+    "fundbazaar_history": 44,
+    "manual_pms": 38,
+    "cutoff": 45,
+    "sip": 17,
+    "full_next_build": "NOT RUN: node_modules not installed",
+    "live_firebase": "NOT RUN",
+    "amfi_live": "NOT RUN",
+    "full_54_investor_scan": "NOT RUN"
+  }
+}

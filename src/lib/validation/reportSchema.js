@@ -51,6 +51,20 @@ export const monthlyReportSchema = z.object({
   disclaimer: z.string().optional().default("")
 });
 
+export function isVerifiedZeroClosingPortfolio(payload = {}) {
+  const verification = payload.portfolioVerification;
+  const verificationCounts = verification?.counts || {};
+  const hasExitEvidence = Number(verificationCounts.exitedHoldings || 0) > 0
+    || Number(verificationCounts.transactions || 0) > 0
+    || Number(payload.summary?.totalWithdrawals || 0) > 0
+    || Boolean(verification?.openingSnapshotId)
+    || payload.funds?.some((item) => Number(item.openingValue || 0) > 0 || Number(item.withdrawal || 0) > 0);
+  const hasVerifiedClosingSource = Boolean(
+    payload.sourcePortfolioSnapshotId && verification?.snapshotId
+  );
+  return Number(payload.summary?.totalCorpus || 0) === 0 && hasExitEvidence && hasVerifiedClosingSource;
+}
+
 export function validateCompletedReport(payload) {
   const errors = [];
   const verification = payload.portfolioVerification;
@@ -64,15 +78,7 @@ export function validateCompletedReport(payload) {
     }
   }
   const totalCorpus = Number(payload.summary?.totalCorpus || 0);
-  const verificationCounts = verification?.counts || {};
-  const hasExitEvidence = Number(verificationCounts.exitedHoldings || 0) > 0
-    || Number(verificationCounts.transactions || 0) > 0
-    || Number(payload.summary?.totalWithdrawals || 0) > 0
-    || Boolean(verification?.openingSnapshotId)
-    || payload.funds?.some((item) => Number(item.openingValue || 0) > 0 || Number(item.withdrawal || 0) > 0);
-  const hasVerifiedClosingSource = !verification?.required
-    || Boolean(payload.sourcePortfolioSnapshotId && verification?.snapshotId);
-  const legitimateZeroClosingBalance = totalCorpus === 0 && hasExitEvidence && hasVerifiedClosingSource;
+  const legitimateZeroClosingBalance = isVerifiedZeroClosingPortfolio(payload);
 
   if (totalCorpus <= 0 && !legitimateZeroClosingBalance) {
     errors.push("Total corpus must be greater than zero unless this is a verified fully-exited portfolio month.");

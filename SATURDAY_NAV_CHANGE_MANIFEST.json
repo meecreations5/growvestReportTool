@@ -1,0 +1,45 @@
+{
+  "project": "GrowVest Report Tool",
+  "base_project": "GrowVest_v0.34.35_Eligibility_AMFI_Auto_Fix_Complete_Project.zip",
+  "release": "v0.34.35 Saturday NAV source acceptance",
+  "changed_files": [
+    {
+      "path": "src/lib/portfolioHistoricalMonthEnd.js",
+      "bytes": 16935,
+      "sha256": "b4e7b01002a4aa87959f7fddf8187159c8cb3e17d28f53463190771a3a383bd7"
+    },
+    {
+      "path": "src/lib/server/amfiOfficialNavEvidence.js",
+      "bytes": 5671,
+      "sha256": "6bae871a424bad10d2046b7ca40d7a95ce9744f379e1d1246c8bad29c095d002"
+    },
+    {
+      "path": "src/app/api/portfolio/valuation-history/approve-month-end/route.js",
+      "bytes": 24529,
+      "sha256": "b96410b276117340f6d2c0a4858e7e79ea4cb6017c2dbba8699314c66a4dc7e7"
+    },
+    {
+      "path": "src/components/portfolio/InvestorDatedValuationHistory.js",
+      "bytes": 13431,
+      "sha256": "9fe7e785e2a9fa785eb41b1bd63b13d7d6903c59d469e40e2b24d95fe814e59b"
+    },
+    {
+      "path": "scripts/qa/fundbazaar-historical-monthend-approval-fixture.mjs",
+      "bytes": 18776,
+      "sha256": "3dbd54362d5a3d27c0bd5a1458e1aadcf35111aa66d9d34db79ff6744ae40c2d"
+    },
+    {
+      "path": "scripts/qa/amfi-network-resilience-fixture.mjs",
+      "bytes": 2916,
+      "sha256": "6bb6d1f4b0d0832e04bb03f0402114b88a9926f8512f0bb47e23baa562304243"
+    }
+  ],
+  "qa": {
+    "release": 577,
+    "historical_approval": 44,
+    "amfi_network": 6,
+    "amfi_monthend": 21,
+    "eligibility_preview": 9
+  },
+  "notes": "Saturday fund NAV from reconciled imported source can qualify without mandatory official weekend attestation; Sunday still requires official proof. This is not a claim that an individual source has been approved in production."
+}
