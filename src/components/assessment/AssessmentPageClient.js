@@ -347,8 +347,10 @@ export default function AssessmentPageClient({ leadId }) {
       assessmentLoaded = true;
       hydrate();
     }, (error) => {
-      console.error(error);
-      setFormError("Unable to load the client assessment.");
+      console.error("Client assessment load failed", error);
+      setFormError(error?.code === "permission-denied"
+        ? "Assessment access denied. Verify that this lead is assigned to your active advisor account."
+        : "Unable to load the client assessment.");
       setLoading(false);
     });
 
@@ -506,7 +508,8 @@ export default function AssessmentPageClient({ leadId }) {
     }
   }
 
-  if (loading || !values) return <div className="rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500">Loading client assessment…</div>;
+  if (loading) return <div className="rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500">Loading client assessment…</div>;
+  if (!values) return <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm font-semibold text-red-700">{formError || "The assessment could not be loaded."}</div>;
   if (!lead) return <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm font-semibold text-red-700">The linked lead could not be found.</div>;
 
   return (

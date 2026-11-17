@@ -1,0 +1,18 @@
+{
+  "base": "GrowVest_v0.34.35_Daily_Portfolio_Update_Full_Project.zip",
+  "input_user_source": "growvestReportTool(5).zip",
+  "issue": "first assessment access permission-denied for assigned advisor",
+  "changed_files": [
+    "firestore.rules",
+    "src/components/assessment/AssessmentPageClient.js",
+    "scripts/qa/assessment-first-create-permissions-fixture.mjs",
+    "ASSESSMENT_FIRST_CREATE_PERMISSION_FIX.md"
+  ],
+  "unmodified_modules": [
+    "src/services/assessmentService.js",
+    "src/services/leadService.js",
+    "src/app/api/portfolio",
+    "src/lib/portfolioMonthlyClose.js",
+    "src/components/reports"
+  ]
+}

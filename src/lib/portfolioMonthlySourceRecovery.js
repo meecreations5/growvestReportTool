@@ -5,7 +5,9 @@
  * snapshot or approval. The authenticated POST endpoint makes the decision.
  *
  * `attempts` is an instance-scoped Map of promises. React effect restarts
- * share the same in-flight attempt; manual refresh clears the matching key.
+ * share the same in-flight attempt; settled failures are evicted so a newer
+ * Fundbazaar import can be checked on the next load without keeping a
+ * permanently rejected promise. Manual refresh still clears the key.
  */
 const RECOVERABLE_SOURCE_ERRORS = new Set([
   "portfolio_closing_snapshot_missing_cash_flow",
@@ -51,6 +53,7 @@ function recoveryFailure(error, prefix = "Automatic monthly closing could not be
   const failed = new Error(`${prefix}: ${detail} The report remains blocked until a complete, eligible month-end source is available.`);
   failed.code = String(error?.code || "monthly_close_requires_review");
   failed.statusCode = Number(error?.statusCode) || 409;
+  if (error?.details && typeof error.details === "object") failed.details = error.details;
   return failed;
 }
 
@@ -86,6 +89,12 @@ export async function loadMonthlyReportSourceWithRecovery({
     // approve the same archived valuation twice.
     attempt = Promise.resolve().then(closeMonth);
     attempts.set(key, attempt);
+    // A failed approval is evidence about the state at the time of that
+    // attempt, not an immutable result for the entire browser session.
+    // Evict it only after settling; concurrent callers still share it.
+    void attempt.catch(() => {
+      if (attempts.get(key) === attempt) attempts.delete(key);
+    });
   }
   let result;
   try {
@@ -113,8 +122,11 @@ export async function loadMonthlyReportSourceWithRecovery({
     const approvedSnapshotId = String(result.snapshotId || "");
     const approvedValuationDate = String(result.valuationDate || "").slice(0, 10);
     const currentDate = String(reloaded.snapshot.snapshotDate || "").slice(0, 10);
+    const selectedApprovalMode = ["approved_historical_source", "approved_historical_multi_source"].includes(
+      String(reloaded.snapshot.reportSnapshotMode || "")
+    );
     if (approvedSnapshotId && reloaded.snapshot.id !== approvedSnapshotId
-      && (!approvedValuationDate || currentDate < approvedValuationDate)) {
+      && (!selectedApprovalMode || !approvedValuationDate || currentDate < approvedValuationDate)) {
       throw recoveryFailure({
         code: "monthly_close_snapshot_not_selected",
         message: "The month-end approval succeeded but report-source still returned an earlier Portfolio Master snapshot."

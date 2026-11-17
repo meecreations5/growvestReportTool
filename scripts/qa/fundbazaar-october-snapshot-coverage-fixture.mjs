@@ -59,7 +59,8 @@ assert.equal(unrepresentedExternalCashFlows({ snapshotDate: "2026-10-31", cutoff
 // AND on report reconciliation before completing/PDF/publish.
 const sourceRoute = readFileSync("src/app/api/portfolio/report-source/route.js", "utf8");
 const reconciler = readFileSync("src/lib/server/reportPortfolioReconciliation.js", "utf8");
-assert.match(sourceRoute, /unrepresentedExternalCashFlows\(/);
+assert.match(sourceRoute, /inspectFrozenMonthlyActivity\(/);
+assert.match(sourceRoute, /inspectFrozenSourceSet\(/);
 assert.match(sourceRoute, /portfolio_closing_snapshot_missing_cash_flow/);
 assert.match(reconciler, /checkReportCashFlowCoverage/);
 assert.match(reconciler, /cash_flows_after_closing_snapshot/);

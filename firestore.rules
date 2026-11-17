@@ -117,6 +117,16 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/leads/$(leadId)).data.assignedAdvisorUid == request.auth.uid;
     }
 
+    function advisorOwnsAssessmentLead(leadId) {
+      // When an advisor opens the assessment for a newly created lead,
+      // clientAssessments/{leadId} does not exist yet. Authorize a single-document
+      // get using the EXISTING assigned lead, never fields on the missing record.
+      return isAdvisor()
+        && leadId is string
+        && exists(/databases/$(database)/documents/leads/$(leadId))
+        && get(/databases/$(database)/documents/leads/$(leadId)).data.get('assignedAdvisorUid', null) == request.auth.uid;
+    }
+
     function advisorCanReferenceScope(data) {
       return isAdvisor()
         && (
@@ -341,7 +351,13 @@ service cloud.firestore {
           && advisorCanReferenceScope(request.resource.data)
         ));
 
-      allow read: if isAdmin() || ownsAdvisorRecord(resource.data);
+      // A newly created lead has no assessment record yet. Single-document
+      // listeners must be allowed to observe that absence for its assigned advisor.
+      // Retain legacy ownership for existing assessments; never expose broad lists.
+      allow get: if isAdmin()
+        || advisorOwnsAssessmentLead(assessmentId)
+        || (resource != null && ownsAdvisorRecord(resource.data));
+      allow list: if isAdmin() || ownsAdvisorRecord(resource.data);
       allow update: if isAdmin() || (
         ownsAdvisorRecord(resource.data)
         && preservesAdvisorScope()

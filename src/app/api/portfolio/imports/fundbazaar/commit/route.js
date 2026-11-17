@@ -2594,7 +2594,14 @@ export async function POST(request) {
     }).length;
     const importedCount = importedFiles.length;
     const issueCount = finalFileIssueCount + finalWarnings.length;
-    const status = importedCount > 0 && issueCount === 0 ? PORTFOLIO_IMPORT_STATUS.COMPLETED : importedCount > 0 ? PORTFOLIO_IMPORT_STATUS.PARTIAL : PORTFOLIO_IMPORT_STATUS.FAILED;
+    // A batch containing only previously imported files is a successful no-op,
+    // not an import failure. Keep genuine unresolved/failed files as issues.
+    const successfulFileCount = importedCount + duplicateFiles.length;
+    const status = issueCount === 0 && successfulFileCount > 0
+      ? PORTFOLIO_IMPORT_STATUS.COMPLETED
+      : importedCount > 0
+        ? PORTFOLIO_IMPORT_STATUS.PARTIAL
+        : PORTFOLIO_IMPORT_STATUS.FAILED;
     const totalCurrentValue = importedFiles.reduce((sum, item) => sum + Number(item.summary?.currentValue || 0), 0);
     const importedInvestorIds = new Set(importedFiles.map((item) => String(item.matchedInvestorId || "")).filter(Boolean));
 

@@ -547,13 +547,13 @@ export default function PortfolioImportCentre() {
                   onOpenRecovery={(previousBatchId) => setRecoveryBatchId(previousBatchId)}
                 />
               )) : (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-center text-sm font-semibold text-emerald-800">No exceptions. All eligible files are ready.</div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-center text-sm font-semibold text-emerald-800">{duplicateFiles.length && !readyFiles.length && !issueFiles.length ? "Already processed. All selected files match earlier successful uploads; no portfolio changes are needed." : "No exceptions. All eligible files are ready."}</div>
               )}
 
               <div className="sticky bottom-3 z-10 flex flex-col justify-between gap-3 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur sm:flex-row sm:items-center">
                 <div>
                   <p className="text-sm font-bold text-slate-900">{readyFiles.length} report(s) ready to update</p>
-                  <p className="mt-1 text-xs text-slate-500">{busy === "commit" && commitProgress ? `Processing ${commitProgress.fileName} · ${commitProgress.current} of ${commitProgress.total}. Keep this page open until the batch is complete.` : unresolved.length ? `${unresolved.length} investor mapping(s) still need confirmation.` : issueFiles.length ? "Files still needing mapping stay untouched; ready Fundbazaar, Bajaj, Angel One, ULIP and GrowVest Standard reports can be processed safely." : "All eligible files are verified."}</p>
+                  <p className="mt-1 text-xs text-slate-500">{busy === "commit" && commitProgress ? `Processing ${commitProgress.fileName} · ${commitProgress.current} of ${commitProgress.total}. Keep this page open until the batch is complete.` : unresolved.length ? `${unresolved.length} investor mapping(s) still need confirmation.` : !readyFiles.length && duplicateFiles.length && !issueFiles.length ? "Nothing to update: these exact files were processed previously. Upload a newer Fundbazaar report when available." : issueFiles.length ? "Files still needing mapping stay untouched; ready Fundbazaar, Bajaj, Angel One, ULIP and GrowVest Standard reports can be processed safely." : "All eligible files are verified."}</p>
                 </div>
                 <div className="flex gap-2">
                   <Button type="button" variant="secondary" onClick={() => { setPreview(null); setMappings({}); setViewMode("all"); }}>Back</Button>

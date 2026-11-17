@@ -70,10 +70,38 @@ await check("no source evidence remains blocked with original detailed reason", 
     (err) => err.code === "monthly_close_no_historical_archive" && err.message.includes("No original October")
   );
   await assert.rejects(loadMonthlyReportSourceWithRecovery({ ...oct, attempts, loadSource: async () => { throw stale; }, closeMonth }), /No original October/);
-  assert.equal(closeCount, 1);
+  assert.equal(closeCount, 2);
   attempts.delete(monthlyCloseRecoveryKey(oct.investorId, oct.monthKey));
   await assert.rejects(loadMonthlyReportSourceWithRecovery({ ...oct, attempts, loadSource: async () => { throw stale; }, closeMonth }), /No original October/);
-  assert.equal(closeCount, 2);
+  assert.equal(closeCount, 3);
+});
+await check("failed auto-approval does not permanently poison recovery after new daily upload", async () => {
+  const attempts = new Map();
+  let closeCalls = 0;
+  const closeMonth = async () => {
+    closeCalls += 1;
+    if (closeCalls === 1) throw error("monthly_close_requires_review", "October archive not ready");
+    return { approved: true, snapshotId: "hist_Oct2026", valuationDate: "2026-10-30" };
+  };
+  await assert.rejects(loadMonthlyReportSourceWithRecovery({ ...oct, attempts,
+    loadSource: async () => { throw stale; }, closeMonth
+  }), /October archive not ready/);
+  await Promise.resolve();
+  const second = await loadMonthlyReportSourceWithRecovery({ ...oct, attempts,
+    loadSource: (() => { let calls = 0; return async () => (++calls === 1 ? Promise.reject(stale) : verified); })(),
+    closeMonth
+  });
+  assert.equal(closeCalls, 2);
+  assert.equal(second.source.snapshot.id, "hist_Oct2026");
+});
+await check("a different same-date operational snapshot is not mistaken for the approved archived close", async () => {
+  let reads = 0;
+  await assert.rejects(loadMonthlyReportSourceWithRecovery({ ...oct, attempts: new Map(),
+    loadSource: async () => ++reads === 1 ? Promise.reject(stale) : {
+      snapshot: { id: "operational_october", snapshotDate: "2026-10-30", verificationStatus: "verified" }
+    },
+    closeMonth: async () => ({ approved: true, snapshotId: "hist_Oct2026", valuationDate: "2026-10-30" })
+  }), (err) => err.code === "monthly_close_snapshot_not_selected");
 });
 await check("official NAV/AMFI failures remain blocked; nothing fabricated", async () => {
   await assert.rejects(loadMonthlyReportSourceWithRecovery({ ...oct, attempts: new Map(),
